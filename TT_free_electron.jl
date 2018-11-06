@@ -61,7 +61,7 @@ function TT_decomposition(tensor,L)
       rk_next = rank_now
       TT_matrix[k,1,1:rk,1:rk_next] = u[1:rk,:]
       TT_matrix[k,2,1:rk,1:rk_next] = u[(rk+1):2*rk,:]
-      TT_sigma[k,1:min(2^k,2^(L-k))] = s
+      TT_sigma[k,1:rank_now] = s
       reshaped_tensor = Diagonal(s)*Transpose(v)
       rank_prev = rank_now
    end
@@ -110,4 +110,47 @@ U = pertub_identity(4,0.2)
 @test isapprox(U*Transpose(U),Matrix{Float64}(I,4,4))
 
 """
+Hierarchical SVD keeping singular values sigma_k^2 > tol
 """
+
+function cut_off(x,tol)
+   res = 0.
+   j=0
+   while res <= tol
+      res = res + x[end-j]^2
+      j=j+1
+   end
+   return x[1:(end-j+1)]
+end
+
+@test cut_off([2,1,0.2,0.1],1) == [2,1]
+
+function HSVD(tensor,L,tol)
+   TT_matrix = zeros(L,2,Int(2^(L/2)),Int(2^(L/2)))
+   TT_sigma = zeros(L-1,Int(2^(L/2)))
+   reshaped_tensor = tensor
+   rank_now = 2
+   rank_prev = 1
+   for k=1:(L-1)
+      reshaped_tensor = reshape(reshaped_tensor,2*rank_prev,:)
+      u,s,v = svd(reshaped_tensor) #thin svd u,s,v (see doc)
+#      s = s[s .> sqrt(tol)]
+      s = cut_off(s,tol)
+      rank_now = size(s)[1]
+      rk = rank_prev #dim A[μ_k] = rank_prev × rank_now
+      rk_next = rank_now
+      TT_matrix[k,1,1:rk,1:rk_next] = u[1:rk,1:rk_next]
+      TT_matrix[k,2,1:rk,1:rk_next] = u[(rk+1):2*rk,1:rk_next]
+      TT_sigma[k,1:rk_next] = s
+      reshaped_tensor = Diagonal(s)*Transpose(v[:,1:rank_now])
+      rank_prev = rank_now
+   end
+   TT_matrix[L,1,1:2,1] = reshaped_tensor[:,1]
+   TT_matrix[L,2,1:2,1] = reshaped_tensor[:,2]
+   return TT_matrix, TT_sigma
+end
+
+TT1, s1 = TT_decomposition(V,6)
+TT2, s2= HSVD(V,6,0.)
+@test isapprox(TT1,TT2)
+@test isapprox(s1,s2)
