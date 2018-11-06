@@ -51,17 +51,19 @@ function TT_decomposition(tensor,L)
    TT_matrix = zeros(L,2,Int(2^(L/2)),Int(2^(L/2)))
    TT_sigma = zeros(L-1,Int(2^(L/2)))
    reshaped_tensor = tensor
-   rang = 2
+   rank_now = 2
+   rank_prev = 1
    for k=1:(L-1)
-      reshaped_tensor = reshape(reshaped_tensor,rang,:) #matrix of dimension 2^kx2^{L-k}
+      reshaped_tensor = reshape(reshaped_tensor,2*rank_prev,:)
       u,s,v = svd(reshaped_tensor) #thin svd u,s,v (see doc)
-      rk_1 = Int(rang/2)
-      rk_2 = min(2^k,2^(L-k))
-      TT_matrix[k,1,1:rk_1,1:rk_2] = u[1:rk_1,:]
-      TT_matrix[k,2,1:rk_1,1:rk_2] = u[(rk_1+1):2*rk_1,:]
+      rank_now = size(s)[1]
+      rk = rank_prev #dim A[μ_k] = rank_prev × rank_now
+      rk_next = rank_now
+      TT_matrix[k,1,1:rk,1:rk_next] = u[1:rk,:]
+      TT_matrix[k,2,1:rk,1:rk_next] = u[(rk+1):2*rk,:]
       TT_sigma[k,1:min(2^k,2^(L-k))] = s
       reshaped_tensor = Diagonal(s)*Transpose(v)
-      rang = 2*size(reshaped_tensor)[1]
+      rank_prev = rank_now
    end
    TT_matrix[L,1,1:2,1] = reshaped_tensor[:,1]
    TT_matrix[L,2,1:2,1] = reshaped_tensor[:,2]
@@ -108,5 +110,4 @@ U = pertub_identity(4,0.2)
 @test isapprox(U*Transpose(U),Matrix{Float64}(I,4,4))
 
 """
-energy as function of discarded weight
 """
