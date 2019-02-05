@@ -120,10 +120,10 @@ function cut_off(x,tol)
       res = res + x[end-j]^2
       j=j+1
    end
-   return x[1:(end-j+1)]
+   return j,x[1:(end-j+1)]
 end
 
-@test cut_off([2,1,0.2,0.1],1) == [2,1]
+@test cut_off([2,1,0.2,0.1],1)[2] == [2,1]
 
 function HSVD(tensor,L,tol)
    TT_matrix = zeros(L,2,Int(2^(L/2)),Int(2^(L/2)))
@@ -135,7 +135,7 @@ function HSVD(tensor,L,tol)
       reshaped_tensor = reshape(reshaped_tensor,2*rank_prev,:)
       u,s,v = svd(reshaped_tensor) #thin svd u,s,v (see doc)
 #      s = s[s .> sqrt(tol)]
-      s = cut_off(s,tol)
+      s = cut_off(s,tol)[2]
       rank_now = size(s)[1]
       rk = rank_prev #dim A[μ_k] = rank_prev × rank_now
       rk_next = rank_now
@@ -154,3 +154,64 @@ TT1, s1 = TT_decomposition(V,6)
 TT2, s2= HSVD(V,6,0.)
 @test isapprox(TT1,TT2)
 @test isapprox(s1,s2)
+
+function TT_truncated(tensor,L,tol)
+   TT_matrix,TT_sigma = TT_decomposition(tensor,L)
+   for j=1:(L-1)
+      k = cut_off(TT_sigma[j,:],tol)[1] #epsilon truncation = x[1,end-k+1]
+      L2 = Int(L/2)
+      if j==1
+         TT_matrix[j,1,:,end-k+2:end] = zeros(2^L2,k-1)
+         TT_matrix[j,2,:,end-k+2:end] = zeros(2^L2,k-1)
+      else
+         TT_matrix[j,1,:,end-k+2:end] = zeros(2^L2,k-1)
+         TT_matrix[j,2,:,end-k+2:end] = zeros(2^L2,k-1)
+         TT_matrix[j+1,1,end-k+2:end,:] = zeros(k-1,2^L2)
+         TT_matrix[j+1,2,end-k+2:end,:] = zeros(k-1,2^L2)
+      end
+   end
+   return TT_matrix,TT_sigma
+end
+
+#gives the energy associated to the tensor
+function energy_tensor(tensor,N,L)
+   out = 0.
+   tuple_collection = collect(combinations(1:L,N))
+   for x=1:size(tuple_collection)[1]
+      out = out + abs2(tensor[tuple_to_index(tuple_collection[x],L)...])*2pi^2*sum(tuple_collection[x].^2)
+   end
+   return out
+end
+
+W = full_tensor(3,6;V=Matrix{Float64}(I,6,6))
+@test isapprox(energy_tensor(W,3,6),28pi^2)
+
+function energy_TT(TT_matrix,N,L)
+   out=0.
+   tuple_collection = collect(combinations(1:L,N)) #list of indices with non-zero coef
+   for y=1:size(tuple_collection)[1]
+      x = tuple_to_index(tuple_collection[y],L)  #coef index
+      #coef computation
+      A = Transpose(TT_matrix[1,x[1],1,1:2])
+      for j=2:L
+         A = A*TT_matrix[j,x[j],1:Int(min(2^(j-1),2^(L-j+1))),1:Int(min(2^(j),2^(L-j)))]
+      end
+      out = out + abs2(A[1,1])*2pi^2*sum(tuple_collection[y].^2)
+   end
+   return out
+end
+
+V=full_tensor(3,6)
+TT_matrix,TT_sigma = TT_decomposition(V,6)
+@test isapprox(energy_tensor(V,3,6),energy_TT(TT_matrix,3,6))
+
+#tests
+N=6
+V = full_tensor(N,2N)
+Eref = energy_tensor(V,N,2N)
+E = zeros(9)
+
+for tol=2:10
+   TT_matrix,TT_sigma = HSVD(V,2N,10.0^(-tol))
+   E[tol-1] = energy_TT(TT_matrix,N,2N)
+end
