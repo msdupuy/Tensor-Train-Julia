@@ -41,7 +41,7 @@ struct ttoperator
 	tto_ot :: Array{Float64}
 end
 
-function ttv_decomp(tensor, index)
+function ttv_decomp(tensor, index;tol=1e-12)
 	# Decomposes a tensor into its tensor train with core matrices at i=index
 	dims = collect(size(tensor)) #dims = [n_1,...,n_d]
 	n_max = maximum(dims)
@@ -64,7 +64,7 @@ function ttv_decomp(tensor, index)
 		# Perform the singular value decomposition
 		u, s, v = svd(tensor_curr)
 		# Define the i-th rank
-		rks[i+1] = length(s[s .!= 0])
+		rks[i+1] = length(s[s .>= tol])
 		# Initialize ttv_vec[i]
 		ttv_vec[i] = zeros(dims[i],rks[i],rks[i+1])
 		# Fill in the ttv_vec[i]
@@ -83,7 +83,7 @@ function ttv_decomp(tensor, index)
 			# Perform the singular value decomposition
 			u, s, v = svd(tensor_curr)
 			# Define the (i-1)-th rank
-			rks[i]=length(s[s .!= 0])
+			rks[i]=length(s[s .>= tol])
 			# Initialize ttv_vec[i]
 			ttv_vec[i] = zeros(dims[i], rks[i], rks[i+1])
 			# Fill in the ttv_vec[i]
