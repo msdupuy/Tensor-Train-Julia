@@ -4,7 +4,7 @@ struct ttvector
 	# ttv_vec is an array of all matrix arrays for the tensor train format
 	# ttv_vec[i] stores the matrices A_i in the following way
 	# ttv_vec[i][1:x_(n_i), 1:r_(i-1), 1:r_i]
-	ttv_vec :: Array{Array{Float64}}
+	ttv_vec :: Array{Array{Float64,3},1}
 
 	# ttv_dims is an vector of the dimensions n_i i=1,...,d
 	ttv_dims :: Array{Int64}
@@ -17,7 +17,7 @@ struct ttvector
 	# ttv_ot[i] =  1 if the i-th matrices are rightorthonormal
 	# ttv_ot[i] =  0 if there is no information or the i-th matrices aren't orthogonal
 	# ttv_ot[i] = -1 if the i-th matrices are leftorthonormal
-	ttv_ot :: Array{Float64}
+	ttv_ot :: Array{Int64}
 end
 
 struct ttoperator
@@ -25,7 +25,7 @@ struct ttoperator
 	# of an operator A(x1,...,xd,y1,...,yd)
 	# tto_vec[i] stores the matrices A_i i=1,...,d in the following way
 	# ttv_vec[i][1:x_(n_i), 1:y_(n_i), 1:r_(i-1), 1:r_i]
-	tto_vec :: Array{Array{Float64}}
+	tto_vec :: Array{Array{Float64,4},1}
 
 	# tto_dims stores the dimensions n_i i=1,...,d
 	tto_dims :: Array{Int64}
@@ -38,7 +38,7 @@ struct ttoperator
 	# tto_ot[i] =  1 if the i-th matrices are rightorthogonal
 	# tto_ot[i] =  0 if there is no information or the i-th matrices aren't orthogonal
 	# tto_ot[i] = -1 if the i-th matrices are leftorthogonal
-	tto_ot :: Array{Float64}
+	tto_ot :: Array{Int64}
 end
 
 function ttv_decomp(tensor, index;tol=1e-12)
@@ -50,7 +50,7 @@ function ttv_decomp(tensor, index;tol=1e-12)
 	# ttv_ot[i]= -1 if i < index
 	# ttv_ot[i] = 0 if i = index
 	# ttv_ot[i] = 1 if i > index
-	ttv_ot = -ones(d)
+	ttv_ot = -ones(Int64,d)
 	ttv_ot[index] = 0
 	if index < d
 		ttv_ot[index+1:d] = ones(d-index)
