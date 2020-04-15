@@ -9,27 +9,25 @@ basic functions for TT format
 function tt_add(x::ttvector,y::ttvector)
     @assert(x.ttv_dims == y.ttv_dims, "Dimensions mismatch!")
     d = length(x.ttv_dims)
-    ttv_vec = Array{Array{Float64}}(undef,d)
-    rks = x.ttv_rks + y.ttv_rks
-    rks[d] = 1
-    #first core 
-    ttv_vec[1] = zeros(x.ttv_dims[1],1,rks[1])
-    for j in 1:x.ttv_dims[1]
-        ttv_vec[1][j,:,:] = [x.ttv_vec[1][j,:,:] y.ttv_vec[1][j,:,:]]
+    ttv_vec = Array{Array{Float64,3},1}(undef,d)
+    rks = vcat([1],x.ttv_rks + y.ttv_rks)
+    rks[d+1] = 1
+    #initialize ttv_vec
+    for k in 1:d
+        ttv_vec[k] = zeros(x.ttv_dims[k],rks[k],rks[k+1])
     end
+    #first core 
+    ttv_vec[1][:,1,1:x.ttv_rks[1]] = x.ttv_vec[1]
+    ttv_vec[1][:,1,(x.ttv_rks[1]+1):rks[2]] = y.ttv_vec[1]
     #2nd to end-1 cores
-    for k in 2:d-1
-        ttv_vec[k] = zeros(x.ttv_dims[k],rks[k-1],rks[k])
-        for j in 1:x.ttv_dims[k]
-            ttv_vec[k][j,:,:] = [x.ttv_vec[k][j,:,:] zeros(x.ttv_rks[k-1],y.ttv_rks[k]); zeros(y.ttv_rks[k-1],x.ttv_rks[k]) y.ttv_vec[k][j,:,:]]
-        end
+    for k in 2:(d-1)
+        ttv_vec[k][:,1:x.ttv_rks[k-1],1:x.ttv_rks[k]] = x.ttv_vec[k]
+        ttv_vec[k][:,(x.ttv_rks[k-1]+1):rks[k],(x.ttv_rks[k]+1):rks[k+1]] = y.ttv_vec[k]
     end
     #last core
-    ttv_vec[d] = zeros(x.ttv_dims[d],rks[d-1],rks[d])
-    for j in 1:x.ttv_dims[d]
-        ttv_vec[d][j,:,:] = [x.ttv_vec[d][j,:,:] ; y.ttv_vec[d][j,:,:]]
-    end
-    return ttvector(ttv_vec,x.ttv_dims,rks,zeros(d))
+    ttv_vec[d][:,1:x.ttv_rks[d-1],1] = x.ttv_vec[d]
+    ttv_vec[d][:,(x.ttv_rks[d-1]+1):rks[d],1] = y.ttv_vec[d]
+    return ttvector(ttv_vec,x.ttv_dims,rks[2:d+1],zeros(d))
 end
 
 function test_tt_add()
@@ -48,11 +46,11 @@ A : n_1 x r_0 x r_1
 B : n_2 x r_1 x r_2
 C : n_3 x r_2 x r_3
 """
-function sv_trunc(s,tol)
+function sv_trunc(s::Array{Float64},tol)
     d = length(s)
     i=0
     weight = 0.0
-    norm2 = norm(s)^2
+    norm2 = dot(s,s)
     while (i<d) && weight<tol*norm2
         weight+=s[d-i]^2
         i+=1
@@ -104,23 +102,23 @@ function left_compression(A,B;tol=1e-12)
 
     B = permutedims(B, [2,1,3]) #B r_1 x n_2 x r_2
     U = reshape(A,:,dim_A[3])
-    u,s,v = svd(U*reshape(B, dim_B[2],:),full=false, alg=LinearAlgebra.QRIteration()) #u is the new A, dim(u) = n_1r_0 x tilde(r)_1
+    u,s,v = svd(U*reshape(B, dim_B[2],:),full=false) #u is the new A, dim(u) = n_1r_0 x tilde(r)_1
     s_trunc = sv_trunc(s,tol)
     dim_B[2] = length(s_trunc)
-    U = reshape(u[:,1:dim_B[2]],dim_A[1],:,dim_B[2])
-    B = reshape(Diagonal(s_trunc)*v[:,1:dim_B[2]]',:,dim_B[1],dim_B[3])
+    U = reshape(u[:,1:dim_B[2]],dim_A[1],dim_A[2],dim_B[2])
+    B = reshape(Diagonal(s_trunc)*v[:,1:dim_B[2]]',dim_B[2],dim_B[1],dim_B[3])
     return U, permutedims(B,[2,1,3])
 end
 
 function tt_compression_par(X::ttvector;tol=1e-14,Imax=2)
-    Y = deepcopy(X.ttv_vec)
-    rks = deepcopy(X.ttv_rks)
+    Y = X.ttv_vec
+    rks = X.ttv_rks :: Array{Int64}
     d = length(X.ttv_dims)
     rks_prev = zeros(Integer,d)
     i=0
     while norm(rks-rks_prev)>0.1 && i<Imax
         i+=1
-        rks_prev = deepcopy(rks)
+        rks_prev = deepcopy(rks) :: Array{Int64}
         if mod(i,2) == 1
             @threads for k in 1:floor(Integer,d/2)
                 Y[2k-1], Y[2k] = left_compression(Y[2k-1], Y[2k], tol=tol)
@@ -131,9 +129,6 @@ function tt_compression_par(X::ttvector;tol=1e-14,Imax=2)
                 Y[2k], Y[2k+1] = left_compression(Y[2k], Y[2k+1], tol=tol)
                 rks[2k] = size(Y[2k],3)
             end
-        end
-        for k in 1:d
-            rks[k] = size(Y[k],3)
         end
     end
     return ttvector(Y,X.ttv_dims,rks,zeros(Integer,d))
@@ -151,16 +146,51 @@ function test_compression_par()
     @test(isapprox(ttv_to_tensor(tt_compression_par(y_tt))[:],y))
 end
 
+#not efficient
+function tt_compression_par!(X::ttvector;tol=1e-14,Imax=2)
+    d = length(X.ttv_dims)
+    rks_prev = zeros(Integer,d)
+    i=0
+    while norm(X.ttv_rks-rks_prev)>0.1 && i<Imax
+        i+=1
+        rks_prev = deepcopy(X.ttv_rks) :: Array{Int64}
+        if mod(i,2) == 1
+            @threads for k in 1:floor(Integer,d/2)
+                X.ttv_vec[2k-1], X.ttv_vec[2k] = left_compression(X.ttv_vec[2k-1], X.ttv_vec[2k], tol=tol)
+                X.ttv_rks[2k-1] = size(X.ttv_vec[2k-1],3)
+            end
+        else
+            @threads for k in 1:floor(Integer,(d-1)/2)
+                X.ttv_vec[2k], X.ttv_vec[2k+1] = left_compression(X.ttv_vec[2k], X.ttv_vec[2k+1], tol=tol)
+                X.ttv_rks[2k] = size(X.ttv_vec[2k],3)
+            end
+        end
+    end
+    nothing
+end
+
+function test_tt_compression_par2()
+    n=5
+    d=3
+    L = randn(n,n,n,n,n,n)
+    x = randn(n,n,n)
+    y = reshape(L,n^d,:)*x[:]
+    L_tt = tto_decomp(reshape(L,n*ones(Int,2d)...),1)
+    x_tt = ttv_decomp(x,1)
+    y_tt = mult(L_tt,x_tt)
+    tt_compression_par!(y_tt)
+    @test(isapprox(ttv_to_tensor(y_tt)[:],y))
+end
 
 function mult(A::ttoperator,v::ttvector)
     @assert(A.tto_dims==v.ttv_dims,"Dimension mismatch!")
     d = length(A.tto_dims)
     Y = Array{Array{Float64}}(undef, d)
-    A_rks = vcat(1,A.tto_rks) #R_0, ..., R_d
-    v_rks = vcat(1,v.ttv_rks) #r_0, ..., r_d
+    A_rks = vcat([1],A.tto_rks) #R_0, ..., R_d
+    v_rks = vcat([1],v.ttv_rks) #r_0, ..., r_d
     @threads for k in 1:d
         M = reshape(permutedims(A.tto_vec[k],[1,3,4,2]),:,A.tto_dims[k]) #A_k of size n_k R_{k-1} R_k x n_k
-        x = reshape(v.ttv_vec[k],v.ttv_dims[k],:) #v_k of size n_k x r_{k-1} r_k
+        x = reshape(v.ttv_vec[k],v.ttv_dims[k],v_rks[k]*v_rks[k+1]) #v_k of size n_k x r_{k-1} r_k
         Y[k] = reshape(M*x, A.tto_dims[k], A_rks[k], A_rks[k+1], v_rks[k], v_rks[k+1])
         Y[k] = permutedims(Y[k], [1,2,4,3,5])
         Y[k] = reshape(Y[k], A.tto_dims[k], A_rks[k]*v_rks[k], A_rks[k+1]*v_rks[k+1])
@@ -184,18 +214,21 @@ end
 function tt_dot(A::ttvector,B::ttvector)
     @assert(A.ttv_dims == B.ttv_dims, "Dimension mismatch")
     d = length(A.ttv_dims)
-    Y = Array{Array{Float64}}(undef,d)
-    A_rks = vcat(1,A.ttv_rks)
-    B_rks = vcat(1,B.ttv_rks)
+    Y = Array{Array{Float64},1}(undef,d)
+    A_rks = vcat([1],A.ttv_rks)::Array{Int64}
+    B_rks = vcat([1],B.ttv_rks)
     @threads for k in 1:d
-        M = reshape(permutedims(A.ttv_vec[k],[2,3,1]),:,A.ttv_dims[k]) #A_k of size R_{k-1} R_k x n_k
-        x = reshape(B.ttv_vec[k],B.ttv_dims[k],:) #v_k of size n_k x r_{k-1} r_k
+        M = reshape(permutedims(A.ttv_vec[k],[2,3,1]),A_rks[k]*A_rks[k+1],A.ttv_dims[k]) #A_k of size R_{k-1} R_k x n_k
+        x = reshape(B.ttv_vec[k],B.ttv_dims[k],B_rks[k]*B_rks[k+1]) #v_k of size n_k x r_{k-1} r_k
         Y[k] = reshape(M*x, A_rks[k], A_rks[k+1], B_rks[k], B_rks[k+1])
         Y[k] = permutedims(Y[k], [1,3,2,4])
-        Y[k] = reshape(Y[k],1, A_rks[k]*B_rks[k], A_rks[k+1]*B_rks[k+1])
+        Y[k] = reshape(Y[k],A_rks[k]*B_rks[k], A_rks[k+1]*B_rks[k+1])
     end
-    C = ttvector(Y, ones(Integer,d), A.ttv_rks.*B.ttv_rks, zeros(Integer,d))
-    return ttv_to_tensor(C)[1]
+    C = Y[1]
+    for k in 2:d
+        C = C*Y[k]
+    end
+    return C[1]::Float64
 end
 
 function test_tt_dot()
@@ -213,7 +246,7 @@ end
 
 function mult_a_tt(a::Real,A::ttvector)
     i = rand(findall(isequal(0),A.ttv_ot))
-    X = deepcopy(A.ttv_vec)
+    X = copy(A.ttv_vec)
     X[i] = a*X[i]
     return ttvector(X,A.ttv_dims,A.ttv_rks,A.ttv_ot)
 end
