@@ -15,7 +15,7 @@ function tt_gmres(A::ttoperator,b::ttvector,x0::ttvector;Imax=500,tol=1e-8,m=30,
     V = Array{ttvector}(undef,m)
     W = Array{ttvector}(undef,m)
     H = zeros(m+1,m)
-    r0 = tt_compression_par(tt_add(b,mult_a_tt(-1.0,tt_compression_par(mult(A,x0)))))
+    r0 = tt_compression_par(tt_add(b,mult_a_tt(-1.0,tt_compression_par(mult(A,x0))))) 
     β = sqrt(tt_dot(r0,r0))
     V[1] = mult_a_tt(1/β,r0)
     W[1] = tt_compression_par(mult(A,V[1]))
@@ -43,10 +43,10 @@ function tt_gmres(A::ttoperator,b::ttvector,x0::ttvector;Imax=500,tol=1e-8,m=30,
             for i in 1:j
                 H[i,j] = tt_dot(W[j],V[i])
                 W[j] = tt_add(W[j],mult_a_tt(-H[i,j],V[i]))
-                W[j] = tt_compression_par(W[j])
+                W[j] = tt_compression_par(W[j])                        
             end
             H[j+1,j] = sqrt(tt_dot(W[j],W[j]))
-            q,r = qr_hessenberg(H[1:(j+1),1:j])
+            q,r = qr_hessenberg(@view H[1:(j+1),1:j])
             γ = abs(β*q[j+1,1])
             if hist
                 γ_list = vcat(γ_list,γ)
