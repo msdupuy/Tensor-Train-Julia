@@ -133,7 +133,7 @@ function ttv_to_tensor(ttv :: ttvector)
 	for i = 1:d
 		tensor[1:dims_prod*ttv.ttv_dims[i]*rks[i+1]] =
 			reshape(tensor[1:dims_prod*rks[i]], dims_prod,:) *
-			reshape(permutedims(ttv.ttv_vec[i], [2 1 3]), rks[i], :)
+			reshape(permutedims(ttv.ttv_vec[i][:, 1:rks[i], 1:rks[i+1]], [2 1 3]), rks[i], :)
 		dims_prod *= ttv.ttv_dims[i]
 	end
 	return tensor
