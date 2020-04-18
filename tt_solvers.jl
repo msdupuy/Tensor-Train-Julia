@@ -61,3 +61,24 @@ function tt_gmres(A::ttoperator,b::ttvector,x0::ttvector;Imax=500,tol=1e-8,m=30,
     end
 end
 
+function tt_cg(A::ttoperator,b::ttvector,x0::ttvector;Imax=500,tol=1e-8)
+    p = tt_compression_par(tt_add(b,mult_a_tt(-1.0,tt_compression_par(mult(A,x0)))))
+    r = p
+    j=1
+    res= zeros(Imax)
+    res[1] = sqrt(tt_dot(p,p))
+    while j < Imax && res[j]>tol
+        Ap = mult(A,p)
+        Ap = tt_compression_par(Ap)
+        a = res[j]^2/tt_dot(p,Ap)
+        x0 = tt_add(x0,mult_a_tt(a,p))
+        x0 = tt_compression_par(x0)
+        r = tt_add(r,mult_a_tt(-a,Ap))
+        r = tt_compression_par(r)
+        res[j+1] = sqrt(tt_dot(r,r))
+        p = tt_add(r,mult_a_tt(res[j+1]^2/res[j]^2,p))
+        p = tt_compression_par(p)
+        j+=1
+    end
+    return x, res[1:j]
+end
