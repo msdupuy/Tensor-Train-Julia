@@ -1,14 +1,23 @@
 include("tt_tools.jl")
-include("gmres.jl") #for qr_hessenberg
 
 """
 TT version of the restarted GMRES algorithm
 """
 
-function history(hist,γ_list,γ)
-    if hist
-        γ_list = vcat(γ_list,γ)
+#takes a hessenberg matrix and returns q,H resp. orthogonal and upper triangular such that q^T H_out = H_in
+function qr_hessenberg(H)
+    m = size(H,2)
+    q = Matrix{Float64}(I,m+1,m+1)
+    T = H
+    for i in 1:m
+        R = Matrix{Float64}(I,m+1,m+1)
+        s = T[i+1,i]/sqrt(T[i,i]^2+T[i+1,i]^2)
+        c = T[i,i]/sqrt(T[i,i]^2+T[i+1,i]^2)
+        R[i:(i+1),i:(i+1)] = [c s; -s c]
+        q = R*q
+        T = R*T
     end
+    return q,T
 end
 
 function tt_gmres(A::ttoperator,b::ttvector,x0::ttvector;Imax=500,tol=1e-8,m=30,hist=false,γ_list=Float64[])
@@ -81,4 +90,49 @@ function tt_cg(A::ttoperator,b::ttvector,x0::ttvector;Imax=500,tol=1e-8)
         j+=1
     end
     return x, res[1:j]
+end
+
+"""
+A_k : n_k x n_k x R_{k-1} x R_k
+X_k : n_k x r^X_{k-1} x r^X_k
+B_k : n_k x r^B_{k-1} x r^B_k
+Ql : R_{k-1} r^X_{k-1} x r^B_{k-1}
+Qr : R_k r^X_k x r^B_k
+"""
+function init_core(A_k,dim_X,B_k,Ql,Qr)
+    X_k = zeros(dim_X...)
+    #B right shape
+    B = reshape(B_k,:,size(B_k,3)) # n_k r^B_{k-1} x r^B_k
+    B = reshape(B*(Qr'),size(B_k,1),size(B_k,2),size(A_k,4),size(X_k,3)) #n_k x r^B_{k-1} x R_k x r^X_k
+    B = permutedims(B,[2,1,3,4]) #r^B_{k-1} x n_k x R_k x r^X_k
+    B = Ql*reshape(B,size(B,1),:) #R_{k-1} r^X_{k-1} x n_k R_k r^X_k
+    B = permutedims(reshape(B,size(A_k,3),size(X_k,2),size(A_k,1),size(A_k,4),size(X_k,3)),[3,1,4,2,5]) #n_k x R_{k-1} x R_k x r^X_{k-1} x r^X_k
+    B = reshape(B,size(A_k,1)*size(A_k,3)*size(A_k,4),dim_X[2]*dim_X[3]) #n_k R_{k-1} R_k x r^X_{k-1} r^X_k
+    A = reshape(permutedims(A_k,[1,3,4,2]),size(A_k,1)*size(A_k,3)*size(A_k,4),size(A_k,2))
+    X_k = reshape(A\B,dim_X[1],dim_X[2],dim_X[3])
+    return X_k
+end
+
+#returns partial isometry Q ∈ R^{n x m}
+function rand_orthogonal(n,m)
+    N = max(n,m)
+    q,r = qr(rand(N,N))
+    return q[1:n,1:m]
+end
+
+function init(A::ttoperator,b::ttvector,opt_rks)
+    @assert(A.tto_dims == b.ttv_dims,DimensionMismatch)
+    d = length(A.tto_dims)
+    opt_rks = vcat([1],opt_rks)
+    Q_list = Array{Array{Float64},1}(undef,d+1)
+    ttvec = Array{Array{Float64},1}(undef,d)
+    Q_list[1] = [1]
+    Q_list[d+1] = [1]
+    for k in 1:(d-1)
+        Q_list[k+1] = rand_orthogonal(A.tto_rks[k]*opt_rks[k+1],b.ttv_rks[k])
+    end
+    for k in 1:d
+        ttvec[k] = init_core(A.tto_vec[k],[A.tto_dims[k],opt_rks[k],opt_rks[k+1]],b.ttv_vec[k],Q_list[k],Q_list[k+1])
+    end
+    return ttvector(ttvec,A.tto_dims,opt_rks[2:(d+1)],ones(Int64,d))
 end
