@@ -89,7 +89,7 @@ function tt_cg(A::ttoperator,b::ttvector,x0::ttvector;Imax=500,tol=1e-8)
         p = tt_compression_par(p)
         j+=1
     end
-    return x, res[1:j]
+    return x0, res[1:j]
 end
 
 """
@@ -109,8 +109,10 @@ function init_core(A_k,dim_X,B_k,Ql,Qr)
     B = permutedims(reshape(B,size(A_k,3),size(X_k,2),size(A_k,1),size(A_k,4),size(X_k,3)),[3,1,4,2,5]) #n_k x R_{k-1} x R_k x r^X_{k-1} x r^X_k
     B = reshape(B,size(A_k,1)*size(A_k,3)*size(A_k,4),dim_X[2]*dim_X[3]) #n_k R_{k-1} R_k x r^X_{k-1} r^X_k
     A = reshape(permutedims(A_k,[1,3,4,2]),size(A_k,1)*size(A_k,3)*size(A_k,4),size(A_k,2))
-    X_k = reshape(A\B,dim_X[1],dim_X[2],dim_X[3])
-    return X_k
+    ua,sa,va = svd(A)
+    X = va*inv(Diagonal(sa))*ua'*B
+    println(norm(A*X-B))
+    return reshape(X,dim_X[1],dim_X[2],dim_X[3])
 end
 
 #returns partial isometry Q ∈ R^{n x m}
@@ -118,6 +120,28 @@ function rand_orthogonal(n,m)
     N = max(n,m)
     q,r = qr(rand(N,N))
     return q[1:n,1:m]
+end
+
+function rand_norm(n,m) #m>=n
+    A = randn(n,m)
+    for i in 1:m
+        A[:,i] = A[:,i]./norm(A[:,i])
+    end
+    return A
+end
+
+function rand_struct_orth(r_A,r_X,r_b)
+    A = zeros(r_X,r_A,r_b)
+    q1 = rand_norm(r_A,r_b)
+    q2 = rand_orthogonal(r_b,r_X)
+    for ia in 1:r_A
+        for ix in 1:r_X
+            for ib in 1:r_b
+                A[ix,ia,ib] = q1[ia,ib]*q2[ib,ix]
+            end
+        end
+    end
+    return reshape(A,r_A*r_X,r_b)
 end
 
 function init(A::ttoperator,b::ttvector,opt_rks)
@@ -129,10 +153,21 @@ function init(A::ttoperator,b::ttvector,opt_rks)
     Q_list[1] = [1]
     Q_list[d+1] = [1]
     for k in 1:(d-1)
-        Q_list[k+1] = rand_orthogonal(A.tto_rks[k]*opt_rks[k+1],b.ttv_rks[k])
+        Q_list[k+1] = rand_struct_orth(A.tto_rks[k],opt_rks[k+1],b.ttv_rks[k])
     end
     for k in 1:d
         ttvec[k] = init_core(A.tto_vec[k],[A.tto_dims[k],opt_rks[k],opt_rks[k+1]],b.ttv_vec[k],Q_list[k],Q_list[k+1])
     end
     return ttvector(ttvec,A.tto_dims,opt_rks[2:(d+1)],ones(Int64,d))
+end
+
+#automatically determines the initial tt ranks
+function init_adapt(A::ttoperator,b::ttvector)
+    d = length(A.tto_dims)
+    opt_rks = ones(Int64,d)
+    for k in 1:(d-1)
+        opt_rks[k] = lcm(A.tto_rks[k],b.ttv_rks[k])/A.tto_rks[k]
+    end
+    println(opt_rks)
+    return init(A,b,opt_rks)
 end
