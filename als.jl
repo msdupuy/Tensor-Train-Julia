@@ -121,7 +121,6 @@ function als(A :: ttoperator, b :: ttvector, tt_start :: ttvector, opt_rks :: Ar
 					reshape(reshape(K[1:ni, 1:rim, 1:ri, 1:ni, 1:rim, 1:ri], ni*rim*ri, :) \ reshape(Pb[1:ni, 1:rim, 1:ri],:,1), ni, rim, :)
 
 				# Prepare core movements
-				V = map(x -> round(x, digits=10),V)
 				ri_new = min(rim*ni, ri)
 				QV = zeros(ni*rim, ni*rim)
 				RV = zeros(ri, ri)
