@@ -420,5 +420,48 @@ function tt_compression(X::ttvector,tol=1e-12)
     return ttvector(Y,X.ttv_dims,rks,zeros(Integer,d))
 end
 
+function md_mult(A, B, perm_A, perm_B, index_A, index_B, perm_result)
+	# Multiplication of two multidimensional arrays
+	# Permute the dimensions of A and B according to perm_A and perm_B
+	# Reshape A and B into matrices by merging dimensions one to index_A(B)
+	# and index_A(B)+1 to end
+	# Multiplicate the matrices
+	# Reshape the result according to the original dimensions
+	# Permute the result according to perm_result and return it
+
+	# Initialize the dimensions of the permuted arrays of A and B
+	dims_A = collect(size(A))[perm_A]
+	dims_B = collect(size(B))[perm_B]
+	# Define the dimensions of the to be returned array
+	dims_res = vcat(dims_A[1 : index_A], dims_B[(index_B + 1) : end])
+
+	return permutedims(reshape(reshape(permutedims(A, perm_A),
+											prod(dims_A[1:index_A]), :) *
+								reshape(permutedims(B, perm_B),
+											prod(dims_B[1:index_B]), :),
+								dims_res... ), perm_result)
+end
+
+function md_div(A, B, perm_A, perm_B, index_A, index_B, perm_result)
+	# "Division" of two multidimensional arrays
+	# Permute the dimensions of A and B according to perm_A and perm_B
+	# Reshape A and B into matrices by merging dimensions one to index_A(B)
+	# and index_A(B)+1 to end
+	# Solve the linear system A*res = B
+	# Reshape the result according to the original dimensions
+	# Permute the result according to perm_result and return it
+
+	# Initialize the dimensions of the permuted arrays of A and B
+	dims_A = collect(size(A))[perm_A]
+	dims_B = collect(size(B))[perm_B]
+	# Define the dimensions of the to be returned array
+	dims_res = dims_A[1 : index_A]
+
+	return permutedims(reshape(reshape(permutedims(A, perm_A),
+											prod(dims_A[1:index_A]), :) \
+								reshape(permutedims(B, perm_B),
+											prod(dims_B[1:index_B]), :),
+								dims_res... ), perm_result)
+end
 
 
