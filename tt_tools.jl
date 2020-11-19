@@ -1,6 +1,7 @@
 using Test
 using LinearAlgebra
 using Base.Threads
+using IterativeSolvers
 
 struct ttvector
 	# ttv_vec is an array of all matrix arrays for the tensor train format
