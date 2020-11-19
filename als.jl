@@ -1,6 +1,8 @@
 include("tt_tools.jl")
 
-function als(A :: ttoperator, b :: ttvector, tt_start :: ttvector, opt_rks :: Array{Int64})
+#TODO: eigs version and include IterativeSolvers option
+
+function als(A :: ttoperator, b :: ttvector, tt_start :: ttvector, opt_rks :: Array{Int64};N_halfsweep=1,it_solver=false,r_itsolver=5000)
 	# als finds the minimum of the operator J:1/2*<Ax,Ax> - <x,b>
 	# input:
 	# 	A: the tensor operator in its tensor train format
@@ -17,16 +19,13 @@ function als(A :: ttoperator, b :: ttvector, tt_start :: ttvector, opt_rks :: Ar
 	d = length(dims)
 	n_max = maximum(dims)
 	# Define the array of ranks of tt_opt [r_0=1,r_1,...,r_d]
-	rks = ones(Int, d+1)
-	rks[2:(d+1)] = tt_start.ttv_rks
+	rks = vcat([1], tt_start.ttv_rks)
 	r_max = maximum(tt_start.ttv_rks)
 	# Define the array of ranks of A [R_0=1,R_1,...,R_d]
-	A_rks = ones(Int, d+1)
-	A_rks[2:(d+1)] = A.tto_rks
+	A_rks = vcat([1],A.tto_rks)
 	rA_max = maximum(A_rks)
 	# Define the array of ranks of b [R^b_0=1,R^b_1,...,R^b_d]
-	b_rks = ones(Int, d+1)
-	b_rks[2:(d+1)] = b.ttv_rks
+	b_rks = vcat([1],b.ttv_rks)
 	rb_max = maximum(b_rks)
 
 	# Initialize the arrays of G and H
@@ -121,7 +120,6 @@ function als(A :: ttoperator, b :: ttvector, tt_start :: ttvector, opt_rks :: Ar
 					reshape(reshape(K[1:ni, 1:rim, 1:ri, 1:ni, 1:rim, 1:ri], ni*rim*ri, :) \ reshape(Pb[1:ni, 1:rim, 1:ri],:,1), ni, rim, :)
 
 				# Prepare core movements
-				V = map(x -> round(x, digits=10),V)
 				ri_new = min(rim*ni, ri)
 				QV = zeros(ni*rim, ni*rim)
 				RV = zeros(ri, ri)
