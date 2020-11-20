@@ -44,6 +44,10 @@ struct ttoperator
 	tto_ot :: Array{Int64}
 end
 
+function empty_tt()
+	return ttvector([],[],[],[])
+end
+
 function ttv_decomp(tensor, index;tol=1e-12)
 	# Decomposes a tensor into its tensor train with core matrices at i=index
 	dims = collect(size(tensor)) #dims = [n_1,...,n_d]
