@@ -2,6 +2,7 @@ using Test
 using LinearAlgebra
 using Base.Threads
 using IterativeSolvers
+import Base.isempty
 
 struct ttvector
 	# ttv_vec is an array of all matrix arrays for the tensor train format
@@ -46,6 +47,10 @@ end
 
 function empty_tt()
 	return ttvector([],[],[],[])
+end
+
+function Base.isempty(x_tt::ttvector)
+	return isempty(x_tt.ttv_vec)
 end
 
 function ttv_decomp(tensor, index;tol=1e-12)
