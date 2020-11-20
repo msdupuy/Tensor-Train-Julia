@@ -2,7 +2,85 @@ include("tt_tools.jl")
 
 #TODO: eigs version and include IterativeSolvers option
 
-function als(A :: ttoperator, b :: ttvector, tt_start :: ttvector, opt_rks :: Array{Int64};N_halfsweep=1,it_solver=false,r_itsolver=5000)
+function init_H_and_Hb(x_tt::ttvector,b_tt::ttvector,A_tto::ttoperator)
+	x_dims = x_tt.ttv_dims
+	d = length(x_tt.ttv_dims)
+	A_rks = vcat([1],A_tto.tto_rks)
+	x_rks = vcat([1], x_tt.ttv_rks)
+	b_rks = vcat([1], b_tt.ttv_rks)
+	H = Array{Array{Float64}}(undef, d)
+	H_b = Array{Array{Float64}}(undef, d) 
+
+	H[d] = ones(1,1,1)
+	H_b[d] = ones(1,1)
+	for i = d : -1 : 2
+		N1 = md_mult(x_tt.ttv_vec[i],H[i],[1,2,3],[1,2,3],2,1,[1 2 3 4])
+		N2 = md_mult(N1,A_tto.tto_vec[i],[2 3 1 4],[1 4 2 3],2,2,[1,2,3,4])
+		# Initialize H[i-1]
+		H[i-1] = md_mult(x_tt.ttv_vec[i],N2,[2 3 1],[2 3 1 4],1,2,[2 1 3]) #size (rim, rim, rAim)
+
+		N_b = reshape(reshape(x_tt.ttv_vec[i], x_dims[i]*x_rks[i], :) * H_b[i], x_dims[i], x_rks[i], :) #size (ni,rim,rbi)
+		# Fill in H_b[i-1]
+		H_b[i-1] = md_mult(N_b,b_tt.ttv_vec[i],[2 1 3],[1 3 2],1,2,[1 2]) # k_(i-1), j^b_(i-1)
+	end
+	return H,H_b
+end
+
+function right_core_move(x_tt::ttvector,V,i::Int,x_rks,x_dims)
+	rim,ri,rip = x_rks[i],x_rks[i+1],x_rks[i+2]
+	ni,nip = x_dims[i],x_dims[i+1]
+	ri_new = min(rim*ni, ri)
+
+	QV = zeros(ni*rim, ni*rim)
+	RV = zeros(ri, ri)
+	x_tt.ttv_rks[i] = ri_new
+	x_rks[i+1] = ri_new
+	QV[1:ni*rim, 1:ni*rim], RV[1:ri_new, 1:ri] =
+		qr(reshape(V[1:ni, 1:rim, 1:ri], ni*rim, :))
+
+	# Apply core movement 3.1
+	x_tt.ttv_vec[i][1:ni, 1:rim, 1:ri_new] = reshape(QV[1:ni*rim, 1:ri_new], ni, rim, :)
+	x_tt.ttv_vec[i][1:ni, 1:rim, (ri_new+1):ri] = zeros(ni,rim,ri-ri_new)
+	x_tt.ttv_ot[i] = -1
+
+	# Apply core movement 3.2
+	x_tt.ttv_vec[i+1][1:nip, 1:ri, 1:rip] = md_mult(RV[1:ri, 1:ri],x_tt.ttv_vec[i+1][1:nip, 1:ri, 1:rip],[1 2],[2 1 3],1,1,[2 1 3])
+	x_tt.ttv_ot[i+1] = 0
+
+	return x_tt,ri_new
+end
+
+function update_G_Gb(x_tt::ttvector,x_dims,x_rks,b_tt::ttvector,b_rks,A_tto::ttoperator,A_rks,i,Gi,G_bi)
+	rim,ri,rip = x_rks[i],x_rks[i+1],x_rks[i+2]
+	rbi,rbip = b_rks[i+1],b_rks[i+2]
+	ni,nip = x_dims[i],x_dims[i+1]
+	rAip = A_rks[i+2]
+	M1 = md_mult(x_tt.ttv_vec[i][1:ni, 1:rim, 1:ri],Gi,[3 1 2],[1 2 3 4 5],1,2,[1 2 3 4]) #size (ri,ni,rim,rAi)
+	M2 = md_mult(x_tt.ttv_vec[i],M1,[3 1 2],[2 3 1 4],1,2,[1 2 3]) #size (ri,ri,rAi)
+
+	# Initialize G[i+1]
+	G = zeros(nip, ri, nip, ri, rAip) # x_(i+1), k_i, y_(i+1), k'_i, j_(i+1)
+	# Fill in G[i+1]
+	G = md_mult(M2,A_tto.tto_vec[i+1],[1 2 3],[3 1 2 4],2,1,[3 2 4 1 5])
+	M_b = reshape(G_bi, rbi, :) * reshape(x_tt.ttv_vec[i], ni*rim, :)
+	# Initialize G_b[i+1]
+	G_b = zeros(rbip, nip, ri) # j_(i+1), x_(i+1), k_i
+	# Fill in G_b[i+1]
+	G_b = md_mult(b_tt.ttv_vec[i+1],M_b,[3 1 2],[1 2],2,1,[1 2 3])
+	return G,G_b
+end
+
+function Ksolve(Gi,G_bi,Hi,H_bi,x_dims,x_rks,A_rks,i)
+	rim,ri = x_rks[i],x_rks[i+1]
+	rAi = A_rks[i+1]
+	ni = x_dims[i]
+	K = md_mult(Gi[1:ni, 1:rim, 1:ni, 1:rim, 1:rAi],Hi[1:ri, 1:ri, 1:rAi],[3 4 1 2 5],[3 2 1],4,1,[1 2 5 3 4 6]) #size (ni,rim,ri,ni,rim,ri)
+	Pb = md_mult(G_bi,H_bi,[2 3 1],[2 1],2,1,[1 2 3]) #size (ni,rim,ri)
+	V = md_div(K,Pb,[1 2 3 4 5 6],[1 2 3],3,3,[1 2 3])
+	return V
+end
+
+function als(A :: ttoperator, b :: ttvector, tt_start :: ttvector, opt_rks :: Array{Int64};sweep_count=2,it_solver=false,r_itsolver=5000)
 	# als finds the minimum of the operator J:1/2*<Ax,Ax> - <x,b>
 	# input:
 	# 	A: the tensor operator in its tensor train format
@@ -30,15 +108,11 @@ function als(A :: ttoperator, b :: ttvector, tt_start :: ttvector, opt_rks :: Ar
 
 	# Initialize the arrays of G and H
 	G = Array{Array{Float64}}(undef, d)
-	H = Array{Array{Float64}}(undef, d)
 	# Initialize the tensors M1, M2, N1 and N2
-	M1 = zeros(r_max, n_max, r_max, rA_max) # k_i, y_i, k_(i-1), j_i
-	M2 = zeros(r_max, r_max, rA_max) # k'_i, k_i, j_i
 	N1 = zeros(n_max, r_max, r_max, rA_max) # x_i, k_(i-1), k'_i, j_i
 	N2 = zeros(r_max, r_max, n_max, rA_max) # k_(i-1), k'_i, y_i, j_(i-1)
 	# Initialize the arrays of G_b and H_b
 	G_b = Array{Array{Float64}}(undef, d)
-	H_b = Array{Array{Float64}}(undef, d)
 	# Initialize the tensors M_b and N_b
 	M_b = zeros(rb_max, r_max) # l_i, k_i
 	N_b = zeros(n_max, r_max, rb_max) # x_i,k_(i-1),j^b_i
@@ -54,149 +128,84 @@ function als(A :: ttoperator, b :: ttvector, tt_start :: ttvector, opt_rks :: Ar
 	G[1] = reshape(A.tto_vec[1][:,:,1,:], dims[1],1,dims[1], 1, :)
 	G_b[1] = zeros(b_rks[2], dims[1], 1)
 	G_b[1] = permutedims(reshape(b.ttv_vec[1][:,1,1:b_rks[2]], dims[1], 1, :), [3 1 2])
-	H[d] = ones(1,1,1)
-	H_b[d] = ones(1,1)
 
-	#while 1==1 #TODO make it work for real
-		# Fill in  H[1],...,H[d-1] and H_b[1],...,H_b[d-1]
-		for i = d : -1 : 2
-			ni = dims[i] # n_i
-			nim = dims[i-1] # n_(i-1)
-			ri = rks[i+1] # r_i
-			rim = rks[i] # r_(i-1)
-			rAi = A_rks[i+1] # R_i
-			rAim = A_rks[i] # R_(i-1)
-			rbi = b_rks[i+1] # R^b_i
-			rbim = b_rks[i] # R^b_(i-1)
+	#Initialize H and H_b
+	H,H_b = init_H_and_Hb(tt_opt,b,A)
 
-			N1[1:ni, 1:rim, 1:ri, 1:rAi] =
-			md_mult(tt_opt.ttv_vec[i],H[i],[1,2,3],[1,2,3],2,1,[1 2 3 4])
-			N2[1:rim, 1:ri, 1:ni, 1:rAim] =
-			md_mult(N1[1:ni, 1:rim, 1:ri, 1:rAi],A.tto_vec[i],[2 3 1 4],[1 4 2 3],2,2,[1,2,3,4])
-			# Initialize H[i-1]
-			H[i-1] = zeros(rim, rim, rAim) #k_(i-1),k'_(i-1),l_(i-1)
-			# Fill in H[i-1]
-			H[i-1] = md_mult(tt_opt.ttv_vec[i],N2[1:rim, 1:ri, 1:ni, 1:rAim],[2 3 1],[2 3 1 4],1,2,[2 1 3])
+	nsweeps = 0 #sweeps counter
 
-			N_b[1:ni, 1:rim, 1:rbi] =
-				reshape(reshape(tt_opt.ttv_vec[i],ni*rim, :) * H_b[i],
-						ni, rim, :)
-			# Initialize H_b[i-1]
-			H_b[i-1] = zeros(rbim, rim) # k_(i-1), j^b_(i-1)
-			# Fill in H_b[i-1]
-			H_b[i-1] = md_mult(N_b[1:ni, 1:rim, 1:rbi],b.ttv_vec[i],[2 1 3],[1 3 2],1,2,[1 2])
-		end
+	while nsweeps < sweep_count
+		nsweeps+=1
 
 		# First half sweep
 		for i = 1:(d-1)
-			ni = dims[i] # n_i
-			nip = dims[i+1] # n_(i+1)
-			ri = rks[i+1] # r_i
-			rip = rks[i+2] # r_(i+1)
-			rim = rks[i] # r_(i-1)
-			rAi = A_rks[i+1] # R_i
-			rAip = A_rks[i+2] # R_(i+1)
-			rbi = b_rks[i+1] # R^b_i
-			rbip = b_rks[i+2] # R^b_(i+1)
+			println("Forward sweep: core optimization $i out of $d")
 
 			# If i is the index of the core matrices do the optimization
 			if tt_opt.ttv_ot[i] == 0
 				# Define V as solution of K*x=Pb in x
-				K[1:ni, 1:rim, 1:ri, 1:ni, 1:rim, 1:ri] = md_mult(G[i][1:ni, 1:rim, 1:ni, 1:rim, 1:rAi],H[i][1:ri, 1:ri, 1:rAi],[3 4 1 2 5],[3 2 1],4,1,[1 2 5 3 4 6])
-				Pb[1:ni, 1:rim, 1:ri] = md_mult(G_b[i],H_b[i],[2 3 1],[2 1],2,1,[1 2 3])
-				V[1:ni, 1:rim, 1:ri] = md_div(K[1:ni, 1:rim, 1:ri, 1:ni, 1:rim, 1:ri],Pb[1:ni, 1:rim, 1:ri],[1 2 3 4 5 6],[1 2 3],3,3,[1 2 3])
-
-				# Prepare core movements
-				ri_new = min(rim*ni, ri)
-				QV = zeros(ni*rim, ni*rim)
-				RV = zeros(ri, ri)
-				tt_opt.ttv_rks[i] = ri_new
-				rks[i+1] = ri_new
-				QV[1:ni*rim, 1:ni*rim], RV[1:ri_new, 1:ri] =
-					qr(reshape(V[1:ni, 1:rim, 1:ri], ni*rim, :))
-
-				# Apply core movement 3.1
-				tt_opt.ttv_vec[i][1:ni, 1:rim, 1:ri_new] =
-					reshape(QV[1:ni*rim, 1:ri_new], ni, rim, :)
-				tt_opt.ttv_vec[i][1:ni, 1:rim, (ri_new+1):ri] = zeros(ni,rim,ri-ri_new)
-				tt_opt.ttv_ot[i] = -1
-
-				# Apply core movement 3.2
-				tt_opt.ttv_vec[i+1][1:nip, 1:ri, 1:rip] = md_mult(RV[1:ri, 1:ri],tt_opt.ttv_vec[i+1][1:nip, 1:ri, 1:rip],[1 2],[2 1 3],1,1,[2 1 3])
-				tt_opt.ttv_ot[i+1] = 0
+				V = Ksolve(G[i],G_b[i],H[i],H_b[i],dims,rks,A_rks,i)
+				tt_opt, rks[i+1] = right_core_move(tt_opt,V,i,rks,dims)
 			end
 
-			M1[1:ri, 1:ni, 1:rim, 1:rAi] = md_mult(tt_opt.ttv_vec[i][1:ni, 1:rim, 1:ri],G[i],[3 1 2],[1 2 3 4 5],1,2,[1 2 3 4])
-			M2[1:ri, 1:ri, 1:rAi] = md_mult(tt_opt.ttv_vec[i],M1[1:ri, 1:ni, 1:rim, 1:rAi],[3 1 2],[2 3 1 4],1,2,[1 2 3])
-			# Initialize G[i+1]
-			G[i+1] = zeros(nip, ri, nip, ri, rAip) # x_(i+1), k_i, y_(i+1), k'_i, j_(i+1)
-			# Fill in G[i+1]
-			G[i+1][:,:,:,:,:] = md_mult(M2[1:ri,1:ri,1:rAi],A.tto_vec[i+1],[1 2 3],[3 1 2 4],2,1,[3 2 4 1 5])
-			M_b[1:rbi, 1:ri] = reshape(G_b[i], rbi, :) *
-								reshape(tt_opt.ttv_vec[i], ni*rim, :)
-			# Initialize G_b[i+1]
-			G_b[i+1] = zeros(rbip, nip, ri) # j_(i+1), x_(i+1), k_i
-			# Fill in G_b[i+1]
-			G_b[i+1][:,:,:] = md_mult(b.ttv_vec[i+1],M_b[1:rbi, 1:ri],[3 1 2],[1 2],2,1,[1 2 3])
-#				reshape(reshape(permutedims(b.ttv_vec[i+1], [3 1 2]), :, rbi) *
-#				M_b[1:rbi, 1:ri], rbip, nip, :)
+			#update G,G_b
+			G[i+1],G_b[i+1] = update_G_Gb(tt_opt,dims,rks,b,b_rks,A,A_rks,i,G[i],G_b[i])
 		end
 
-		# If the first half sweep was enough return tt_opt
-#		if (tt_opt.ttv_rks == opt_rks) & (tt_start.ttv_ot[1] == 0)
-#			return tt_opt
-#		end
+		if nsweeps == sweep_count
+			return tt_opt
+		else
+			nsweeps+=1
+			# Second half sweep
+			for i = d:(-1):2
+				println("Backward sweep: core optimization $i out of $d")
+				ni = dims[i] # n_i
+				nim = dims[i-1] # n_(i-1)
+				ri = rks[i+1] # r_i
+				rim = rks[i] # r_(i-1)
+				rim2 = rks[i-1] # r_(i-2)
+				rAi = A_rks[i+1] # R_i
+				rAim = A_rks[i] # R_(i-1)
+				rbi = b_rks[i+1] # R^b_i
+				rbim = b_rks[i] # R^b_(i-1)
 
-		# Second half sweep
-		for i = d:(-1):2
-			println("Reverse sweep $i")
-			ni = dims[i] # n_i
-			nim = dims[i-1] # n_(i-1)
-			ri = rks[i+1] # r_i
-			rim = rks[i] # r_(i-1)
-			rim2 = rks[i-1] # r_(i-2)
-			rAi = A_rks[i+1] # R_i
-			rAim = A_rks[i] # R_(i-1)
-			rbi = b_rks[i+1] # R^b_i
-			rbim = b_rks[i] # R^b_(i-1)
+				# Define V as solution of K*x=Pb in x
+				V = Ksolve(G[i],G_b[i],H[i],H_b[i],dims,rks,A_rks,i)
 
-			# Define V as solution of K*x=Pb in x
-			K[1:ni, 1:rim, 1:ri, 1:ni, 1:rim, 1:ri] = md_mult(G[i][1:ni, 1:rim, 1:ni, 1:rim, 1:rAi],H[i][1:ri, 1:ri, 1:rAi],[3 4 1 2 5],[3 2 1],4,1,[1 2 5 3 4 6])
-			Pb[1:ni, 1:rim, 1:ri] = md_mult(G_b[i],H_b[i],[2 3 1],[2 1],2,1,[1 2 3])
-			V[1:ni, 1:rim, 1:ri] = md_div(K[1:ni, 1:rim, 1:ri, 1:ni, 1:rim, 1:ri],Pb[1:ni, 1:rim, 1:ri],[1 2 3 4 5 6],[1 2 3],3,3,[1 2 3])
+				# Prepare core movements
+				rim_new = min(ri*ni, rim)
+				QV = zeros(ni*ri, ni*ri)
+				RV = zeros(rim, rim)
+				tt_opt.ttv_rks[i-1] = rim_new
+				rks[i] = rim_new
+				QV[1:ni*ri, 1:ni*ri], RV[1:rim_new, 1:rim] =
+						qr(reshape(permutedims(V[1:ni, 1:rim, 1:ri], [1 3 2]), ni*ri, :))
 
-			# Prepare core movements
-			rim_new = min(ri*ni, rim)
-			QV = zeros(ni*ri, ni*ri)
-			RV = zeros(rim, rim)
-			tt_opt.ttv_rks[i-1] = rim_new
-			rks[i] = rim_new
-			QV[1:ni*ri, 1:ni*ri], RV[1:rim_new, 1:rim] =
-					qr(reshape(permutedims(V[1:ni, 1:rim, 1:ri], [1 3 2]), ni*ri, :))
+				# Apply core movement 3.2
+				tt_opt.ttv_vec[i][1:ni, 1:rim_new, 1:ri] =
+						permutedims(reshape(QV[1:ni*ri, 1:rim_new], ni, ri, :),[1 3 2])
+				tt_opt.ttv_vec[i][1:ni, (rim_new+1):rim, 1:ri] = zeros(ni, rim-rim_new, ri)
+				tt_opt.ttv_ot[i] = 1
 
-			# Apply core movement 3.2
-			tt_opt.ttv_vec[i][1:ni, 1:rim_new, 1:ri] =
-					permutedims(reshape(QV[1:ni*ri, 1:rim_new], ni, ri, :),[1 3 2])
-			tt_opt.ttv_vec[i][1:ni, (rim_new+1):rim, 1:ri] = zeros(ni, rim-rim_new, ri)
-			tt_opt.ttv_ot[i] = 1
+				# Apply core movement 3.2
+				tt_opt.ttv_vec[i-1][1:nim, 1:rim2, 1:rim_new] = md_mult(tt_opt.ttv_vec[i-1][1:nim, 1:rim2, 1:rim],RV[1:rim_new, 1:rim],[1 2 3],[2 1],2,1,[1 2 3])
+				tt_opt.ttv_ot[i-1] = 0
 
-			# Apply core movement 3.2
-			tt_opt.ttv_vec[i-1][1:nim, 1:rim2, 1:rim_new] = md_mult(tt_opt.ttv_vec[i-1][1:nim, 1:rim2, 1:rim],RV[1:rim_new, 1:rim],[1 2 3],[2 1],2,1,[1 2 3])
-			tt_opt.ttv_ot[i-1] = 0
+				N1[1:ni, 1:rim, 1:ri, 1:rAi] = md_mult(tt_opt.ttv_vec[i],H[i],[1 2 3],[1 2 3],2,1,[1 2 3 4])
+				N2[1:rim, 1:ri, 1:ni, 1:rAim] = md_mult(N1[1:ni, 1:rim, 1:ri, 1:rAi],A.tto_vec[i],[2 3 1 4],[1 4 2 3],2,2,[1 2 3 4])
 
-			N1[1:ni, 1:rim, 1:ri, 1:rAi] = md_mult(tt_opt.ttv_vec[i],H[i],[1 2 3],[1 2 3],2,1,[1 2 3 4])
-			N2[1:rim, 1:ri, 1:ni, 1:rAim] = md_mult(N1[1:ni, 1:rim, 1:ri, 1:rAi],A.tto_vec[i],[2 3 1 4],[1 4 2 3],2,2,[1 2 3 4])
-			# Reinitialize H[i-1]
-			H[i-1] = zeros(rim, rim, rAim) #k_i,k'_i,l_i
-			# Fill in H[i-1]
-			H[i-1] = md_mult(tt_opt.ttv_vec[i],N2[1:rim, 1:ri, 1:ni, 1:rAim],[2 3 1],[2 3 1 4],1,2,[2 1 3])
+				# Reinitialize H[i-1]
+				H[i-1] = zeros(rim, rim, rAim) #k_i,k'_i,l_i
+				# Fill in H[i-1]
+				H[i-1] = md_mult(tt_opt.ttv_vec[i],N2[1:rim, 1:ri, 1:ni, 1:rAim],[2 3 1],[2 3 1 4],1,2,[2 1 3])
 
-			N_b[1:ni, 1:rim, 1:rbi] = md_mult(tt_opt.ttv_vec[i],H_b[i],[1 2 3],[1 2],2,1,[1 2 3])
-			# Reinitialize H_b[i-1]
-			H_b[i-1] = zeros(rbim, rim) #k_i-1, j^b_i-1
-			# Fill in H_b[i-1]
-			H_b[i-1] = md_mult(N_b[1:ni, 1:rim, 1:rbi],b.ttv_vec[i],[2 1 3],[1 3 2],1,2,[1 2])
+				N_b[1:ni, 1:rim, 1:rbi] = md_mult(tt_opt.ttv_vec[i],H_b[i],[1 2 3],[1 2],2,1,[1 2 3])
+				# Reinitialize H_b[i-1]
+				H_b[i-1] = zeros(rbim, rim) #k_i-1, j^b_i-1
+				# Fill in H_b[i-1]
+				H_b[i-1] = md_mult(N_b[1:ni, 1:rim, 1:rbi],b.ttv_vec[i],[2 1 3],[1 3 2],1,2,[1 2])
+			end
 		end
-	#end
+	end
 	return tt_opt
 end
