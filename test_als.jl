@@ -50,3 +50,21 @@ function test_als_eig()
     y = ttv_to_tensor(x_tt)
     @test isapprox(E,E_tt)
 end
+
+function test_als_eig()
+    n = 5
+    L = randn(n^3,n^3)
+    L = L*L'+I
+    S = randn(n^3,n^3)
+    S = S*S'+I
+    F = eigen(L,S)
+    b = ones(n,n,n)
+    x0 = randn(n,n,n)
+    L_tt = tto_decomp(reshape(L,n,n,n,n,n,n),1)
+    S_tt = tto_decomp(reshape(S,n,n,n,n,n,n),1)
+    b_tt = ttv_decomp(b,1)
+    x0_tt = ttv_decomp(x0,1)
+    E_tt,x_tt = als_gen_eig(L_tt,S_tt,x0_tt,[n,n,1])
+    y = ttv_to_tensor(x_tt)
+    @test isapprox(real(F.values[1]),E_tt)
+end
