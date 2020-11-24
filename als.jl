@@ -145,6 +145,17 @@ function K_eigmin(Gi,Hi,x_dims,x_rks,A_rks,i)
 	return real(F.values[1]),real.(reshape(F.vectors[:,1],ni,rim,ri))
 end
 
+function K_eiggenmin(Gi,Hi,x_dims,x_rks,A_rks,i,Ki,Li,S_rks)
+	rim,ri = x_rks[i],x_rks[i+1]
+	rAi = A_rks[i+1]
+	rSi = S_rks[i+1]
+	ni = x_dims[i]
+	K = md_mult(Gi[1:ni, 1:rim, 1:ni, 1:rim, 1:rAi],Hi[1:ri, 1:ri, 1:rAi],[3 4 1 2 5],[3 2 1],4,1,[1 2 5 3 4 6]) #size (ni,rim,ri,ni,rim,ri)
+	S = md_mult(Ki[1:ni, 1:rim, 1:ni, 1:rim, 1:rSi],Li[1:ri, 1:ri, 1:rSi],[3 4 1 2 5],[3 2 1],4,1,[1 2 5 3 4 6]) #size (ni,rim,ri,ni,rim,ri)
+	F = eigen(reshape(K,ni*rim*ri,:),reshape(S,ni*rim*ri,:),)
+	return real(F.values[1]),real.(reshape(F.vectors[:,1],ni,rim,ri))
+end
+
 
 function als(A :: ttoperator, b :: ttvector, tt_start :: ttvector, opt_rks :: Array{Int64};sweep_count=2,it_solver=false,r_itsolver=5000)
 	# als finds the minimum of the operator J:1/2*<Ax,Ax> - <x,b>
@@ -220,6 +231,9 @@ function als(A :: ttoperator, b :: ttvector, tt_start :: ttvector, opt_rks :: Ar
 	return tt_opt
 end
 
+"""
+Warning probably only works for left-orthogonal starting tensor
+"""
 function als_eig(A :: ttoperator, tt_start :: ttvector, opt_rks :: Array{Int64};sweep_count=2,it_solver=false,r_itsolver=5000)
 	# als finds the minimum of the operator J:1/2*<Ax,Ax> - <x,b>
 	# input:
@@ -240,10 +254,10 @@ function als_eig(A :: ttoperator, tt_start :: ttvector, opt_rks :: Array{Int64};
 	# Define the array of ranks of A [R_0=1,R_1,...,R_d]
 	A_rks = vcat([1],A.tto_rks)
 
-	# Initialize the arrays of G and G_b
+	# Initialize the array G
 	G = Array{Array{Float64}}(undef, d)
 
-	# Initialize G[1], G_b[1], H[d] and H_b[d]
+	# Initialize G[1]
 	G[1] = zeros(dims[1], 1, dims[1], 1, A_rks[2])
 	G[1] = reshape(A.tto_vec[1][:,:,1,:], dims[1],1,dims[1], 1, :)
 
@@ -284,6 +298,87 @@ function als_eig(A :: ttoperator, tt_start :: ttvector, opt_rks :: Array{Int64};
 				tt_opt,rks[i] = left_core_move(tt_opt,V,i,rks,dims)
 
 				H[i-1],H_b = update_H_Hb(tt_opt,dims,rks,A,A_rks,i,H[i])
+			end
+		end
+	end
+	return E,tt_opt
+end
+
+"""
+returns the smallest eigenpair Ax = Sx
+"""
+
+function als_gen_eig(A :: ttoperator, S::ttoperator, tt_start :: ttvector, opt_rks :: Array{Int64};sweep_count=2,it_solver=false,r_itsolver=5000)
+	# als finds the minimum of the operator J:1/2*<Ax,Ax> - <x,b>
+	# input:
+	# 	A: the tensor operator in its tensor train format
+	#	tt_start: start value in its tensor train format
+	#	opt_rks: rank vector considered to be optimal enough
+	# output:
+	#	tt_opt: stationary point of J up to tolerated rank opt_rks
+	# 			in its tensor train format
+
+	# Initialize the to be returned tensor in its tensor train format
+	E = 0.0 #output eigenvalue
+	tt_opt = deepcopy(tt_start)
+	dims = tt_start.ttv_dims
+	d = length(dims)
+	# Define the array of ranks of tt_opt [r_0=1,r_1,...,r_d]
+	rks = vcat([1], tt_start.ttv_rks)
+	# Define the array of ranks of A [R_0=1,R_1,...,R_d]
+	A_rks = vcat([1],A.tto_rks)
+	S_rks = vcat([1],S.tto_rks)
+
+	# Initialize the arrays of G and K
+	G = Array{Array{Float64}}(undef, d)
+	K = Array{Array{Float64}}(undef, d) 
+
+	# Initialize G[1]
+	G[1] = zeros(dims[1], 1, dims[1], 1, A_rks[2])
+	G[1] = reshape(A.tto_vec[1][:,:,1,:], dims[1],1,dims[1], 1, :)
+	K[1] = zeros(dims[1], 1, dims[1], 1, S_rks[2])
+	K[1] = reshape(S.tto_vec[1][:,:,1,:], dims[1],1,dims[1], 1, :)
+
+	#Initialize H and H_b
+	H,H_b = init_H_and_Hb(tt_opt,A)
+	L,L_b = init_H_and_Hb(tt_opt,S)
+
+	nsweeps = 0 #sweeps counter
+	while nsweeps < sweep_count
+		nsweeps+=1
+
+		# First half sweep
+		for i = 1:(d-1)
+			println("Forward sweep: core optimization $i out of $d")
+
+			# If i is the index of the core matrices do the optimization
+			if tt_opt.ttv_ot[i] == 0
+				# Define V as solution of K*x=Pb in x
+				E,V = K_eiggenmin(G[i],H[i],dims,rks,A_rks,i,K[i],L[i],S_rks)
+				println("Eigenvalue: $E")
+				tt_opt, rks[i+1] = right_core_move(tt_opt,V,i,rks,dims)
+			end
+
+			#update G and K
+			G[i+1],G_b = update_G_Gb(tt_opt,dims,rks,A,A_rks,i,G[i])
+			K[i+1],K_b = update_G_Gb(tt_opt,dims,rks,S,S_rks,i,K[i])
+		end
+
+		if nsweeps == sweep_count
+			return tt_opt
+		else
+			nsweeps+=1
+			# Second half sweep
+			for i = d:(-1):2
+				println("Backward sweep: core optimization $i out of $d")
+				# Define V as solution of K*x=Pb in x
+				E,V = K_eiggenmin(G[i],H[i],dims,rks,A_rks,i,K[i],L[i],S_rks)
+				println("Eigenvalue: $E")
+
+				tt_opt,rks[i] = left_core_move(tt_opt,V,i,rks,dims)
+
+				H[i-1],H_b = update_H_Hb(tt_opt,dims,rks,A,A_rks,i,H[i])
+				L[i-1],L_b = update_H_Hb(tt_opt,dims,rks,S,S_rks,i,L[i])
 			end
 		end
 	end
