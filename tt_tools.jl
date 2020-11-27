@@ -144,6 +144,33 @@ function ttv_to_tensor(ttv :: ttvector)
 	return tensor
 end
 
+#to be tested
+function tt_up_rks(x_tt::ttvector,rk_max::Int;rks=vcat(1,rk_max*ones(Int,length(x_tt.ttv_dims-1)),1))
+	d = length(x_tt.ttv_dims)
+	vec_out = Array{Array{Float64}}(undef,d)
+	@assert(rk_max >= maximum(x_tt.ttv_rks),"New bond dimension too low")
+	n_in = x_tt.ttv_dims[1]
+	n_out = prod(x_tt.ttv_dims[2:d])
+	rks[2] = min(n_in,n_out,rks[2])
+	vec_out[1] = zeros(x_tt.ttv_dims[1],1,rks[2])
+	vec_out[1][:,:,1:x_tt.ttv_rks[1]] = x_tt.ttv_vec[1]
+	for i in 2:d-1
+		rks[i+1] = min(rks[i+1],n_in,n_out)
+		n_in *= x_tt.ttv_dims[i]
+		n_out = Int(n_out/x_tt.ttv_dims[i])
+		vec_out[i] = zeros(x_tt.ttv_dims[i],rks[i],rks[i+1])
+		vec_out[i][:,1:x_tt.ttv_rks[i-1],1:x_tt.ttv_rks[i]] = x_tt.ttv_vec[i][:,:,:]
+		if x_tt.ttv_ot[i] != 0
+			for k in 1:x_tt.ttv_dims[i]
+				vec_out[i][k,x_tt.ttv_rks[i-1]+1:rks[i],x_tt.ttv_rks[i-1]+1:rks[i+1]] = Matrix{Float64}(I,x_tt.ttv_rks[i-1]+1:rks[i],x_tt.ttv_rks[i-1]+1:rks[i+1])
+			end	
+		end
+	end	
+	vec_out[d] = zeros(x_tt.ttv_dims[d],rks[d],1)
+	vec_out[d][:,1:x_tt.ttv_rks[d],:] = x_tt.ttv_vec[d]
+	return ttvector(vec_out,x_tt.ttv_dims,rks[2:end],x_tt.ttv_ot)
+end
+
 function tto_decomp(tensor, index)
 	# Decomposes a tensor operator into its tensor train
 	# with core matrices at i=index
@@ -430,6 +457,9 @@ function tt_compression(X::ttvector,tol=1e-12)
     return ttvector(Y,X.ttv_dims,rks,zeros(Integer,d))
 end
 
+"""
+md_mult can be replaced by @tensor in TensorOperations
+"""
 function md_mult(A, B, perm_A, perm_B, index_A, index_B, perm_result)
 	# Multiplication of two multidimensional arrays
 	# Permute the dimensions of A and B according to perm_A and perm_B
