@@ -200,7 +200,7 @@ end
 """
 Warning probably only works for left-orthogonal starting tensor
 """
-function als_eig(A :: ttoperator, tt_start :: ttvector, opt_rks :: Array{Int64};sweep_count=2,it_solver=false,r_itsolver=5000)
+function als_eig(A :: ttoperator, tt_start :: ttvector, ;sweep_count=2,it_solver=false,r_itsolver=5000, opt_rks=tt_start.ttv_rks)
 	# als finds the minimum of the operator J:1/2*<Ax,Ax> - <x,b>
 	# input:
 	# 	A: the tensor operator in its tensor train format
