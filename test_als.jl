@@ -51,7 +51,7 @@ function test_als_eig()
     @test isapprox(E,E_tt)
 end
 
-function test_als_eig()
+function test_als_gen_eig()
     n = 5
     L = randn(n^3,n^3)
     L = L*L'+I
