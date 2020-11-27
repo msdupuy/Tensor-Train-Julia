@@ -2,6 +2,7 @@ using Test
 using LinearAlgebra
 using Base.Threads
 using IterativeSolvers
+using TensorOperations
 import Base.isempty
 
 struct ttvector
