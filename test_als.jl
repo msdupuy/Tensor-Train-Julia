@@ -50,6 +50,18 @@ function test_als_eig()
     @test isapprox(E,E_tt,atol=1e-8)
 end
 
+function test_als_eig_schedule()
+    n = 10
+    L = Lap(n,3)
+    E = eigmin(L)
+    x0 = ones(n,n,n)
+    L_tt = tto_decomp(reshape(L,n,n,n,n,n,n),1)
+    x0_tt = ttv_decomp(x0,1)
+    E_tt,x_tt = als_eig(L_tt,x0_tt;sweep_schedule=[2,3,4],rmax_schedule=[5,7,10])
+    y = ttv_to_tensor(x_tt)
+    @test isapprox(E,E_tt)
+end
+
 function test_als_gen_eig()
     n = 5
     L = randn(n^3,n^3)
