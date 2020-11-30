@@ -107,6 +107,16 @@ function update_H_Hb(x_tt::ttvector,A_tto::ttoperator,i,Hi;H_bi=[],b_tt::ttvecto
 	end	
 end
 
+#function sweep_schedule(nsweep,r_seq;tol=1e-6) #
+#	d = length(nsweep)
+#	swp_out = zeros(Int64,n_int_sweep*d,2)
+#	for i in 1:d
+#		swp_out[2i-1,:] = [nsweep[i] r_seq[i]]
+#		swp_out[2i,:] = [nsweep[i] r_seq[i]]
+#	end
+#	return swp_out
+#end
+
 function Ksolve(Gi,G_bi,Hi,H_bi)
 	@tensor begin
 		K[a,b,c,d,e,f] := Gi[d,e,a,b,z]*Hi[f,c,z] #size (ni,rim,ri,ni,rim,ri)
@@ -212,7 +222,7 @@ end
 """
 Warning probably only works for left-orthogonal starting tensor
 """
-function als_eig(A :: ttoperator, tt_start :: ttvector ; sweep_count=2,it_solver=false,itslv_thresh=2500)
+function als_eig(A :: ttoperator, tt_start :: ttvector ; sweep_schedule=[2],rmax_schedule=[maximum(tt_start.ttv_rks)],tol=1e-10,it_solver=false,itslv_thresh=2500)
 	# als finds the minimum of the operator J:1/2*<Ax,Ax> - <x,b>
 	# input:
 	# 	A: the tensor operator in its tensor train format
@@ -221,6 +231,7 @@ function als_eig(A :: ttoperator, tt_start :: ttvector ; sweep_count=2,it_solver
 	# output:
 	#	tt_opt: stationary point of J up to tolerated rank opt_rks
 	# 			in its tensor train format
+	@assert(length(rmax_schedule)==length(sweep_schedule),"Sweep schedule error")	
 
 	# Initialize the to be returned tensor in its tensor train format
 	E = 0.0 #output eigenvalue
@@ -239,9 +250,22 @@ function als_eig(A :: ttoperator, tt_start :: ttvector ; sweep_count=2,it_solver
 	H,H_b = init_H_and_Hb(tt_opt,A)
 
 	nsweeps = 0 #sweeps counter
-	while nsweeps < sweep_count
+	i_schedule = 1
+	while i_schedule <= length(sweep_schedule) 
 		nsweeps+=1
-
+		if nsweeps == sweep_schedule[i_schedule]
+			i_schedule+=1
+			if i_schedule > length(sweep_schedule)
+				return E,tt_opt
+			else
+				tt_opt = tt_up_rks(tt_opt,rmax_schedule[i_schedule])
+				for i in 1:d-1
+					Htemp = zeros(tt_opt.ttv_rks[i],tt_opt.ttv_rks[i],A.tto_rks[i])
+					Htemp[1:size(H[i],1),1:size(H[i],2),1:size(H[i],3)] = H[i] 
+					H[i] = Htemp
+				end
+			end
+		end
 		# First half sweep
 		for i = 1:(d-1)
 			println("Forward sweep: core optimization $i out of $d")
@@ -251,31 +275,25 @@ function als_eig(A :: ttoperator, tt_start :: ttvector ; sweep_count=2,it_solver
 				# Define V as solution of K*x=Pb in x
 				E,V = K_eigmin(G[i],H[i],tt_opt.ttv_vec[i];it_solver=it_solver,itslv_thresh=itslv_thresh)
 				println("Eigenvalue: $E")
-				tt_opt, rks[i+1] = right_core_move(tt_opt,V,i,rks,dims)
+				tt_opt, rks[i+1] = right_core_move(tt_opt,V,i,vcat(1,tt_opt.ttv_rks),dims)
 			end
 
 			#update G,G_b
 			G[i+1],G_b = update_G_Gb(tt_opt,A,i,G[i])
 		end
 
-		if nsweeps == sweep_count
-			return tt_opt
-		else
-			nsweeps+=1
-			# Second half sweep
-			for i = d:(-1):2
-				println("Backward sweep: core optimization $i out of $d")
-				# Define V as solution of K*x=Pb in x
-				E,V = K_eigmin(G[i],H[i],tt_opt.ttv_vec[i];it_solver=it_solver,itslv_thresh=itslv_thresh)
-				println("Eigenvalue: $E")
+		# Second half sweep
+		for i = d:(-1):2
+			println("Backward sweep: core optimization $i out of $d")
+			# Define V as solution of K*x=Pb in x
+			E,V = K_eigmin(G[i],H[i],tt_opt.ttv_vec[i];it_solver=it_solver,itslv_thresh=itslv_thresh)
+			println("Eigenvalue: $E")
 
-				tt_opt,rks[i] = left_core_move(tt_opt,V,i,rks,dims)
+			tt_opt,rks[i] = left_core_move(tt_opt,V,i,vcat(1,tt_opt.ttv_rks),dims)
 
-				H[i-1],H_b = update_H_Hb(tt_opt,A,i,H[i])
-			end
+			H[i-1],H_bi = update_H_Hb(tt_opt,A,i,H[i])
 		end
 	end
-	return E,tt_opt
 end
 
 """
