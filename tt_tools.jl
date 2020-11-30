@@ -145,7 +145,7 @@ function ttv_to_tensor(ttv :: ttvector)
 end
 
 #to be tested
-function tt_up_rks(x_tt::ttvector,rk_max::Int;rks=vcat(1,rk_max*ones(Int,length(x_tt.ttv_dims-1)),1))
+function tt_up_rks(x_tt::ttvector,rk_max::Int;rks=vcat(1,rk_max*ones(Int,length(x_tt.ttv_dims)-1),1))
 	d = length(x_tt.ttv_dims)
 	vec_out = Array{Array{Float64}}(undef,d)
 	@assert(rk_max >= maximum(x_tt.ttv_rks),"New bond dimension too low")
@@ -154,21 +154,35 @@ function tt_up_rks(x_tt::ttvector,rk_max::Int;rks=vcat(1,rk_max*ones(Int,length(
 	rks[2] = min(n_in,n_out,rks[2])
 	vec_out[1] = zeros(x_tt.ttv_dims[1],1,rks[2])
 	vec_out[1][:,:,1:x_tt.ttv_rks[1]] = x_tt.ttv_vec[1]
+	out_ot = zeros(Int,d)
+	if rks[2] == x_tt.ttv_rks[1] && x_tt.ttv_ot[1] == -1
+		out_ot[1] = -1
+	end
 	for i in 2:d-1
-		rks[i+1] = min(rks[i+1],n_in,n_out)
 		n_in *= x_tt.ttv_dims[i]
 		n_out = Int(n_out/x_tt.ttv_dims[i])
+		rks[i+1] = min(rks[i+1],n_in,n_out)
 		vec_out[i] = zeros(x_tt.ttv_dims[i],rks[i],rks[i+1])
 		vec_out[i][:,1:x_tt.ttv_rks[i-1],1:x_tt.ttv_rks[i]] = x_tt.ttv_vec[i][:,:,:]
-		if x_tt.ttv_ot[i] != 0
-			for k in 1:x_tt.ttv_dims[i]
-				vec_out[i][k,x_tt.ttv_rks[i-1]+1:rks[i],x_tt.ttv_rks[i-1]+1:rks[i+1]] = Matrix{Float64}(I,x_tt.ttv_rks[i-1]+1:rks[i],x_tt.ttv_rks[i-1]+1:rks[i+1])
-			end	
+		if x_tt.ttv_ot[i] == 1 && x_tt.ttv_rks[i-1] == rks[i] 
+			out_ot[i] = 1
+		elseif x_tt.ttv_ot[i] == -1 && x_tt.ttv_rks[i] == rks[i+1]
+			out_ot[i] = -1
 		end
 	end	
+	if rks[d] == x_tt.ttv_rks[d-1] && x_tt.ttv_ot[d] == 1
+		out_ot[d] = 1
+	end
 	vec_out[d] = zeros(x_tt.ttv_dims[d],rks[d],1)
-	vec_out[d][:,1:x_tt.ttv_rks[d],:] = x_tt.ttv_vec[d]
-	return ttvector(vec_out,x_tt.ttv_dims,rks[2:end],x_tt.ttv_ot)
+	vec_out[d][:,1:x_tt.ttv_rks[d-1],:] = x_tt.ttv_vec[d]
+	return ttvector(vec_out,x_tt.ttv_dims,rks[2:end],out_ot)
+end
+
+function test_tt_up_rks()
+	x = randn(4,4,4,4)
+	x_tt = ttv_decomp(x,2,tol=0.1)
+	y_tt = ttv_up_rks(x_tt,12)
+	@test isapprox(x,ttv_to_tensor(y_tt),atol=1.0)
 end
 
 function tto_decomp(tensor, index)
