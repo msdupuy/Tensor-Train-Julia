@@ -116,23 +116,35 @@ function Ksolve(Gi,G_bi,Hi,H_bi)
 	return V
 end
 
-function K_eigmin(Gi,Hi)
+function K_eigmin(Gi,Hi,ttv_vec;it_solver=false,itslv_thresh=2500)
 	@tensor K[a,b,c,d,e,f] := Gi[d,e,a,b,z]*Hi[f,c,z] #size (ni,rim,ri,ni,rim,ri)
-	F = eigen(reshape(K,prod(size(K)[1:3]),:))
-	return real(F.values[1]),real.(reshape(F.vectors[:,1],size(K)[1:3]...))
+	println(size(ttv_vec))
+	println(size(K)[1:3])	
+	if it_solver || prod(size(K)[1:3]) > itslv_thresh
+		r = lobpcg(reshape(K,prod(size(K)[1:3]),:),false,ttv_vec[:],1)
+		return r.λ[1], reshape(r.X[:,1],size(K)[1:3]...)
+	else
+		F = eigen(reshape(K,prod(size(K)[1:3]),:))
+		return real(F.values[1]),real.(reshape(F.vectors[:,1],size(K)[1:3]...))
+	end	
 end
 
-function K_eiggenmin(Gi,Hi,Ki,Li)
+function K_eiggenmin(Gi,Hi,Ki,Li,ttv_vec;it_solver=false,itslv_thresh=2500)
 	@tensor begin
 		K[a,b,c,d,e,f] := Gi[d,e,a,b,z]*Hi[f,c,z] #size (ni,rim,ri,ni,rim,ri)	
 		S[a,b,c,d,e,f] := Ki[d,e,a,b,z]*Li[f,c,z] #size (ni,rim,ri,ni,rim,ri)	
 	end
-	F = eigen(reshape(K,prod(size(K)[1:3]),:),reshape(S,prod(size(K)[1:3]),:),)
-	return real(F.values[1]),real.(reshape(F.vectors[:,1],size(K)[1:3]...))
+	if it_solver || prod(size(K)[1:3]) > itslv_thresh
+		r = lobpcg(reshape(K,prod(size(K)[1:3]),:),reshape(S,prod(size(S)[1:3]),:),false,ttv_vec[:],1)
+		return r.λ[1], reshape(r.X[:,1],size(K)[1:3]...)
+	else
+		F = eigen(reshape(K,prod(size(K)[1:3]),:),reshape(S,prod(size(K)[1:3]),:),)
+		return real(F.values[1]),real.(reshape(F.vectors[:,1],size(K)[1:3]...))
+	end
 end
 
-
-function als(A :: ttoperator, b :: ttvector, tt_start :: ttvector, opt_rks :: Array{Int64};sweep_count=2,it_solver=false,r_itsolver=5000)
+#sweep scheduler: Array of Int, Int, Float: sweep, rks, E_change in last sweep 
+function als(A :: ttoperator, b :: ttvector, tt_start :: ttvector ;sweep_count=2,it_solver=false,r_itsolver=5000)
 	# als finds the minimum of the operator J:1/2*<Ax,Ax> - <x,b>
 	# input:
 	# 	A: the tensor operator in its tensor train format
@@ -200,7 +212,7 @@ end
 """
 Warning probably only works for left-orthogonal starting tensor
 """
-function als_eig(A :: ttoperator, tt_start :: ttvector, ;sweep_count=2,it_solver=false,r_itsolver=5000, opt_rks=tt_start.ttv_rks)
+function als_eig(A :: ttoperator, tt_start :: ttvector ; sweep_count=2,it_solver=false,itslv_thresh=2500)
 	# als finds the minimum of the operator J:1/2*<Ax,Ax> - <x,b>
 	# input:
 	# 	A: the tensor operator in its tensor train format
@@ -237,7 +249,7 @@ function als_eig(A :: ttoperator, tt_start :: ttvector, ;sweep_count=2,it_solver
 			# If i is the index of the core matrices do the optimization
 			if tt_opt.ttv_ot[i] == 0
 				# Define V as solution of K*x=Pb in x
-				E,V = K_eigmin(G[i],H[i])
+				E,V = K_eigmin(G[i],H[i],tt_opt.ttv_vec[i];it_solver=it_solver,itslv_thresh=itslv_thresh)
 				println("Eigenvalue: $E")
 				tt_opt, rks[i+1] = right_core_move(tt_opt,V,i,rks,dims)
 			end
@@ -254,7 +266,7 @@ function als_eig(A :: ttoperator, tt_start :: ttvector, ;sweep_count=2,it_solver
 			for i = d:(-1):2
 				println("Backward sweep: core optimization $i out of $d")
 				# Define V as solution of K*x=Pb in x
-				E,V = K_eigmin(G[i],H[i])
+				E,V = K_eigmin(G[i],H[i],tt_opt.ttv_vec[i];it_solver=it_solver,itslv_thresh=itslv_thresh)
 				println("Eigenvalue: $E")
 
 				tt_opt,rks[i] = left_core_move(tt_opt,V,i,rks,dims)
@@ -270,7 +282,7 @@ end
 returns the smallest eigenpair Ax = Sx
 """
 
-function als_gen_eig(A :: ttoperator, S::ttoperator, tt_start :: ttvector, opt_rks :: Array{Int64};sweep_count=2,it_solver=false,r_itsolver=5000)
+function als_gen_eig(A :: ttoperator, S::ttoperator, tt_start :: ttvector ; sweep_count=2,it_solver=false,itslv_thresh=2500)
 	# als finds the minimum of the operator J:1/2*<Ax,Ax> - <x,b>
 	# input:
 	# 	A: the tensor operator in its tensor train format
@@ -313,7 +325,7 @@ function als_gen_eig(A :: ttoperator, S::ttoperator, tt_start :: ttvector, opt_r
 			# If i is the index of the core matrices do the optimization
 			if tt_opt.ttv_ot[i] == 0
 				# Define V as solution of K*x=Pb in x
-				E,V = K_eiggenmin(G[i],H[i],K[i],L[i])
+				E,V = K_eiggenmin(G[i],H[i],K[i],L[i],tt_opt.ttv_vec[i];it_solver=it_solver,itslv_thresh=itslv_thresh)
 				println("Eigenvalue: $E")
 				tt_opt, rks[i+1] = right_core_move(tt_opt,V,i,rks,dims)
 			end
@@ -331,7 +343,7 @@ function als_gen_eig(A :: ttoperator, S::ttoperator, tt_start :: ttvector, opt_r
 			for i = d:(-1):2
 				println("Backward sweep: core optimization $i out of $d")
 				# Define V as solution of K*x=Pb in x
-				E,V = K_eiggenmin(G[i],H[i],K[i],L[i])
+				E,V = K_eiggenmin(G[i],H[i],K[i],L[i],tt_opt.ttv_vec[i];it_solver=it_solver,itslv_thresh=itslv_thresh)
 				println("Eigenvalue: $E")
 
 				tt_opt,rks[i] = left_core_move(tt_opt,V,i,rks,dims)
