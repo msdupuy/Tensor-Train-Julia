@@ -128,8 +128,6 @@ end
 
 function K_eigmin(Gi,Hi,ttv_vec;it_solver=false,itslv_thresh=2500)
 	@tensor K[a,b,c,d,e,f] := Gi[d,e,a,b,z]*Hi[f,c,z] #size (ni,rim,ri,ni,rim,ri)
-	println(size(ttv_vec))
-	println(size(K)[1:3])	
 	if it_solver || prod(size(K)[1:3]) > itslv_thresh
 		r = lobpcg(reshape(K,prod(size(K)[1:3]),:),false,ttv_vec[:],1)
 		return r.λ[1], reshape(r.X[:,1],size(K)[1:3]...)
@@ -234,10 +232,10 @@ function als_eig(A :: ttoperator, tt_start :: ttvector ; sweep_schedule=[2],rmax
 	@assert(length(rmax_schedule)==length(sweep_schedule),"Sweep schedule error")	
 
 	# Initialize the to be returned tensor in its tensor train format
-	E = 0.0 #output eigenvalue
 	tt_opt = deepcopy(tt_start)
 	dims = tt_start.ttv_dims
 	d = length(dims)
+	E = zeros(Float64,d*sweep_schedule[end]) #output eigenvalue
 	# Define the array of ranks of tt_opt [r_0=1,r_1,...,r_d]
 	rks = vcat([1], tt_start.ttv_rks)
 
@@ -250,13 +248,13 @@ function als_eig(A :: ttoperator, tt_start :: ttvector ; sweep_schedule=[2],rmax
 	H,H_b = init_H_and_Hb(tt_opt,A)
 
 	nsweeps = 0 #sweeps counter
-	i_schedule = 1
+	i_schedule,i_μit = 1,0
 	while i_schedule <= length(sweep_schedule) 
 		nsweeps+=1
 		if nsweeps == sweep_schedule[i_schedule]
 			i_schedule+=1
 			if i_schedule > length(sweep_schedule)
-				return E,tt_opt
+				return E[1:i_μit],tt_opt
 			else
 				tt_opt = tt_up_rks(tt_opt,rmax_schedule[i_schedule])
 				for i in 1:d-1
@@ -273,8 +271,9 @@ function als_eig(A :: ttoperator, tt_start :: ttvector ; sweep_schedule=[2],rmax
 			# If i is the index of the core matrices do the optimization
 			if tt_opt.ttv_ot[i] == 0
 				# Define V as solution of K*x=Pb in x
-				E,V = K_eigmin(G[i],H[i],tt_opt.ttv_vec[i];it_solver=it_solver,itslv_thresh=itslv_thresh)
-				println("Eigenvalue: $E")
+				i_μit += 1
+				E[i_μit],V = K_eigmin(G[i],H[i],tt_opt.ttv_vec[i];it_solver=it_solver,itslv_thresh=itslv_thresh)
+				println("Eigenvalue: $(E[i_μit])")
 				tt_opt, rks[i+1] = right_core_move(tt_opt,V,i,vcat(1,tt_opt.ttv_rks),dims)
 			end
 
@@ -286,11 +285,10 @@ function als_eig(A :: ttoperator, tt_start :: ttvector ; sweep_schedule=[2],rmax
 		for i = d:(-1):2
 			println("Backward sweep: core optimization $i out of $d")
 			# Define V as solution of K*x=Pb in x
-			E,V = K_eigmin(G[i],H[i],tt_opt.ttv_vec[i];it_solver=it_solver,itslv_thresh=itslv_thresh)
-			println("Eigenvalue: $E")
-
+			i_μit += 1
+			E[i_μit],V = K_eigmin(G[i],H[i],tt_opt.ttv_vec[i];it_solver=it_solver,itslv_thresh=itslv_thresh)
+			println("Eigenvalue: $(E[i_μit])")
 			tt_opt,rks[i] = left_core_move(tt_opt,V,i,vcat(1,tt_opt.ttv_rks),dims)
-
 			H[i-1],H_bi = update_H_Hb(tt_opt,A,i,H[i])
 		end
 	end
@@ -300,7 +298,7 @@ end
 returns the smallest eigenpair Ax = Sx
 """
 
-function als_gen_eig(A :: ttoperator, S::ttoperator, tt_start :: ttvector ; sweep_count=2,it_solver=false,itslv_thresh=2500)
+function als_gen_eig(A :: ttoperator, S::ttoperator, tt_start :: ttvector ; sweep_schedule=[2],rmax_schedule=[maximum(tt_start.ttv_rks)],tol=1e-10,it_solver=false,itslv_thresh=2500)
 	# als finds the minimum of the operator J:1/2*<Ax,Ax> - <x,b>
 	# input:
 	# 	A: the tensor operator in its tensor train format
@@ -311,10 +309,10 @@ function als_gen_eig(A :: ttoperator, S::ttoperator, tt_start :: ttvector ; swee
 	# 			in its tensor train format
 
 	# Initialize the to be returned tensor in its tensor train format
-	E = 0.0 #output eigenvalue
 	tt_opt = deepcopy(tt_start)
 	dims = tt_start.ttv_dims
 	d = length(dims)
+	E = zeros(Float64,d*sweep_schedule[end]) #output eigenvalue
 	# Define the array of ranks of tt_opt [r_0=1,r_1,...,r_d]
 	rks = vcat([1], tt_start.ttv_rks)
 
@@ -333,8 +331,25 @@ function als_gen_eig(A :: ttoperator, S::ttoperator, tt_start :: ttvector ; swee
 	L,L_b = init_H_and_Hb(tt_opt,S)
 
 	nsweeps = 0 #sweeps counter
-	while nsweeps < sweep_count
+	i_schedule,i_μit = 1,0
+	while i_schedule <= length(sweep_schedule) 
 		nsweeps+=1
+		if nsweeps == sweep_schedule[i_schedule]
+			i_schedule+=1
+			if i_schedule > length(sweep_schedule)
+				return E[1:i_μit],tt_opt
+			else
+				tt_opt = tt_up_rks(tt_opt,rmax_schedule[i_schedule])
+				for i in 1:d-1
+					Htemp = zeros(tt_opt.ttv_rks[i],tt_opt.ttv_rks[i],A.tto_rks[i])
+					Ltemp = zeros(tt_opt.ttv_rks[i],tt_opt.ttv_rks[i],S.tto_rks[i])
+					Htemp[1:size(H[i],1),1:size(H[i],2),1:size(H[i],3)] = H[i] 
+					Ltemp[1:size(L[i],1),1:size(L[i],2),1:size(L[i],3)] = L[i] 
+					H[i] = Htemp
+					L[i] = Ltemp
+				end
+			end
+		end
 
 		# First half sweep
 		for i = 1:(d-1)
@@ -343,8 +358,9 @@ function als_gen_eig(A :: ttoperator, S::ttoperator, tt_start :: ttvector ; swee
 			# If i is the index of the core matrices do the optimization
 			if tt_opt.ttv_ot[i] == 0
 				# Define V as solution of K*x=Pb in x
-				E,V = K_eiggenmin(G[i],H[i],K[i],L[i],tt_opt.ttv_vec[i];it_solver=it_solver,itslv_thresh=itslv_thresh)
-				println("Eigenvalue: $E")
+				i_μit += 1
+				E[i_μit],V = K_eiggenmin(G[i],H[i],K[i],L[i],tt_opt.ttv_vec[i];it_solver=it_solver,itslv_thresh=itslv_thresh)
+				println("Eigenvalue: $(E[i_μit])")
 				tt_opt, rks[i+1] = right_core_move(tt_opt,V,i,rks,dims)
 			end
 
@@ -353,23 +369,16 @@ function als_gen_eig(A :: ttoperator, S::ttoperator, tt_start :: ttvector ; swee
 			K[i+1],K_b = update_G_Gb(tt_opt,S,i,K[i])
 		end
 
-		if nsweeps == sweep_count
-			return tt_opt
-		else
-			nsweeps+=1
-			# Second half sweep
-			for i = d:(-1):2
-				println("Backward sweep: core optimization $i out of $d")
-				# Define V as solution of K*x=Pb in x
-				E,V = K_eiggenmin(G[i],H[i],K[i],L[i],tt_opt.ttv_vec[i];it_solver=it_solver,itslv_thresh=itslv_thresh)
-				println("Eigenvalue: $E")
-
-				tt_opt,rks[i] = left_core_move(tt_opt,V,i,rks,dims)
-
-				H[i-1],H_b = update_H_Hb(tt_opt,A,i,H[i])
-				L[i-1],L_b = update_H_Hb(tt_opt,S,i,L[i])
-			end
+		# Second half sweep
+		for i = d:(-1):2
+			println("Backward sweep: core optimization $i out of $d")
+			# Define V as solution of K*x=Pb in x
+			i_μit += 1
+			E[i_μit],V = K_eiggenmin(G[i],H[i],K[i],L[i],tt_opt.ttv_vec[i];it_solver=it_solver,itslv_thresh=itslv_thresh)
+			println("Eigenvalue: $(E[i_μit])")
+			tt_opt,rks[i] = left_core_move(tt_opt,V,i,rks,dims)
+			H[i-1],H_b = update_H_Hb(tt_opt,A,i,H[i])
+			L[i-1],L_b = update_H_Hb(tt_opt,S,i,L[i])
 		end
 	end
-	return E,tt_opt
 end
