@@ -156,6 +156,57 @@ function half_filling(N)
     return ψ_tt
 end
 
+#auxiliary functions for a_p^†a_q
+function mpo_core_id()
+    out = zeros(2,2,1,1)
+    out[1,1,1,1] = 1.0
+    out[2,2,1,1] = 1.0
+    return out
+end
+
+function mpo_core_ferm_sign()
+    out = zeros(2,2,1,1)
+    out[1,1,1,1] = 1.0
+    out[2,2,1,1] = -1.0
+    return out
+end
+
+function mpo_core_creation()
+    out = zeros(2,2,1,1)
+    out[2,1,1,1] = 1.0
+    return out
+end
+
+function mpo_core_annihilation()
+    out = zeros(2,2,1,1)
+    out[1,2,1,1] = 1.0
+    return out
+end
+
+#returns MPO of a_p^†a_q
+function a_pdag_a_q(p,q,L)
+    H = Array{Array{Float64,4},1}(undef,L)
+    if p == q
+        for i in 1:L
+            H[i] = mpo_core_id()
+        end
+        H[p][1,1,1,1] = 0.0
+    elseif p < q
+        H[p] = mpo_core_creation()
+        H[q] = mpo_core_annihilation()
+        for i in 1:min(p,q)-1
+            H[i] = mpo_core_id()
+        end
+        for i in max(p,q)+1:L
+            H[i] = mpo_core_id()
+        end
+        for i in min(p,q)+1:max(p,q)-1
+            H[i] = mpo_core_ferm_sign()
+        end
+    end 
+    return ttoperator(H,2*ones(Int64,L),ones(Int64,L),zeros(Int64,L))
+end
+
 function ham_to_mpo(h,V,N)
     L = size(h,1)
     H = sp_sc_to_mat(h,V,N)
