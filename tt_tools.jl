@@ -270,6 +270,30 @@ function tt_add(x::ttvector,y::ttvector)
     return ttvector(ttv_vec,x.ttv_dims,rks[2:d+1],zeros(d))
 end
 
+function tto_add(x::ttoperator,y::ttoperator)
+    @assert(x.tto_dims == y.tto_dims, DimensionMismatch)
+    d = length(x.tto_dims)
+    tto_vec = Array{Array{Float64,4},1}(undef,d)
+    rks = vcat([1],x.tto_rks + y.tto_rks)
+    rks[d+1] = 1
+    #initialize tto_vec
+    for k in 1:d
+        tto_vec[k] = zeros(x.tto_dims[k],x.tto_dims[k],rks[k],rks[k+1])
+    end
+    #first core 
+    tto_vec[1][:,:,1,1:x.tto_rks[1]] = x.tto_vec[1]
+    tto_vec[1][:,:,1,(x.tto_rks[1]+1):rks[2]] = y.tto_vec[1]
+    #2nd to end-1 cores
+    for k in 2:(d-1)
+        tto_vec[k][:,:,1:x.tto_rks[k-1],1:x.tto_rks[k]] = x.tto_vec[k]
+        tto_vec[k][:,:,(x.tto_rks[k-1]+1):rks[k],(x.tto_rks[k]+1):rks[k+1]] = y.tto_vec[k]
+    end
+    #last core
+    tto_vec[d][:,:,1:x.tto_rks[d-1],1] = x.tto_vec[d]
+    tto_vec[d][:,:,(x.tto_rks[d-1]+1):rks[d],1] = y.tto_vec[d]
+    return ttoperator(tto_vec,x.tto_dims,rks[2:d+1],zeros(d))
+end
+
 function test_tt_add()
     n=5
     x=randn(n,n,n,n,n)
@@ -278,6 +302,16 @@ function test_tt_add()
     y_tt = ttv_decomp(y,1)
     z_tt = tt_add(x_tt,y_tt)
     @test(isapprox(ttv_to_tensor(z_tt),x+y))
+end
+
+function test_tto_add()
+    n=3
+    x=randn(n,n,n,n,n,n)
+    y=randn(n,n,n,n,n,n)
+    x_tt = tto_decomp(x,1)
+    y_tt = tto_decomp(y,1)
+    z_tt = tto_add(x_tt,y_tt)
+    @test(isapprox(tto_to_tensor(z_tt),x+y))
 end
 
 
