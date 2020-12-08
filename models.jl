@@ -6,6 +6,9 @@ using Combinatorics
 """
 returns an MPO version of 
 H = Σ_{ij} h_ij a_i† a_j + Σ_{ijkl} V_{ijkl} a_i†a_j†a_ka_l
+
+TODO: a_i†a_j†a_ka_l in MPO, tto_add function and hubbard_1d/2d? 
+test with aklt model
 """
 
 function one_body_to_matrix(k,l,L)
@@ -184,14 +187,14 @@ function mpo_core_annihilation()
 end
 
 #returns MPO of a_p^†a_q
-function a_pdag_a_q(p,q,L)
+function one_body_mpo(p,q,L)
     H = Array{Array{Float64,4},1}(undef,L)
     if p == q
         for i in 1:L
             H[i] = mpo_core_id()
         end
         H[p][1,1,1,1] = 0.0
-    elseif p < q
+    else
         H[p] = mpo_core_creation()
         H[q] = mpo_core_annihilation()
         for i in 1:min(p,q)-1
@@ -205,6 +208,45 @@ function a_pdag_a_q(p,q,L)
         end
     end 
     return ttoperator(H,2*ones(Int64,L),ones(Int64,L),zeros(Int64,L))
+end
+
+function test_1body_mpo()
+    L=6
+    p=rand(1:L)
+    q=rand(1:L)
+    H = one_body_to_matrix(p,q,L)
+    Hmpo = one_body_mpo(p,q,L)
+    H2 = tto_to_tensor(Hmpo)
+    @test isapprox(norm(H-reshape(H2,2^L,2^L)),0.0,atol=1e-10)
+end
+
+#returns MPO of a_k^† a^†_l a_m a_n 
+#assume k<l,m<n
+function two_body_mpo(k,l,m,n,L)
+    H = Array{Array{Float64,4},1}(undef,L) 
+    if [k,l] == [m,n]
+        return one_body_mpo(k,l,L)
+    elseif k in [m,n] || l in [m,n]
+        x = symdiff([k,l],[m,n])
+        if x[1] in [k,l]
+            return one_body_mpo(x[1],x[2],L)
+        else
+            return one_body_mpo(x[2],x[1],L)
+        end
+    else
+        A = one_body_mpo(k,m,L)
+        B = one_body_mpo(l,n,L)
+        return mult(A,B)
+    end
+end
+
+function test_2body_mpo()
+    L=6
+    k,l,m,n=1,2,3,4 
+    H = two_body_to_matrix(k,l,m,n,L)
+    Hmpo = two_body_mpo(k,l,m,n,L)
+    H2 = tto_to_tensor(Hmpo)
+    @test isapprox(norm(H-reshape(H2,2^L,2^L)),0.0,atol=1e-10)
 end
 
 function ham_to_mpo(h,V,N)
