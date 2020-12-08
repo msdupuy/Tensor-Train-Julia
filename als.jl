@@ -235,7 +235,7 @@ function als_eig(A :: ttoperator, tt_start :: ttvector ; sweep_schedule=[2],rmax
 	tt_opt = deepcopy(tt_start)
 	dims = tt_start.ttv_dims
 	d = length(dims)
-	E = zeros(Float64,d*sweep_schedule[end]) #output eigenvalue
+	E = zeros(Float64,2d*(sweep_schedule[end]+1)) #output eigenvalue
 	# Define the array of ranks of tt_opt [r_0=1,r_1,...,r_d]
 	rks = vcat([1], tt_start.ttv_rks)
 
@@ -251,6 +251,7 @@ function als_eig(A :: ttoperator, tt_start :: ttvector ; sweep_schedule=[2],rmax
 	i_schedule,i_μit = 1,0
 	while i_schedule <= length(sweep_schedule) 
 		nsweeps+=1
+		println("Macro-iteration $(sweep_schedule[i_schedule]); bond dimension $(rmax_schedule[i_schedule])")
 		if nsweeps == sweep_schedule[i_schedule]
 			i_schedule+=1
 			if i_schedule > length(sweep_schedule)
