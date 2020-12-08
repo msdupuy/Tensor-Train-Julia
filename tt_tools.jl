@@ -399,6 +399,22 @@ function mult(A::ttoperator,v::ttvector)
     return ttvector(Y,A.tto_dims,A.tto_rks.*v.ttv_rks,zeros(Integer,d))
 end
 
+function mult(A::ttoperator,B::ttoperator)
+    @assert(A.tto_dims==B.tto_dims,"Dimension mismatch!")
+    d = length(A.tto_dims)
+    Y = Array{Array{Float64}}(undef, d)
+    A_rks = vcat([1],A.tto_rks) #R_0, ..., R_d
+    B_rks = vcat([1],B.tto_rks) #r_0, ..., r_d
+    @threads for k in 1:d
+        M = reshape(permutedims(A.tto_vec[k],[1,3,4,2]),:,A.tto_dims[k]) #A_k of size n_k R_{k-1} R_k x n_k
+        N = reshape(B.tto_vec[k],B.tto_dims[k],B.tto_dims[k]*B_rks[k]*B_rks[k+1]) #B_k of size n_k x n_k r_{k-1} r_k
+        Y[k] = reshape(M*N, A.tto_dims[k], A_rks[k], A_rks[k+1], B.tto_dims[k], B_rks[k], B_rks[k+1])
+        Y[k] = permutedims(Y[k], [1,4,2,5,3,6])
+        Y[k] = reshape(Y[k], A.tto_dims[k], A.tto_dims[k], A_rks[k]*B_rks[k], A_rks[k+1]*B_rks[k+1])
+    end
+    return ttoperator(Y,A.tto_dims,A.tto_rks.*B.tto_rks,zeros(Integer,d))
+end
+
 function test_mult()
     n=5
     d=3
@@ -409,6 +425,18 @@ function test_mult()
     x_tt = ttv_decomp(x,1)
     y_tt = mult(L_tt,x_tt)
     @test(isapprox(ttv_to_tensor(y_tt)[:],y))
+end
+
+function test_mult_tto()
+    n=3
+    d=3
+    L = randn(n,n,n,n,n,n)
+    S = randn(n,n,n,n,n,n)
+    y = reshape(L,n^d,:)*reshape(S,n^d,:)
+    L_tt = tto_decomp(L,1)
+    S_tt = tto_decomp(S,1)
+    y_tt = mult(L_tt,S_tt)
+    @test(isapprox(reshape(tto_to_tensor(y_tt),n^d,:),y))
 end
 
 #tt_dot returns the dot product of two tt
@@ -446,10 +474,17 @@ function test_tt_dot()
 end
 
 function mult_a_tt(a::Real,A::ttvector)
-    i = rand(findall(isequal(0),A.ttv_ot))
+    i = findfirst(isequal(0),A.ttv_ot)
     X = copy(A.ttv_vec)
     X[i] = a*X[i]
     return ttvector(X,A.ttv_dims,A.ttv_rks,A.ttv_ot)
+end
+
+function mult_a_tt(a::Real,A::ttoperator)
+    i = findfirst(isequal(0),A.tto_ot)
+    X = copy(A.tto_vec)
+    X[i] = a*X[i]
+    return ttoperator(X,A.tto_dims,A.tto_rks,A.tto_ot)
 end
 
 function test_mult_real()
