@@ -246,6 +246,50 @@ function hubbard_1D(L;t=1,U=1)
     return h,V
 end
 
+#hubbard with cylindrical boundary conditions along L
+function hubbard_2D(w,L;t=1,U=1,w_pbc = false,L_pbc=true)
+    h = zeros(2w*L,2w*L)
+    V = zeros(2w*L,2w*L,2w*L,2w*L)
+    for i in 0:w-2
+        for j in 0:L-2
+            V[2(j*w+i)+1,2(j*w+i)+2,2(j*w+i)+1,2(j*w+i)+2] = -U
+            h[2(j*w+i)+1,2((j+1)*w+i)+1] = -t #right connection
+            h[2(j*w+i)+1,2(j*w+i+1)+1] = -t #bottom connection
+            h[2(j*w+i)+2,2((j+1)*w+i)+2] = -t #right connection
+            h[2(j*w+i)+2,2(j*w+i+1)+2] = -t #bottom connection
+        end
+        #j=L-1
+        V[2((L-1)*w+i)+1,2((L-1)*w+i)+2,2((L-1)*w+i)+1,2((L-1)*w+i)+2] = -U
+        h[2((L-1)*w+i)+1,2((L-1)*w+i+1)+1] = -t #bottom connection
+        h[2((L-1)*w+i)+2,2((L-1)*w+i+1)+2] = -t #bottom connection
+        if L_pbc && L>2
+            h[2(L*w+i-w)+1,2i+1] =-t #right connection for j=L-1
+            h[2(L*w+i-w)+2,2i+2] =-t #right connection for j=L-1
+        end
+    end
+    #i = w-1
+    for j in 0:L-2
+        V[2(j*w+w-1)+1,2(j*w+w-1)+2,2(j*w+w-1)+1,2(j*w+w-1)+2] = -U
+        h[2(j*w+w-1)+1,2((j+1)*w+w-1)+1] = -t #right connection
+        h[2(j*w+w-1)+2,2((j+1)*w+w-1)+2] = -t #right connection
+        if w_pbc && w>2
+            h[2(j*w+w-1)+1,2j*w+1] = -t #top connection
+            h[2(j*w+w-1)+2,2j*w+2] = -t #top connection
+        end
+    end
+    #i = w-1, j=L-1
+    V[2L*w-1,2L*w,2L*w-1,2L*w] = -U
+    if L_pbc && L>2
+        h[2(L*w-1)+1,2(w-1)+1] = -t #right connection
+        h[2(L*w-1)+2,2(w-1)+2] = -t #right connection
+    end
+    if w_pbc && w>2
+        h[2(L*w-1)+1,2(L-1)*w+1] = -t #right connection
+        h[2(L*w-1)+2,2(L-1)*w+2] = -t #right connection
+    end
+    return h,V
+end
+
 #assuming diagonal terms are divided by 2 in the h and V matrix
 function hV_to_mpo(h,V)
     L = size(h,1)
