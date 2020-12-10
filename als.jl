@@ -1,4 +1,5 @@
 include("tt_tools.jl")
+using LinearMaps
 
 #TODO: eigs version and include IterativeSolvers option
 
@@ -127,13 +128,19 @@ function Ksolve(Gi,G_bi,Hi,H_bi)
 end
 
 function K_eigmin(Gi,Hi,ttv_vec;it_solver=false,itslv_thresh=2500)
-	@tensor K[a,b,c,d,e,f] := Gi[d,e,a,b,z]*Hi[f,c,z] #size (ni,rim,ri,ni,rim,ri)
-	if it_solver || prod(size(K)[1:3]) > itslv_thresh
-		r = lobpcg(reshape(K,prod(size(K)[1:3]),:),false,ttv_vec[:],1)
-		return r.λ[1], reshape(r.X[:,1],size(K)[1:3]...)
+	K_dims = [size(Gi,1),size(Gi,2),size(Hi,1)]
+	if it_solver || prod(K_dims) > itslv_thresh
+		function K_matfree(V;Gi=Gi,Hi=Hi,K_dims=K_dims)
+			H = zeros(K_dims...)
+			@tensor H[a,b,c] = Gi[d,e,a,b,z]*Hi[f,c,z]*reshape(V,K_dims...)[d,e,f]
+			return H[:]
+		end
+		r = lobpcg(LinearMap(K_matfree,prod(K_dims);issymmetric = true),false,ttv_vec[:],1;maxiter=1000)
+		return r.λ[1], reshape(r.X[:,1],K_dims...)
 	else
-		F = eigen(reshape(K,prod(size(K)[1:3]),:))
-		return real(F.values[1]),real.(reshape(F.vectors[:,1],size(K)[1:3]...))
+		@tensor K[a,b,c,d,e,f] := Gi[d,e,a,b,z]*Hi[f,c,z] #size (ni,rim,ri,ni,rim,ri)
+		F = eigen(reshape(K,prod(K_dims),:))
+		return real(F.values[1]),real.(reshape(F.vectors[:,1],K_dims...))
 	end	
 end
 
