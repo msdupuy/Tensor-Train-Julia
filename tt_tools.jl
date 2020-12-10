@@ -54,7 +54,7 @@ function Base.isempty(x_tt::ttvector)
 	return isempty(x_tt.ttv_vec)
 end
 
-function ttv_decomp(tensor, index;tol=1e-12)
+function ttv_decomp(tensor::Array{Float64}, index;tol=1e-12)
 	# Decomposes a tensor into its tensor train with core matrices at i=index
 	dims = collect(size(tensor)) #dims = [n_1,...,n_d]
 	n_max = maximum(dims)
@@ -185,7 +185,7 @@ function test_tt_up_rks()
 	@test isapprox(x,ttv_to_tensor(y_tt),atol=1.0)
 end
 
-function tto_decomp(tensor, index)
+function tto_decomp(tensor::Array{Float64}, index)
 	# Decomposes a tensor operator into its tensor train
 	# with core matrices at i=index
 	# The tensor is given as tensor[x_1,...,x_d,y_1,...,y_d]
