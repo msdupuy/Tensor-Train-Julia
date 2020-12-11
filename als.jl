@@ -227,7 +227,7 @@ end
 """
 Warning probably only works for left-orthogonal starting tensor
 """
-function als_eig(A :: ttoperator, tt_start :: ttvector ; sweep_schedule=[2],rmax_schedule=[maximum(tt_start.ttv_rks)],tol=1e-10,it_solver=false,itslv_thresh=2500)
+function als_eig(A :: ttoperator, tt_start :: ttvector ; sweep_schedule=[2],rmax_schedule=[maximum(tt_start.ttv_rks)],noise_schedule=zeros(length(rmax_schedule)),tol=1e-10,it_solver=false,itslv_thresh=2500)
 	# als finds the minimum of the operator J:1/2*<Ax,Ax> - <x,b>
 	# input:
 	# 	A: the tensor operator in its tensor train format
@@ -236,7 +236,7 @@ function als_eig(A :: ttoperator, tt_start :: ttvector ; sweep_schedule=[2],rmax
 	# output:
 	#	tt_opt: stationary point of J up to tolerated rank opt_rks
 	# 			in its tensor train format
-	@assert(length(rmax_schedule)==length(sweep_schedule),"Sweep schedule error")	
+	@assert(length(rmax_schedule)==length(sweep_schedule)==length(noise_schedule),"Sweep schedule error")	
 
 	# Initialize the to be returned tensor in its tensor train format
 	tt_opt = deepcopy(tt_start)
