@@ -30,7 +30,7 @@ function test_one_rdm()
     @test(isapprox(γ[i,:,:],A,atol=1e-12))
 end
 
-function two_rdm(x_tt::ttvector)
+function two_rdm(x_tt::ttvector;fermion=true)
     d = length(x_tt.ttv_dims)
     @assert(2*ones(Int,d)==x_tt.ttv_dims)
     γ = zeros(d,d,2,2,2,2) #(i,j;i,j) occupancy
@@ -40,7 +40,7 @@ function two_rdm(x_tt::ttvector)
             γ[i,j,1,2,1,2] = -γ[i,j,2,2,2,2] + tt_dot(x_tt,mult(one_body_mpo(j,j,d),x_tt))
             γ[i,j,2,1,2,1] = -γ[i,j,2,2,2,2] + tt_dot(x_tt,mult(one_body_mpo(i,i,d),x_tt))
             γ[i,j,1,1,1,1] = 1.0 -γ[i,j,2,2,2,2] -γ[i,j,2,1,2,1] -γ[i,j,1,2,1,2] 
-            γ[i,j,2,1,1,2] = tt_dot(x_tt,mult(one_body_mpo(i,j,d;fermion=false),x_tt))
+            γ[i,j,2,1,1,2] = tt_dot(x_tt,mult(one_body_mpo(i,j,d;fermion=fermion),x_tt))
             γ[i,j,1,2,2,1] = γ[i,j,2,1,1,2]
         end
     end
@@ -51,7 +51,7 @@ function test_two_rdm()
     C = randn(2,2,2,2)
     C = 1/norm(C)*C
     C_tt =ttv_decomp(C,1)
-    γ = two_rdm(C_tt)
+    γ = two_rdm(C_tt;fermion=false)
     i = rand(1:4)
     j = rand(setdiff(1:4,i))
     i,j = min(i,j),max(i,j)
@@ -95,41 +95,45 @@ function fiedler(IM)
    Lap = Diagonal([sum(IM[i,:]) for i=1:L]) - IM
    F = eigen(Lap)
    @test isapprox(F.values[1],0.,atol=1e-14)
-   return F.vectors[:,2] #to get 2nd eigenvector
+   return sortperm(F.vectors[:,2]) #to get 2nd eigenvector
+end
+
+function one_prmd(x_tt::ttvector)
+    d = length(x_tt.ttv_dims)
+    γ = zeros(d,d)
+    for i in 1:d
+        γ[i,i] = tt_dot(x_tt,mult(one_body_mpo(i,i,d),x_tt))
+        for j in i+1:d-1
+            γ[i,j] = tt_dot(x_tt,mult(one_body_mpo(i,j,d),x_tt))
+        end
+    end
+    return Symmetric(γ)
+end
+
+function cost(x;tol=1e-10)
+    return -sum(log10.((x.+tol).^2.0 .*((1+tol).-x.^2.0)))
 end
 
 #best weighted prefactor order
-function bwpo_entropy(N,L,V;imax=1000,sigma_current=1:L,sigma_best=sigma_current,temp_chang=0.99,temp_max=1.)
+function bwpo_entropy(N,L,V;imax=1000,sigma_current=1:L,CAS=[1:N],i_cuts=[N],tol=1e-10)
    iter = 0
-   x_N = sigma_current[1:N]
-   x_diff = setdiff(1:L,x_N)
-   prefactor = det(V[1:N,x_N]*Transpose(V[1:N,x_N]))*det(I-V[1:N,x_N]*Transpose(V[1:N,x_N]))
-   x = sigma_current
-   x_best = sigma_best
-   pref_best = det(V[1:N,x_best[1:N]]*Transpose(V[1:N,x_best[1:N]]))*det(I-V[1:N,x_best[1:N]]*Transpose(V[1:N,x_best[1:N]]))
-   temp = temp_max
-   while iter < imax
+   x_N = sigma_current
+   cost_max = sum([cost(ones(min(i,L-N,N)),tol=tol) for i in i_cuts])*length(CAS)
+   prefactor = sum([cost(svdvals(V[i_cas,x_N[1:i]]),tol=tol) for i in i_cuts for i_cas in CAS]) 
+   println(cost_max)
+   println(prefactor)
+   while iter < imax && prefactor/(imax*cost_max) < rand()
       #nouveau voisin
-      j = rand(x_N)
-      k = rand(x_diff)
-      x_temp = sort(vcat(setdiff(x_N,j),k))
-      new_prefactor = det(V[1:N,x_temp[1:N]]*Transpose(V[1:N,x_temp[1:N]]))*det(I-V[1:N,x_temp[1:N]]*Transpose(V[1:N,x_temp[1:N]]))
-      temp = temp_chang*temp
-      if new_prefactor < prefactor
+      j = rand(1:L)
+      k = rand(setdiff(1:L,j))
+      x_temp = vcat(x_N[1:min(j,k)-1],x_N[max(j,k)],x_N[min(j,k)+1:max(j,k)-1],x_N[min(j,k)],x_N[max(j,k)+1:end])
+      new_prefactor = sum([cost(svdvals(V[i_cas,x_temp[1:i]]),tol=tol) for i in i_cuts for i_cas in CAS])
+      println(new_prefactor)
+      if new_prefactor > prefactor
          x_N = x_temp
-         x_diff = setdiff(1:L,x_N)
-         prefactor = new_prefactor
-         if new_prefactor < pref_best
-            x_best = vcat(x_N,x_diff)
-            pref_best = prefactor
-         end
-         #etape recuit simule
-      elseif exp((prefactor-new_prefactor)/(temp)) > rand()
-         x_N = x_temp
-         x_diff = setdiff(1:L,x_N)
          prefactor = new_prefactor
       end
       iter = iter+1
    end
-   return x_best,vcat(x_N,x_diff)
+   return x_N,prefactor
 end
