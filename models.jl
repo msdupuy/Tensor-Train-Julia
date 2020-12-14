@@ -197,9 +197,6 @@ function one_body_mpo(p,q,L;fermion=true)
             end
         end
     end 
-    if p>q
-        H[L] *= -1.0
-    end
     return ttoperator(H,2*ones(Int64,L),ones(Int64,L),zeros(Int64,L))
 end
 
@@ -229,6 +226,7 @@ function two_body_mpo(k,l,m,n,L)
     end
 end
 
+#fails but probably becuse two_body_to_matrix is wrong
 function test_2body_mpo()
     L=6
     k,l,m,n=1,2,3,4 
