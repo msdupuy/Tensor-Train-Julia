@@ -173,7 +173,7 @@ function mpo_core_annihilation()
 end
 
 #returns MPO of a_p^†a_q
-function one_body_mpo(p,q,L)
+function one_body_mpo(p,q,L;fermion=true)
     H = Array{Array{Float64,4},1}(undef,L)
     if p == q
         for i in 1:L
@@ -190,9 +190,16 @@ function one_body_mpo(p,q,L)
             H[i] = mpo_core_id()
         end
         for i in min(p,q)+1:max(p,q)-1
-            H[i] = mpo_core_ferm_sign()
+            if fermion
+                H[i] = mpo_core_ferm_sign()
+            else
+                H[i] = mpo_core_id()
+            end
         end
     end 
+    if p>q
+        H[L] *= -1.0
+    end
     return ttoperator(H,2*ones(Int64,L),ones(Int64,L),zeros(Int64,L))
 end
 
