@@ -115,14 +115,14 @@ function cost(x;tol=1e-10)
 end
 
 #best weighted prefactor order
-function bwpo_entropy(N,L,V;imax=1000,sigma_current=1:L,CAS=[1:N],i_cuts=[N],tol=1e-10)
+function bwpo_entropy(N,L,V;imax=1000,sigma_current=1:L,CAS=[1:N],i_cuts=[N],tol=1e-10,temp=1.0)
    iter = 0
    x_N = sigma_current
    cost_max = sum([cost(ones(min(i,L-N,N)),tol=tol) for i in i_cuts])*length(CAS)
    prefactor = sum([cost(svdvals(V[i_cas,x_N[1:i]]),tol=tol) for i in i_cuts for i_cas in CAS]) 
    println(cost_max)
    println(prefactor)
-   while iter < imax && prefactor/(imax*cost_max) < rand()
+   while iter < imax && temp*prefactor/(imax*cost_max) < rand()
       #nouveau voisin
       j = rand(1:L)
       k = rand(setdiff(1:L,j))
