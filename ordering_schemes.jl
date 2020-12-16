@@ -1,5 +1,6 @@
 include("tt_tools.jl")
 include("models.jl")
+using StatsBase
 
 """
 ordering schemes for QC-DMRG or 2D statistical models
@@ -115,18 +116,17 @@ function cost(x;tol=1e-10)
 end
 
 #best weighted prefactor order
-function bwpo_entropy(N,L,V;imax=1000,sigma_current=1:L,CAS=[1:N],i_cuts=[N],tol=1e-10,temp=1.0)
+function bwpo_entropy(N,L,V;imax=1000,sigma_current=collect(1:L),CAS=[collect(1:N)],i_cuts=[N],tol=1e-10,temp=1.0)
    iter = 0
    x_N = sigma_current
    cost_max = sum([cost(ones(min(i,L-N,N)),tol=tol) for i in i_cuts])*length(CAS)
    prefactor = sum([cost(svdvals(V[i_cas,x_N[1:i]]),tol=tol) for i in i_cuts for i_cas in CAS]) 
    println(cost_max)
-   println(prefactor)
    while iter < imax && temp*prefactor/(imax*cost_max) < rand()
       #nouveau voisin
-      j = rand(1:L)
-      k = rand(setdiff(1:L,j))
-      x_temp = vcat(x_N[1:min(j,k)-1],x_N[max(j,k)],x_N[min(j,k)+1:max(j,k)-1],x_N[min(j,k)],x_N[max(j,k)+1:end])
+      j,k = sample(1:L,2,replace=false)
+      x_temp = copy(x_N) 
+      x_temp[k],x_temp[j] = x_N[j],x_N[k]
       new_prefactor = sum([cost(svdvals(V[i_cas,x_temp[1:i]]),tol=tol) for i in i_cuts for i_cas in CAS])
       println(new_prefactor)
       if new_prefactor > prefactor
