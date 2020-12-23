@@ -108,15 +108,6 @@ function update_H_Hb(x_tt::ttvector,A_tto::ttoperator,i,Hi;H_bi=[],b_tt::ttvecto
 	end	
 end
 
-#function sweep_schedule(nsweep,r_seq;tol=1e-6) #
-#	d = length(nsweep)
-#	swp_out = zeros(Int64,n_int_sweep*d,2)
-#	for i in 1:d
-#		swp_out[2i-1,:] = [nsweep[i] r_seq[i]]
-#		swp_out[2i,:] = [nsweep[i] r_seq[i]]
-#	end
-#	return swp_out
-#end
 
 function Ksolve(Gi,G_bi,Hi,H_bi)
 	@tensor begin
