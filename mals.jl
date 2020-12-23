@@ -8,33 +8,21 @@ using IterativeSolvers
 MALS auxiliary functions
 """
 
-function updateHim!(i, ni, nip, ri, rip, rAi, rAim, tt_opt, A, N1, N2, H)
-	N1[1:ri, 1:rip, 1:nip, 1:rAi] =
-		reshape(reshape(permutedims(tt_opt.ttv_vec[i+1][1:nip, 1:ri, 1:rip], [2 1 3]), ri, :) *
-				reshape(permutedims(H[i][1:rip, 1:rip, 1:nip, 1:nip, 1:rAi], [3 2 1 4 5]), nip*rip, :), ri, rip, nip, :)
-	N2[1:ri, 1:ri, 1:rAi] =
-		reshape(reshape(permutedims(tt_opt.ttv_vec[i+1][1:nip, 1:ri, 1:rip],[2 1 3]), ri, :) *
-				reshape(permutedims(N1[1:ri, 1:rip, 1:nip, 1:rAi],[3 2 1 4]), nip*rip, :),
-			ri, ri, :)
-	# Initialize H[i-1]
-	H[i-1] = zeros(ri, ri, ni, ni, rAim) # k'_i,k_i,x_i,y_i,j_(i-1)
-	# Fill in H[i-1]
-	H[i-1] = reshape(reshape(N2[1:ri, 1:ri, 1:rAi], ri*ri,:) *
-					reshape(permutedims(A.tto_vec[i][1:ni, 1:ni, 1:rAim, 1:rAi],[4 1 2 3]), rAi,:),
-				ri, ri, ni, ni, :)
+function updateHim!(xtt_vec, Atto, Hi, Him)
+	@tensor begin
+		N1[a,b,c,d] := xtt_vec[y,a,z]*Hi[b,z,y,c,d] #size(ri,rip,nip,rAi)
+		N2[a,b,c] := xtt_vec[y,a,z]*N1[b,z,y,c] #size(ri,ri,rAi)
+		Him[a,b,c,d,e] = N2[a,b,z]*Atto[c,d,e,z] #size(ri,ri,ni,ni,rAim)
+	end
 end
 
-function updateH_bim!(i, ni, nip, ri, rip, rbi, rbim, tt_opt, b, N_b, H_b)
-	N_b[1:ri, 1:rbi] =
-		reshape(reshape(permutedims(tt_opt.ttv_vec[i+1][1:nip, 1:ri, 1:rip], [2 3 1]), ri, :) *
-				reshape(H_b[i][1:rip, 1:nip, 1:rbi], rip*nip, :), ri, :)
-	# Initialize H_b[i-1]
-	H_b[i-1] = zeros(ri, ni, rbim) # k_i, x_i, j^b_(i-1)
-	# Fill in H_b[i-1]
-	H_b[i-1] = reshape(N_b[1:ri, 1:rbi] *
-						reshape(permutedims(b.ttv_vec[i][:,:,:],[3 1 2]), rbi, :),
-					ri, ni, :)
+function updateH_bim!(xtt_vec, btt_vec, Hbi, Hbim)
+	@tensor begin
+		N_b[a,b] := xtt_vec[z,a,y]*Hbi[y,z,b] #size(ri,rbi)
+		Hbim[a,b,c] = N_b[a,z]*btt_vec[b,c,z] #size(ri,ni,rbim)
+	end
 end
+
 
 function updateGip!(i, ni, nip, rim, ri, rAi, rAip, M1, M2, G, tt_opt, A)
 	M1[1:ri, 1:ni, 1:rim, 1:rAi] =
@@ -114,22 +102,25 @@ function mals(A :: ttoperator, b :: ttvector, tt_start :: ttvector, eps::Float64
 	# Initialize the tensors M1, M2, N1 and N2
 	M1 = zeros(r_max, n_max, r_max, rA_max) # k_i, y_i, k_(i-1), j_i
 	M2 = zeros(r_max, r_max, rA_max) # k'_i, k_i, j_i
-	N1 = zeros(r_max, r_max, n_max, rA_max) # k_i, k'_(i+1), y_(i+1), j_i
-	N2 = zeros(r_max, r_max, rA_max) # k'_i, k_i, j_i
 	# Initialize the arrays of G_b and H_b
 	G_b = Array{Array{Float64}}(undef, d)
 	H_b = Array{Array{Float64}}(undef, d-1)
 	# Initialize the tensors M_b and N_b
 	M_b = zeros(rb_max, r_max) # k_i, l_i
-	N_b = zeros(r_max, rb_max) # k_i,j^b_i
 	# Initialize the matrices K, Pb and V
 	K = zeros(r_max, n_max, n_max, r_max, r_max, n_max, n_max, r_max)
 	Pb = zeros(r_max, n_max, n_max, r_max)
 	V = zeros(r_max, n_max, n_max, r_max)
 	# Initialize G[1], G_b[1], H[d] and H_b[d]
-	G[1] = zeros(dims[1], 1, dims[1], 1, A_rks[2])
+	for i in 1:d
+		G[i] = zeros(dims[i],rks[i],dims[i],rks[i],A_rks[i+1])
+		G_b[i] = zeros(b_rks[i+1],dims[i],rks[i])
+	end
+	for i in 1:d-1
+		H[i] = zeros(rks[i+2],rks[i+2],dims[i+1],dims[i+1],A_rks[i+1])
+		H_b[i] = zeros(rks[i+2],dims[i+1],b_rks[i])
+	end
 	G[1] = reshape(A.tto_vec[1][:,:,1,:], dims[1],1,dims[1], 1, :)
-	G_b[1] = zeros(b_rks[2], dims[1], 1)
 	G_b[1] = permutedims(reshape(b.ttv_vec[1][:,1,1:b_rks[2]], dims[1], 1, :), [3 1 2])
 	H[d-1] = reshape(A.tto_vec[d], 1, 1, dims[d], dims[d], :) # k'_d,k_d,x_d,y_d,j_(d-1)
 	H_b[d-1] = reshape(b.ttv_vec[d], 1, dims[d], :) # k_d, x_d, j^b_(d-1)
@@ -147,9 +138,9 @@ function mals(A :: ttoperator, b :: ttvector, tt_start :: ttvector, eps::Float64
 			rbim = b_rks[i] # R^b_(i-1)
 
 			# Update H[i-1]
-			updateHim!(i, ni, nip, ri, rip, rAi, rAim, tt_opt, A, N1, N2, H)
+			updateHim!(tt_opt.ttv_vec[i+1], A.tto_vec[i], H[i], H[i-1])
 			# Update H_b[i-1]
-			updateH_bim!(i, ni, nip, ri, rip, rbi, rbim, tt_opt, b, N_b, H_b)
+			updateH_bim!(tt_opt.ttv_vec[i+1], b.ttv_vec[i], H_b[i],H_b[i-1])
 		end
 
 		# First half sweap
@@ -247,8 +238,8 @@ function mals(A :: ttoperator, b :: ttvector, tt_start :: ttvector, eps::Float64
 
 			# Update H[i-1], H_b[i-1]
 			if i > 1
-				updateHim!(i, ni, nip, ri, rip, rAi, rAim, tt_opt, A, N1, N2, H)
-				updateH_bim!(i, ni, nip, ri, rip, rbi, rbim, tt_opt, b, N_b, H_b)
+				updateHim!(tt_opt.ttv_vec[i+1], A.tto_vec[i], H[i], H[i-1])
+				updateH_bim!(tt_opt.ttv_vec[i+1], b.ttv_vec[i], H_b[i],H_b[i-1])
 			end
 		end
 	#end
