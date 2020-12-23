@@ -74,20 +74,17 @@ function right_core_move(x_tt::ttvector,V,i::Int,x_rks,x_dims)
 	return x_tt,ri_new
 end
 
-function update_G_Gb(x_tt::ttvector,A_tto::ttoperator,i,Gi;G_bi=[],b_tt::ttvector=empty_tt())
+function update_G_Gb!(x_tt::ttvector,A_tto::ttoperator,i,Gi,Gip;G_bi=[],G_bip=[],b_tt::ttvector=empty_tt())
 	@tensor begin
 		M1[a,b,c,d] := x_tt.ttv_vec[i][y,z,a]*Gi[y,z,b,c,d] #size (ri,ni,rim,rAi)
 		M2[a,b,c] := x_tt.ttv_vec[i][y,z,a]*M1[b,y,z,c] #size (ri,ri,rAi)
-		G[a,b,c,d,e] := M2[d,b,z]*A_tto.tto_vec[i+1][a,c,z,e]
+		Gip[a,b,c,d,e] = M2[d,b,z]*A_tto.tto_vec[i+1][a,c,z,e]
 	end
 	if G_bi != []
 		@tensor begin
 			M_b[a,b] := G_bi[a,y,z]*x_tt.ttv_vec[i][y,z,b]
-			G_b[a,b,c] := b_tt.ttv_vec[i+1][b,z,a]*M_b[z,c] # j_(i+1), x_(i+1), k_i
+			G_bip[a,b,c] = b_tt.ttv_vec[i+1][b,z,a]*M_b[z,c] # j_(i+1), x_(i+1), k_i
 		end
-		return G,G_b
-	else
-		return G,Float64[]
 	end
 end
 
@@ -173,9 +170,11 @@ function als(A :: ttoperator, b :: ttvector, tt_start :: ttvector ;sweep_count=2
 	G_b = Array{Array{Float64}}(undef, d)
 
 	# Initialize G[1], G_b[1], H[d] and H_b[d]
-	G[1] = zeros(dims[1], 1, dims[1], 1, A.tto_rks[1])
+	for i in 1:d
+		G[i] = zeros(dims[i],rks[i],dims[i],rks[i],A.tto_rks[i])
+		G_b[i] = zeros(b.ttv_rks[i],dims[i],rks[i])
+	end
 	G[1] = reshape(A.tto_vec[1][:,:,1,:], dims[1],1,dims[1], 1, :)
-	G_b[1] = zeros(b.ttv_rks[1], dims[1], 1)
 	G_b[1] = permutedims(reshape(b.ttv_vec[1][:,1,1:b.ttv_rks[1]], dims[1], 1, :), [3 1 2])
 
 	#Initialize H and H_b
@@ -195,7 +194,7 @@ function als(A :: ttoperator, b :: ttvector, tt_start :: ttvector ;sweep_count=2
 				tt_opt, rks[i+1] = right_core_move(tt_opt,V,i,rks,dims)
 			end
 			#update G,G_b
-			G[i+1],G_b[i+1] = update_G_Gb(tt_opt,A,i,G[i];G_bi=G_b[i],b_tt=b)
+			update_G_Gb!(tt_opt,A,i,G[i],G[i+1];G_bi=G_b[i],G_bip=G_b[i+1],b_tt=b)
 		end
 
 		if nsweeps == sweep_count
@@ -239,7 +238,9 @@ function als_eig(A :: ttoperator, tt_start :: ttvector ; sweep_schedule=[2],rmax
 
 	# Initialize the array G
 	G = Array{Array{Float64}}(undef, d)
-	G[1] = zeros(dims[1], 1, dims[1], 1, A.tto_rks[1])
+	for i in 1:d
+		G[i] = zeros(dims[i],rks[i],dims[i],rks[i],A.tto_rks[i])
+	end
 	G[1] = reshape(A.tto_vec[1][:,:,1,:], dims[1],1,dims[1], 1, :)
 
 	#Initialize H and H_b
@@ -277,7 +278,7 @@ function als_eig(A :: ttoperator, tt_start :: ttvector ; sweep_schedule=[2],rmax
 			end
 
 			#update G,G_b
-			G[i+1],G_b = update_G_Gb(tt_opt,A,i,G[i])
+			update_G_Gb!(tt_opt,A,i,G[i],G[i+1])
 		end
 
 		# Second half sweep
@@ -320,9 +321,11 @@ function als_gen_eig(A :: ttoperator, S::ttoperator, tt_start :: ttvector ; swee
 	K = Array{Array{Float64}}(undef, d) 
 
 	# Initialize G[1]
-	G[1] = zeros(dims[1], 1, dims[1], 1, A.tto_rks[1])
+	for i in 1:d
+		G[i] = zeros(dims[i],rks[i],dims[i],rks[i],A.tto_rks[i])
+		K[i] = zeros(dims[i],rks[i],dims[i],rks[i],S.tto_rks[i])
+	end
 	G[1] = reshape(A.tto_vec[1][:,:,1,:], dims[1],1,dims[1], 1, :)
-	K[1] = zeros(dims[1], 1, dims[1], 1, S.tto_rks[2])
 	K[1] = reshape(S.tto_vec[1][:,:,1,:], dims[1],1,dims[1], 1, :)
 
 	#Initialize H and H_b
@@ -364,8 +367,8 @@ function als_gen_eig(A :: ttoperator, S::ttoperator, tt_start :: ttvector ; swee
 			end
 
 			#update G and K
-			G[i+1],G_b = update_G_Gb(tt_opt,A,i,G[i])
-			K[i+1],K_b = update_G_Gb(tt_opt,S,i,K[i])
+			update_G_Gb!(tt_opt,A,i,G[i],G[i+1])
+			update_G_Gb!(tt_opt,S,i,K[i],K[i+1])
 		end
 
 		# Second half sweep
