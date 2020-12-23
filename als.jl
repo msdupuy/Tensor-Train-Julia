@@ -88,20 +88,17 @@ function update_G_Gb!(x_tt::ttvector,A_tto::ttoperator,i,Gi,Gip;G_bi=[],G_bip=[]
 	end
 end
 
-function update_H_Hb(x_tt::ttvector,A_tto::ttoperator,i,Hi;H_bi=[],b_tt::ttvector=empty_tt())
+function update_H_Hb!(x_tt::ttvector,A_tto::ttoperator,i,Hi,Him;H_bi=[],H_bim=[],b_tt::ttvector=empty_tt())
 	@tensor begin
 		N1[a,b,c,d] := x_tt.ttv_vec[i][a,b,z]*Hi[z,c,d] #size (ni,rim,ri,rAi)
 		N2[a,b,c,d] := N1[y,a,b,z]*A_tto.tto_vec[i][y,c,d,z] #size (rim,ri,ni,rAim)
-		H[a,b,c] := x_tt.ttv_vec[i][z,b,y]*N2[a,y,z,c] #k_i,k'_i,l_i
+		Him[a,b,c] = x_tt.ttv_vec[i][z,b,y]*N2[a,y,z,c] #k_i,k'_i,l_i
 	end
 	if H_bi != []
 		@tensor begin
 			N_b[a,b,c] := x_tt.ttv_vec[i][a,b,z]*H_bi[z,c] #size(ni,rim,rbi)
-			H_b[a,b] := N_b[y,a,z]*b_tt.ttv_vec[i][y,b,z] #size(rbim, rim)
+			H_bim[a,b] = N_b[y,a,z]*b_tt.ttv_vec[i][y,b,z] #size(rbim, rim)
 		end
-		return H,H_b
-	else
-		return H,Float64[]
 	end	
 end
 
@@ -207,7 +204,7 @@ function als(A :: ttoperator, b :: ttvector, tt_start :: ttvector ;sweep_count=2
 				# Define V as solution of K*x=Pb in x
 				V = Ksolve(G[i],G_b[i],H[i],H_b[i])
 				tt_opt,rks[i] = left_core_move(tt_opt,V,i,rks,dims)
-				H[i-1],H_b[i-1] = update_H_Hb(tt_opt,A,i,H[i];H_bi=H_b[i],b_tt=b)
+				update_H_Hb!(tt_opt,A,i,H[i],H[i-1];H_bi=H_b[i],H_bim=H_b[i-1],b_tt=b)
 			end
 		end
 	end
@@ -289,7 +286,7 @@ function als_eig(A :: ttoperator, tt_start :: ttvector ; sweep_schedule=[2],rmax
 			E[i_μit],V = K_eigmin(G[i],H[i],tt_opt.ttv_vec[i];it_solver=it_solver,itslv_thresh=itslv_thresh)
 			println("Eigenvalue: $(E[i_μit])")
 			tt_opt,rks[i] = left_core_move(tt_opt,V,i,vcat(1,tt_opt.ttv_rks),dims)
-			H[i-1],H_bi = update_H_Hb(tt_opt,A,i,H[i])
+			update_H_Hb!(tt_opt,A,i,H[i],H[i-1])
 		end
 	end
 end
@@ -379,8 +376,8 @@ function als_gen_eig(A :: ttoperator, S::ttoperator, tt_start :: ttvector ; swee
 			E[i_μit],V = K_eiggenmin(G[i],H[i],K[i],L[i],tt_opt.ttv_vec[i];it_solver=it_solver,itslv_thresh=itslv_thresh)
 			println("Eigenvalue: $(E[i_μit])")
 			tt_opt,rks[i] = left_core_move(tt_opt,V,i,rks,dims)
-			H[i-1],H_b = update_H_Hb(tt_opt,A,i,H[i])
-			L[i-1],L_b = update_H_Hb(tt_opt,S,i,L[i])
+			update_H_Hb!(tt_opt,A,i,H[i],H[i-1])
+			update_H_Hb!(tt_opt,S,i,L[i],L[i-1])
 		end
 	end
 end
