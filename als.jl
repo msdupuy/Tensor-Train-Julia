@@ -1,7 +1,7 @@
 include("tt_tools.jl")
 using LinearMaps
 
-#TODO: eigs version and include IterativeSolvers option
+#TODO: include IterativeSolvers option for als
 
 function init_H_and_Hb(x_tt::ttvector,A_tto::ttoperator;b_tt::ttvector=empty_tt())
 	d = length(x_tt.ttv_dims)
