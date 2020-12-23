@@ -23,57 +23,78 @@ function updateH_bim!(xtt_vec, btt_vec, Hbi, Hbim)
 	end
 end
 
-
-function updateGip!(i, ni, nip, rim, ri, rAi, rAip, M1, M2, G, tt_opt, A)
-	M1[1:ri, 1:ni, 1:rim, 1:rAi] =
-		reshape(reshape(permutedims(tt_opt.ttv_vec[i][1:ni, 1:rim, 1:ri], [3 1 2]), ri, :) *
-				reshape(G[i][ 1:ni, 1:rim, 1:ni, 1:rim, 1:rAi], ni*rim, :), ri, ni, rim, :)
-	M2[1:ri, 1:ri, 1:rAi] =
-		reshape(reshape(permutedims(tt_opt.ttv_vec[i][1:ni, 1:rim, 1:ri], [3 1 2]), ri,:) *
-				reshape(permutedims(M1[1:ri, 1:ni, 1:rim, 1:rAi], [2 3 1 4]), ni*rim, :),
-				ri, ri, :)
-	# Initialize G[i+1]
-	G[i+1] = zeros(nip, ri, nip, ri, rAip) # x_(i+1), k_i, y_(i+1), k'_i, j_(i+1)
-	# Fill in G[i+1]
-	G[i+1][:,:,:,:,:] =
-		permutedims(reshape(reshape(M2[1:ri,1:ri,1:rAi], ri*ri,:) *
-				reshape(permutedims(A.tto_vec[i+1][1:nip, 1:nip, 1:rAi, 1:rAip], [3 1 2 4]), rAi,:),
-				ri, ri, nip, nip,:), [3 2 4 1 5])
+function updateGip!(xtt_vec,Atto_vec,Gi,Gip)
+	@tensor begin
+		M1[a,b,c,d] := xtt_vec[y,z,a]*Gi[y,z,b,c,d] #size(ri,ni,rim,rAi)
+		M2[a,b,c] := xtt_vec[y,z,a]*M1[b,y,z,c] #size(ri,ri,rAi)
+		Gip[a,b,c,d,e] = M2[d,b,z]*Atto_vec[a,c,z,e] #size(nip,ri,nip,ri,rAip)
+	end
 end
 
-function updateG_bip!(i, ni, nip, rim, ri, rbi, rbip, M_b, G_b, tt_opt, b)
-	M_b[1:rbi, 1:ri] = reshape(G_b[i][1:rbi, 1:ni, 1:rim], rbi, :) *
-						reshape(tt_opt.ttv_vec[i][1:ni, 1:rim, 1:ri], ni*rim, :)
-	# Initialize G_b[i+1]
-	G_b[i+1] = zeros(rbip, nip, ri) # j_(i+1), x_(i+1), k_i
-	# Fill in G_b[i+1]
-	G_b[i+1][1:rbip, 1:nip, 1:ri] =
-		reshape(reshape(permutedims(b.ttv_vec[i+1][1:nip, 1:rbi, 1:rbip], [3 1 2]), :, rbi) *
-		M_b[1:rbi, 1:ri], rbip, nip, :)
+function updateG_bip!(xtt_vec,btt_vec,G_bi,G_bip)
+	@tensor begin
+		M_b[a,b] := G_bi[a,y,z]*xtt_vec[y,z,b] #size(rbi,ri)
+		G_bip[a,b,c] = btt_vec[b,z,a]*M_b[z,c] #size(rbip,nip,ri)
+	end
 end
 
-function calcopt!(i, ni, nip, rim, rip, rAi, rbi, K, Pb, V, G, H, G_b, H_b)
-	K[1:rim, 1:ni, 1:nip, 1:rip, 1:rim, 1:ni, 1:nip, 1:rip] =
-		permutedims(reshape(reshape(G[i][1:ni, 1:rim, 1:ni, 1:rim, 1:rAi], ni*rim*ni*rim, :) *
-							reshape(permutedims(H[i][1:rip, 1:rip, 1:nip, 1:nip, 1:rAi], [5 1 2 3 4]), rAi, :),
-							ni, rim, ni, rim, rip, rip, nip, :), [4 3 8 5 2 1 7 6])
-	Pb[1:rim, 1:ni, 1:nip, 1:rip] =
-		permutedims(reshape(reshape(H_b[i][1:rip, 1:nip, 1:rbi], rip*nip, :) *
-							reshape(G_b[i][1:rbi, 1:ni, 1:rim], rbi, :),
-							rip, nip, ni, rim), [4 3 2 1])
-	V[1:rim, 1:ni, 1:nip, 1:rip] =
-		reshape(reshape(K[1:rim, 1:ni, 1:nip, 1:rip, 1:rim, 1:ni, 1:nip, 1:rip], rim*ni*nip*rip, :) \
-				reshape(Pb[1:rim, 1:ni, 1:nip, 1:rip], :, 1), rim, ni, nip, :)
+function left_core_move_mals(xtt::ttvector,i::Integer,V,tol::Float64,rmax::Integer)
+	# Perform the truncated svd
+	u_V, s_V, v_V, = svd(reshape(V, prod(size(V)[1:2]), :))
+	# Determine the truncated rank
+	s_trunc = sv_trunc(s_V,tol)
+	# Update the ranks to the truncated one
+	xtt.ttv_rks[i] = max(length(s_trunc),rmax)
+
+	# xtt.ttv_vec[i+1] = truncated Transpose(v_V)
+	xtt.ttv_vec[i+1] = permutedims(reshape(v_V[:, 1:xtt.ttv_rks[i]],size(V,3),size(V,4),:),[1,3,2])
+	xtt.ttv_ot[i+1] = 1
+
+	# xtt.ttv_vec[i] = truncated u_V * Diagonal(s_V)
+	xtt.ttv_vec[i] = permutedims(reshape(u_V[:, 1:xtt.ttv_rks[i]] * Diagonal(s_trunc),size(V,1),size(V,2),:),[2,1,3])
+#		permutedims(reshape(u_V[:, 1:ri_trunc] * Diagonal(s_trunc),
+#							rim, ni, :), [2 1 3])
+	xtt.ttv_ot[i] = 0
+	return xtt
 end
 
-function mals(A :: ttoperator, b :: ttvector, tt_start :: ttvector, eps::Float64)
+function right_core_move_mals(xtt::ttvector,i::Integer,V,tol::Float64,rmax::Integer)
+	# Perform the truncated svd
+	u_V, s_V, v_V, = svd(reshape(V, prod(size(V)[1:2]), :))
+	# Determine the truncated rank
+	s_trunc = sv_trunc(s_V,tol)
+	# Update the ranks to the truncated one
+	xtt.ttv_rks[i] = max(length(s_trunc),rmax)
+
+	# xtt.ttv_vec[i] = truncated u_V
+	xtt.ttv_vec[i] = permutedims(reshape(u_V[:, 1:xtt.ttv_rks], size(V,1), size(V,2), :), [2 1 3])
+	xtt.ttv_ot[i] = -1
+
+	# xtt.ttv_vec[i+1] = truncated Diagonal(s_V) * Transpose(v_V)
+	xtt.ttv_vec[i+1] = permutedims(reshape(Diagonal(s_trunc) *
+							Transpose(v_V[:, 1:ri_trunc]),xtt.ttv_rks[i],size(V,3),size(V,4)), [2 1 3])
+	xtt.ttv_ot[i+1] = 0
+	return xtt
+end
+
+function Ksolve_mals(Gi, Hi, G_bi, H_bi)
+	@tensor begin
+		K[a,b,c,d,e,f,g,h] := Gi[f,e,b,a,z]*Hi[d,h,g,c,z] #size(rim,ni,nip,rip,rim,ni,nip,rip)
+		Pb[a,b,c,d] := H_bi[d,c,z]*G_bi[z,b,a] #size(rim,ni,nip,rip)
+	end
+	V = reshape(K,prod(size(K)[1:4]),:) \ Pb[:]
+	return reshape(V,size(K)[1:4]...)
+end
+
+
+function mals(A :: ttoperator, b :: ttvector, tt_start :: ttvector; tol=1e-12::Float64,rmax=round(Int,sqrt(prod(tt_start.ttv_dims))))
 	# mals finds the minimum of the operator J(x)=1/2*<Ax,x> - <x,b>
 	# input:
 	# 	A: the tensor operator in its tensor train format
 	#   b: the tensor in its tensor train format
 	#	tt_start: start value in its tensor train format
 	#	opt_rks: rank vector considered to be optimal enough
-	#	eps: tolerated inaccuracy
+	#	tol: tolerated inaccuracy
 	# output:
 	#	tt_opt: stationary point of J up to tolerated inaccuracy
 	# 			in its tensor train format
@@ -126,116 +147,30 @@ function mals(A :: ttoperator, b :: ttvector, tt_start :: ttvector, eps::Float64
 	H_b[d-1] = reshape(b.ttv_vec[d], 1, dims[d], :) # k_d, x_d, j^b_(d-1)
 
 	#while 1==1 #TODO make it work for real
-		# Fill in  H[1],...,H[d-2] and H_b[1],...,H_b[d-2]
 		for i = (d-1) : -1 : 2
-			ni = dims[i] # n_i
-			nip = dims[i+1] # n_(i+1)
-			ri = rks[i+1] # r_i
-			rip = rks[i+2] # r_(i+1)
-			rAi = A_rks[i+1] # R_i
-			rAim = A_rks[i] # R_(i-1)
-			rbi = b_rks[i+1] # R^b_i
-			rbim = b_rks[i] # R^b_(i-1)
-
-			# Update H[i-1]
+			# Update H[i-1], H_b[i-1]
 			updateHim!(tt_opt.ttv_vec[i+1], A.tto_vec[i], H[i], H[i-1])
-			# Update H_b[i-1]
 			updateH_bim!(tt_opt.ttv_vec[i+1], b.ttv_vec[i], H_b[i],H_b[i-1])
 		end
 
 		# First half sweap
 		for i = 1:(d-1)
-			ni = dims[i] # n_i
-			nip = dims[i+1] # n_(i+1)
-			ri = rks[i+1] # r_i
-			rip = rks[i+2] # r_(i+1)
-			rim = rks[i] # r_(i-1)
-			rAi = A_rks[i+1] # R_i
-			rAip = A_rks[i+2] # R_(i+1)
-			rbi = b_rks[i+1] # R^b_i
-			rbip = b_rks[i+2] # R^b_(i+1)
-
 			# If i is the index of the core matrices do the optimization
 			if tt_opt.ttv_ot[i] == 0
 				# Define V as solution of K*x=P2b in x
-				calcopt!(i, ni, nip, rim, rip, rAi, rbi, K, Pb, V, G, H, G_b, H_b)
-				# Perform the truncated svd
-				V = map(x -> round(x, digits=10),V)
-				u_V, s_V, v_V, = svd(reshape(V[1:rim, 1:ni, 1:nip, 1:rip], rim*ni, :))
-				# Determine the truncated rank
-				s_V_sq = s_V.^2
-				bd = (eps^2)*sum(s_V_sq)
-				ri_trunc = 1
-				while (sum(s_V_sq[ri_trunc:ri]) >= bd) & (ri_trunc < ri)
-					ri_trunc+=1
-				end
-				# Update the ranks to the truncated one
-				ri = ri_trunc
-				tt_opt.ttv_rks[i] = ri_trunc
-				rks[i+1] = ri_trunc
-
-				# tt_opt.ttv_vec[i] = truncated u_V
-				tt_opt.ttv_vec[i][1:ni, 1:rim, 1:ri_trunc] =
-					permutedims(reshape(u_V[1:(rim*ni), 1:ri_trunc], rim, ni, :), [2 1 3])
-				tt_opt.ttv_vec[i][1:ni, 1:rim, (ri_trunc+1):ri] = zeros(ni,rim,ri-ri_trunc)
-				tt_opt.ttv_ot[i] = -1
-
-				# tt_opt.ttv_vec[i+1] = truncated Diagonal(s_V) * Transpose(v_V)
-				tt_opt.ttv_vec[i+1][1:nip, 1:ri_trunc, 1:rip] =
-					permutedims(reshape(Diagonal(s_V[1:ri_trunc]) *
-										Transpose(v_V[1:nip*rip, 1:ri_trunc]),
-										ri_trunc, nip, :), [2 1 3])
-				tt_opt.ttv_ot[i+1] = 0
+				V = Ksolve_mals(G[i],H[i],G_b[i],H_b[i])
+				tt_opt = right_core_move_mals(tt_opt,i,V,tol,rmax)
 			end
-
-			# Update G[i+1]
-			updateGip!(i, ni, nip, rim, ri, rAi, rAip, M1, M2, G, tt_opt, A)
-			# Update G_b[i+1]
-			updateG_bip!(i, ni, nip, rim, ri, rbi, rbip, M_b, G_b, tt_opt, b)
+			# Update G[i+1],G_b[i+1]
+			updateGip!(tt_opt.ttv_vec[i],A.tto_vec[i+1],G[i],G[i+1])
+			updateG_bip!(tt_opt.ttv_vec[i],b.ttv_vec[i+1],G_b[i],G_b[i+1])
 		end
 
 		# Second half sweap
 		for i = d-1:(-1):1
-			ni = dims[i] # n_i
-			nip = dims[i+1] # n_(i+1)
-			ri = rks[i+1] # r_i
-			rim = rks[i] # r_(i-1)
-			rip = rks[i+2] #r_(i+1)
-			rAi = A_rks[i+1] # R_i
-			rAim = A_rks[i] # R_(i-1)
-			rbi = b_rks[i+1] # R^b_i
-			rbim = b_rks[i] # R^b_(i-1)
-
 			# Define V as solution of K*x=P2b in x
-			calcopt!(i, ni, nip, rim, rip, rAi, rbi, K, Pb, V, G, H, G_b, H_b)
-
-			# Perform the truncated svd
-			V = map(x -> round(x, digits=10),V)
-			u_V, s_V, v_V =svd(reshape(V[1:rim, 1:ni, 1:nip, 1:rip], rim*ni, :))
-			# Determine the truncated rank
-			s_V_sq = s_V.^2
-			s = (eps^2)*sum(s_V_sq)
-			ri_trunc = 1
-			while (sum(s_V_sq[ri_trunc:ri]) >= s) & (ri_trunc < ri)
-				ri_trunc+=1
-			end
-			# Update the ranks to the truncated one
-			ri = ri_trunc
-			tt_opt.ttv_rks[i] = ri_trunc
-			rks[i+1] = ri_trunc
-
-			# tt_opt.ttv_vec[i+1] = truncated Transpose(v_V)
-			tt_opt.ttv_vec[i+1][1:nip, 1:ri_trunc, 1:rip] =
-				permutedims(reshape(permutedims(v_V[:, 1:ri_trunc], [2 1]), ri_trunc, nip, :), [2 1 3])
-			tt_opt.ttv_vec[i+1][1:nip, (ri_trunc+1):ri, 1:rip] = zeros(nip, ri-ri_trunc, rip)
-			tt_opt.ttv_ot[i+1] = 1
-
-			# tt_opt.ttv_vec[i] = truncated u_V * Diagonal(s_V)
-			tt_opt.ttv_vec[i][1:ni, 1:rim, 1:ri_trunc] =
-				permutedims(reshape(u_V[:, 1:ri_trunc] * Diagonal(s_V[1:ri_trunc]),
-									rim, ni, :), [2 1 3])
-			tt_opt.ttv_ot[i] = 0
-
+			V = Ksolve_mals(G[i],H[i],G_b[i],H_b[i])
+			tt_opt = left_core_move_mals(tt_opt,i,V,tol,rmax)
 			# Update H[i-1], H_b[i-1]
 			if i > 1
 				updateHim!(tt_opt.ttv_vec[i+1], A.tto_vec[i], H[i], H[i-1])
