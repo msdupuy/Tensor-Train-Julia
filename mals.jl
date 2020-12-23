@@ -78,7 +78,7 @@ function calcopt!(i, ni, nip, rim, rip, rAi, rbi, K, Pb, V, G, H, G_b, H_b)
 				reshape(Pb[1:rim, 1:ni, 1:nip, 1:rip], :, 1), rim, ni, nip, :)
 end
 
-function mals_fullstep(A :: ttoperator, b :: ttvector, tt_start :: ttvector, tensor_opt, eps)
+function mals(A :: ttoperator, b :: ttvector, tt_start :: ttvector, eps::Float64)
 	# mals finds the minimum of the operator J(x)=1/2*<Ax,x> - <x,b>
 	# input:
 	# 	A: the tensor operator in its tensor train format
@@ -126,10 +126,6 @@ function mals_fullstep(A :: ttoperator, b :: ttvector, tt_start :: ttvector, ten
 	K = zeros(r_max, n_max, n_max, r_max, r_max, n_max, n_max, r_max)
 	Pb = zeros(r_max, n_max, n_max, r_max)
 	V = zeros(r_max, n_max, n_max, r_max)
-	# Compute the Frobenius norm of the optimal solution
-	fbn_tensor_opt = norm(tensor_opt)
-	# Initialize the array of relative erros after the two half sweaps
-	err_rel = ones(2).*(-1)
 	# Initialize G[1], G_b[1], H[d] and H_b[d]
 	G[1] = zeros(dims[1], 1, dims[1], 1, A_rks[2])
 	G[1] = reshape(A.tto_vec[1][:,:,1,:], dims[1],1,dims[1], 1, :)
@@ -207,14 +203,6 @@ function mals_fullstep(A :: ttoperator, b :: ttvector, tt_start :: ttvector, ten
 			updateG_bip!(i, ni, nip, rim, ri, rbi, rbip, M_b, G_b, tt_opt, b)
 		end
 
-		# Calculate the distance to the optimal solution
-		err_rel[1] = norm(ttv_to_tensor(tt_opt) - tensor_opt) / fbn_tensor_opt
-
-		# If the first half sweap was enough return tt_opt
-		if err_rel[1] < eps
-			return tt_opt, err_rel
-		end
-
 		# Second half sweap
 		for i = d-1:(-1):1
 			ni = dims[i] # n_i
@@ -263,10 +251,8 @@ function mals_fullstep(A :: ttoperator, b :: ttvector, tt_start :: ttvector, ten
 				updateH_bim!(i, ni, nip, ri, rip, rbi, rbim, tt_opt, b, N_b, H_b)
 			end
 		end
-		# Calculate the distance to the optimal solution
-		err_rel[2] = norm(ttv_to_tensor(tt_opt) - tensor_opt) / fbn_tensor_opt
 	#end
-	return tt_opt, err_rel
+	return tt_opt
 end
 
 function interact_with_user(prompt)
@@ -299,7 +285,7 @@ function iterate_MALS(auto :: Bool, step_max :: Int64, A :: ttoperator, b :: ttv
 
 	for step_curr = 1:step_max
 		x_tts[step_curr + 1], errs_rel[step_curr + 1] =
-			mals_fullstep(A, b, x_tts[step_curr], opt_als, eps)
+			mals(A, b, x_tts[step_curr], opt_als, eps)
 		# Return if the calculated solution is good enough
 		if (errs_rel[step_curr + 1][1] < eps) | (errs_rel[step_curr + 1][2] < eps)
 			infotxt = string("Successfully terminated after step number: ", step_curr)
@@ -339,21 +325,21 @@ function plot_two_sweap_data(r)
 end
 
 
-# First test for the function iterate_MALS()
-# Define some random tensor operator A2 and its tensor train format
-A2 = map(round, rand(2,3,3,2,2,3,3,2).*10)
-A2_tt = tto_decomp(A2, 1)
-# Define some random tensor x2 and its tensor train format
-x2 = map(round,rand(2,3,3,2).*10)
-x2_tt = ttv_decomp(x2, 4)
-# Define b2=A2*x2 and its tensor train format
-b2 = reshape(reshape(permutedims(A2,[5 6 7 8 1 2 3 4]), 36, :)*reshape(x2,36,:),2,3,3,:)
-b2_tt = ttv_decomp(b2, 1)
-# Define the start tensor as some random tensor and its tensor train format
-x2_start = map(round,rand(2,3,3,2).*10)
-x2_start_tt = ttv_decomp(x2_start, 4)
-
-o2_tts, err_rel2s = iterate_MALS(false, 10, A2_tt, b2_tt, x2_start_tt, 10^(-4))
-o2s = map(ttv_to_tensor, o2_tts)
-
-plot_two_sweap_data(err_rel2s)
+## First test for the function iterate_MALS()
+## Define some random tensor operator A2 and its tensor train format
+#A2 = map(round, rand(2,3,3,2,2,3,3,2).*10)
+#A2_tt = tto_decomp(A2, 1)
+## Define some random tensor x2 and its tensor train format
+#x2 = map(round,rand(2,3,3,2).*10)
+#x2_tt = ttv_decomp(x2, 4)
+## Define b2=A2*x2 and its tensor train format
+#b2 = reshape(reshape(permutedims(A2,[5 6 7 8 1 2 3 4]), 36, :)*reshape(x2,36,:),2,3,3,:)
+#b2_tt = ttv_decomp(b2, 1)
+## Define the start tensor as some random tensor and its tensor train format
+#x2_start = map(round,rand(2,3,3,2).*10)
+#x2_start_tt = ttv_decomp(x2_start, 4)
+#
+#o2_tts, err_rel2s = iterate_MALS(false, 10, A2_tt, b2_tt, x2_start_tt, 10^(-4))
+#o2s = map(ttv_to_tensor, o2_tts)
+#
+#plot_two_sweap_data(err_rel2s)
