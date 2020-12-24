@@ -87,18 +87,18 @@ function Ksolve_mals(Gi, Hi, G_bi, H_bi, rim, rip)
 end
 
 function K_eigmin_mals(Gi,Hi,ttv_vec_i,ttv_vec_ip;it_solver=false,itslv_thresh=2500)
-	K_dims = [size(Gi,4),size(Gi,3),size(Hi,4),size(Hi,1)]
+	K_dims = [size(ttv_vec_i,2),size(ttv_vec_i,1),size(ttv_vec_ip,1),size(ttv_vec_ip,3)]
 	if it_solver || prod(K_dims) > itslv_thresh
 		function K_matfree(V;Gi=Gi,Hi=Hi,K_dims=K_dims)
 			H = zeros(K_dims...)
-			@tensor H[a,b,c,d] = Gi[f,e,b,a,z]*Hi[d,h,g,c,z]*reshape(V,K_dims...)[e,f,g,h]
+			@tensor H[a,b,c,d] = Gi[:,1:K_dims[1],:,1:K_dims[1],:][f,e,b,a,z]*Hi[1:K_dims[4],1:K_dims[4],:,:,:][d,h,g,c,z]*reshape(V,K_dims...)[e,f,g,h]
 			return H[:]
 		end
 		@tensor X0[a,b,c,d] := ttv_vec_i[b,a,z]*ttv_vec_ip[c,z,d]
 		r = lobpcg(LinearMap(K_matfree,prod(K_dims);issymmetric = true),false,X0[:],1;maxiter=1000)
 		return r.λ[1], reshape(r.X[:,1],K_dims...)
 	else
-		@tensor K[a,b,c,d,e,f,g,h] := Gi[f,e,b,a,z]*Hi[d,h,g,c,z] #size(rim,ni,nip,rip,rim,ni,nip,rip)
+		@tensor K[a,b,c,d,e,f,g,h] := Gi[:,1:K_dims[1],:,1:K_dims[1],:][f,e,b,a,z]*Hi[1:K_dims[4],1:K_dims[4],:,:,:][d,h,g,c,z] #size(rim,ni,nip,rip,rim,ni,nip,rip)
 		F = eigen(reshape(K,prod(K_dims),:))
 		return real(F.values[1]),real.(reshape(F.vectors[:,1],K_dims...))
 	end	
@@ -212,13 +212,15 @@ function mals_eig(A :: ttoperator, tt_start :: ttvector; tol=1e-12::Float64,rmax
 	H = Array{Array{Float64}}(undef, d-1)
 	# Initialize G[1], G_b[1], H[d] and H_b[d]
 	for i in 1:d
-		G[i] = zeros(dims[i],rks[i],dims[i],rks[i],A_rks[i+1])
+		rmax_i = min(rmax,prod(dims[1:i-1]),prod(dims[i:end]))
+		G[i] = zeros(dims[i],rmax_i,dims[i],rmax_i,A_rks[i+1])
 	end
 	for i in 1:d-1
-		H[i] = zeros(rks[i+2],rks[i+2],dims[i+1],dims[i+1],A_rks[i+1])
+		rmax_i = min(rmax,prod(dims[1:i]),prod(dims[i+1:end]))
+		H[i] = zeros(rmax_i,rmax_i,dims[i+1],dims[i+1],A_rks[i+1])
 	end
-	G[1] = reshape(A.tto_vec[1][:,:,1,:], dims[1],1,dims[1], 1, :)
-	H[d-1] = reshape(A.tto_vec[d], 1, 1, dims[d], dims[d], :) # k'_d,k_d,x_d,y_d,j_(d-1)
+	G[1][:,1:1,:,1:1,:] = reshape(A.tto_vec[1][:,:,1,:], dims[1],1,dims[1], 1, :)
+	H[d-1][1:1,1:1,:,:,:] = reshape(A.tto_vec[d], 1, 1, dims[d], dims[d], :) # k'_d,k_d,x_d,y_d,j_(d-1)
 
 	#while 1==1 #TODO make it work for real
 		for i = (d-1) : -1 : 2
@@ -233,7 +235,6 @@ function mals_eig(A :: ttoperator, tt_start :: ttvector; tol=1e-12::Float64,rmax
 				# Define V as solution of K*x=P2b in x
 				λ,V = K_eigmin_mals(G[i],H[i],tt_opt.ttv_vec[i],tt_opt.ttv_vec[i+1];it_solver=it_solver)
 				E = vcat(E,λ)
-				println(size(V))
 				tt_opt = right_core_move_mals(tt_opt,i,V,tol,rmax)
 			end
 			# Update G[i+1],G_b[i+1]
@@ -252,7 +253,7 @@ function mals_eig(A :: ttoperator, tt_start :: ttvector; tol=1e-12::Float64,rmax
 			end
 		end
 	#end
-	return tt_opt
+	return E,tt_opt
 end
 
 
