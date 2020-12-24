@@ -330,15 +330,19 @@ B : n_2 x r_1 x r_2
 C : n_3 x r_2 x r_3
 """
 function sv_trunc(s::Array{Float64},tol)
-    d = length(s)
-    i=0
-    weight = 0.0
-    norm2 = dot(s,s)
-    while (i<d) && weight<tol*norm2
-        weight+=s[d-i]^2
-        i+=1
-    end
-    return s[1:(d-i+1)]
+	if tol==0.0
+		return s
+	else
+		d = length(s)
+		i=0
+		weight = 0.0
+		norm2 = dot(s,s)
+		while (i<d) && weight<tol*norm2
+			weight+=s[d-i]^2
+			i+=1
+		end
+		return s[1:(d-i+1)]
+	end
 end
 
 function left_compression(A,B;tol=1e-12)
