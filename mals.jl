@@ -185,7 +185,7 @@ function mals(A :: ttoperator, b :: ttvector, tt_start :: ttvector; tol=1e-12::F
 	return tt_opt
 end
 
-function mals_eig(A :: ttoperator, tt_start :: ttvector; tol=1e-12::Float64,rmax=round(Int,sqrt(prod(tt_start.ttv_dims))),it_solver=false)
+function mals_eig(A :: ttoperator, tt_start :: ttvector; tol=1e-12::Float64,sweep_schedule=[2],rmax_schedule=[round(Int,sqrt(prod(tt_start.ttv_dims)))],it_solver=false)
 	# mals finds the minimum of the operator J(x)=1/2*<Ax,x> - <x,b>
 	# input:
 	# 	A: the tensor operator in its tensor train format
@@ -206,10 +206,10 @@ function mals_eig(A :: ttoperator, tt_start :: ttvector; tol=1e-12::Float64,rmax
 	# Define the array of ranks of A [R_0=1,R_1,...,R_d]
 	A_rks = vcat(1,A.tto_rks)
 	E = Float64[]
-
 	# Initialize the arrays of G and H
 	G = Array{Array{Float64}}(undef, d)
 	H = Array{Array{Float64}}(undef, d-1)
+	rmax = maximum(rmax_schedule)
 	# Initialize G[1], G_b[1], H[d] and H_b[d]
 	for i in 1:d
 		rmax_i = min(rmax,prod(dims[1:i-1]),prod(dims[i:end]))
@@ -222,20 +222,32 @@ function mals_eig(A :: ttoperator, tt_start :: ttvector; tol=1e-12::Float64,rmax
 	G[1][:,1:1,:,1:1,:] = reshape(A.tto_vec[1][:,:,1,:], dims[1],1,dims[1], 1, :)
 	H[d-1][1:1,1:1,:,:,:] = reshape(A.tto_vec[d], 1, 1, dims[d], dims[d], :) # k'_d,k_d,x_d,y_d,j_(d-1)
 
-	#while 1==1 #TODO make it work for real
+	nsweeps = 0 #sweeps counter
+	i_schedule,i_μit = 1,0
+	while i_schedule <= length(sweep_schedule) 
+		nsweeps+=1
+		println("Macro-iteration $nsweeps; bond dimension $(rmax_schedule[i_schedule])")
+
+		if nsweeps == sweep_schedule[i_schedule]
+			i_schedule+=1
+			if i_schedule > length(sweep_schedule)
+				return E,tt_opt
+			end
+		end
 		for i = (d-1) : -1 : 2
-			# Update H[i-1], H_b[i-1]
+			# Update H[i-1]
 			updateHim!(tt_opt.ttv_vec[i+1], A.tto_vec[i], H[i], H[i-1])
 		end
 
 		# First half sweep
 		for i = 1:(d-1)
+			println("Forward sweep: core optimization $i out of $(d-1)")
 			# If i is the index of the core matrices do the optimization
 			if tt_opt.ttv_ot[i] == 0
 				# Define V as solution of K*x=P2b in x
 				λ,V = K_eigmin_mals(G[i],H[i],tt_opt.ttv_vec[i],tt_opt.ttv_vec[i+1];it_solver=it_solver)
 				E = vcat(E,λ)
-				tt_opt = right_core_move_mals(tt_opt,i,V,tol,rmax)
+				tt_opt = right_core_move_mals(tt_opt,i,V,tol,rmax_schedule[i_schedule])
 			end
 			# Update G[i+1],G_b[i+1]
 			updateGip!(tt_opt.ttv_vec[i],A.tto_vec[i+1],G[i],G[i+1])
@@ -243,16 +255,17 @@ function mals_eig(A :: ttoperator, tt_start :: ttvector; tol=1e-12::Float64,rmax
 
 		# Second half sweep
 		for i = d-1:(-1):1
+			println("Backward sweep: core optimization $(d-i) out of $(d-1)")
 			# Define V as solution of K*x=P2b in x
 			λ,V = K_eigmin_mals(G[i],H[i],tt_opt.ttv_vec[i],tt_opt.ttv_vec[i+1];it_solver=it_solver)
 			E = vcat(E,λ)
-			tt_opt = left_core_move_mals(tt_opt,i,V,tol,rmax)
+			tt_opt = left_core_move_mals(tt_opt,i,V,tol,rmax_schedule[i_schedule])
 			# Update H[i-1], H_b[i-1]
 			if i > 1
 				updateHim!(tt_opt.ttv_vec[i+1], A.tto_vec[i], H[i], H[i-1])
 			end
 		end
-	#end
+	end
 	return E,tt_opt
 end
 
