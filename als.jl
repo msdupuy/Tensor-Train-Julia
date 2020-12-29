@@ -247,7 +247,7 @@ function als_eig(A :: ttoperator, tt_start :: ttvector ; sweep_schedule=[2],rmax
 	i_schedule,i_μit = 1,0
 	while i_schedule <= length(sweep_schedule) 
 		nsweeps+=1
-		println("Macro-iteration $(sweep_schedule[i_schedule]); bond dimension $(rmax_schedule[i_schedule])")
+		println("Macro-iteration $nsweeps; bond dimension $(rmax_schedule[i_schedule])")
 		if nsweeps == sweep_schedule[i_schedule]
 			i_schedule+=1
 			if i_schedule > length(sweep_schedule)
@@ -263,7 +263,7 @@ function als_eig(A :: ttoperator, tt_start :: ttvector ; sweep_schedule=[2],rmax
 		end
 		# First half sweep
 		for i = 1:(d-1)
-			println("Forward sweep: core optimization $i out of $d")
+			println("Forward sweep: core optimization $i out of $(d-1)")
 
 			# If i is the index of the core matrices do the optimization
 			if tt_opt.ttv_ot[i] == 0
@@ -280,7 +280,7 @@ function als_eig(A :: ttoperator, tt_start :: ttvector ; sweep_schedule=[2],rmax
 
 		# Second half sweep
 		for i = d:(-1):2
-			println("Backward sweep: core optimization $i out of $d")
+			println("Backward sweep: core optimization $(d+1-i) out of $(d-1)")
 			# Define V as solution of K*x=Pb in x
 			i_μit += 1
 			E[i_μit],V = K_eigmin(G[i],H[i],tt_opt.ttv_vec[i];it_solver=it_solver,itslv_thresh=itslv_thresh)
