@@ -206,6 +206,7 @@ function mals_eig(A :: ttoperator, tt_start :: ttvector; tol=1e-12::Float64,swee
 	# Define the array of ranks of A [R_0=1,R_1,...,R_d]
 	A_rks = vcat(1,A.tto_rks)
 	E = Float64[]
+	r_hist = Int64[]
 	# Initialize the arrays of G and H
 	G = Array{Array{Float64}}(undef, d)
 	H = Array{Array{Float64}}(undef, d-1)
@@ -231,7 +232,7 @@ function mals_eig(A :: ttoperator, tt_start :: ttvector; tol=1e-12::Float64,swee
 		if nsweeps == sweep_schedule[i_schedule]
 			i_schedule+=1
 			if i_schedule > length(sweep_schedule)
-				return E,tt_opt
+				return E,tt_opt, r_hist
 			end
 		end
 		for i = (d-1) : -1 : 2
@@ -248,6 +249,7 @@ function mals_eig(A :: ttoperator, tt_start :: ttvector; tol=1e-12::Float64,swee
 				λ,V = K_eigmin_mals(G[i],H[i],tt_opt.ttv_vec[i],tt_opt.ttv_vec[i+1];it_solver=it_solver)
 				E = vcat(E,λ)
 				tt_opt = right_core_move_mals(tt_opt,i,V,tol,rmax_schedule[i_schedule])
+				r_hist = vcat(r_hist,maximum(tt_opt.ttv_rks))
 			end
 			# Update G[i+1],G_b[i+1]
 			updateGip!(tt_opt.ttv_vec[i],A.tto_vec[i+1],G[i],G[i+1])
@@ -260,13 +262,13 @@ function mals_eig(A :: ttoperator, tt_start :: ttvector; tol=1e-12::Float64,swee
 			λ,V = K_eigmin_mals(G[i],H[i],tt_opt.ttv_vec[i],tt_opt.ttv_vec[i+1];it_solver=it_solver)
 			E = vcat(E,λ)
 			tt_opt = left_core_move_mals(tt_opt,i,V,tol,rmax_schedule[i_schedule])
-			# Update H[i-1], H_b[i-1]
+			r_hist = vcat(r_hist,maximum(tt_opt.ttv_rks))
+			# Update H[i-1]
 			if i > 1
 				updateHim!(tt_opt.ttv_vec[i+1], A.tto_vec[i], H[i], H[i-1])
 			end
 		end
 	end
-	return E,tt_opt
 end
 
 
