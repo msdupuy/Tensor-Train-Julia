@@ -55,7 +55,7 @@ function left_core_move_mals(xtt::ttvector,i::Integer,V,tol::Float64,rmax::Integ
 	xtt.ttv_ot[i+1] = 1
 
 	# xtt.ttv_vec[i] = truncated u_V * Diagonal(s_V)
-	xtt.ttv_vec[i] = permutedims(reshape(u_V[:, 1:xtt.ttv_rks[i]] * Diagonal(s_trunc),size(V,1),size(V,2),:),[2,1,3])
+	xtt.ttv_vec[i] = permutedims(reshape(u_V[:, 1:xtt.ttv_rks[i]] * Diagonal(s_trunc[1:xtt.ttv_rks[i]]),size(V,1),size(V,2),:),[2,1,3])
 #		permutedims(reshape(u_V[:, 1:ri_trunc] * Diagonal(s_trunc),
 #							rim, ni, :), [2 1 3])
 	xtt.ttv_ot[i] = 0
@@ -75,7 +75,7 @@ function right_core_move_mals(xtt::ttvector,i::Integer,V,tol::Float64,rmax::Inte
 	xtt.ttv_ot[i] = -1
 
 	# xtt.ttv_vec[i+1] = truncated Diagonal(s_V) * Transpose(v_V)
-	xtt.ttv_vec[i+1] = permutedims(reshape(Diagonal(s_trunc) *
+	xtt.ttv_vec[i+1] = permutedims(reshape(Diagonal(s_trunc[1:xtt.ttv_rks[i]]) *
 							Transpose(v_V[:, 1:xtt.ttv_rks[i]]),xtt.ttv_rks[i],size(V,3),size(V,4)), [2 1 3])
 	xtt.ttv_ot[i+1] = 0
 	return xtt
