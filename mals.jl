@@ -92,17 +92,19 @@ end
 
 function K_eigmin_mals(Gi,Hi,ttv_vec_i,ttv_vec_ip;it_solver=false,itslv_thresh=2500)
 	K_dims = [size(ttv_vec_i,2),size(ttv_vec_i,1),size(ttv_vec_ip,1),size(ttv_vec_ip,3)]
+	Gtemp = @view Gi[:,1:K_dims[1],:,1:K_dims[1],:]
+	Htemp = @view Hi[1:K_dims[4],1:K_dims[4],:,:,:]
 	if it_solver || prod(K_dims) > itslv_thresh
-		function K_matfree(V;Gi=Gi,Hi=Hi,K_dims=K_dims)
+		function K_matfree(V;K_dims=K_dims)
 			H = zeros(K_dims...)
-			@tensor H[a,b,c,d] = @view(Gi[:,1:K_dims[1],:,1:K_dims[1],:])[f,e,b,a,z]*@view(Hi[1:K_dims[4],1:K_dims[4],:,:,:])[d,h,g,c,z]*reshape(V,K_dims...)[e,f,g,h]
+			@tensor H[a,b,c,d] = Gtemp[f,e,b,a,z]*Htemp[d,h,g,c,z]*reshape(V,K_dims...)[e,f,g,h]
 			return H[:]
 		end
 		@tensor X0[a,b,c,d] := ttv_vec_i[b,a,z]*ttv_vec_ip[c,z,d]
 		r = lobpcg(LinearMap(K_matfree,prod(K_dims);issymmetric = true),false,X0[:],1;maxiter=1000)
 		return r.λ[1], reshape(r.X[:,1],K_dims...)
 	else
-		@tensor K[a,b,c,d,e,f,g,h] := @view(Gi[:,1:K_dims[1],:,1:K_dims[1],:])[f,e,b,a,z]*@view(Hi[1:K_dims[4],1:K_dims[4],:,:,:])[d,h,g,c,z] #size(rim,ni,nip,rip,rim,ni,nip,rip)
+		@tensor K[a,b,c,d,e,f,g,h] := Gtemp[f,e,b,a,z]*Htemp[d,h,g,c,z] #size(rim,ni,nip,rip,rim,ni,nip,rip)
 		F = eigen(reshape(K,prod(K_dims),:))
 		return real(F.values[1]),real.(reshape(F.vectors[:,1],K_dims...))
 	end	
