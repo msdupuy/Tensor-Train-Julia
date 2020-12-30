@@ -21,13 +21,13 @@ function Lap(n::Integer,d::Integer) #returns the tensor of the discrete Laplacia
     return A
 end
 
-n=10
+n=6
 L = Lap(n,3)
 x = L\ones(n^3)
 
 L = reshape(L,n,n,n,n,n,n)
 L_tt = tto_decomp(L,1)
 b_tt = ttv_decomp(ones(n,n,n),1)
-x_tt = ttv_decomp(randn(n,n,n),1)
+#x_tt = ttv_decomp(randn(n,n,n),1)
 
-x_mals = mals_fullstep(L_tt,b_tt,x_tt,[n,n,1],1e-12)
+x_mals = mals_eig(L_tt,b_tt,tol=1e-12)
