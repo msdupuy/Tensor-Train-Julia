@@ -9,32 +9,36 @@ MALS auxiliary functions
 """
 
 function updateHim!(xtt_vec, Atto, Hi, Him)
+	Htemp = @view Him[1:size(xtt_vec,2),1:size(xtt_vec,2),:,:,:]
 	@tensor begin
-		N1[a,b,c,d] := xtt_vec[y,a,z]*Hi[1:size(xtt_vec,3),1:size(xtt_vec,3),:,:,:][b,z,y,c,d] #size(ri,rip,nip,rAi)
+		N1[a,b,c,d] := xtt_vec[y,a,z]*view(Hi[1:size(xtt_vec,3),1:size(xtt_vec,3),:,:,:],:,:,:,:,:)[b,z,y,c,d] #size(ri,rip,nip,rAi)
 		N2[a,b,c] := xtt_vec[y,a,z]*N1[b,z,y,c] #size(ri,ri,rAi)
-		@view(Him[1:size(xtt_vec,2),1:size(xtt_vec,2),:,:,:])[a,b,c,d,e] = N2[a,b,z]*Atto[c,d,e,z] #size(ri,ri,ni,ni,rAim)
+		Htemp[a,b,c,d,e] = N2[a,b,z]*Atto[c,d,e,z] #size(ri,ri,ni,ni,rAim)
 	end
 end
 
 function updateH_bim!(xtt_vec, btt_vec, Hbi, Hbim)
+	Hbtemp = @view Hbim[1:size(xtt_vec,2),:,:]
 	@tensor begin
-		N_b[a,b] := xtt_vec[z,a,y]*Hbi[1:size(xtt_vec,3),:,:][y,z,b] #size(ri,rbi)
-		@view(Hbim[1:size(xtt_vec,2),:,:])[a,b,c] = N_b[a,z]*btt_vec[b,c,z] #size(ri,ni,rbim)
+		N_b[a,b] := xtt_vec[z,a,y]*view(Hbi[1:size(xtt_vec,3),:,:],:,:,:)[y,z,b] #size(ri,rbi)
+		Hbtemp[a,b,c] = N_b[a,z]*btt_vec[b,c,z] #size(ri,ni,rbim)
 	end
 end
 
 function updateGip!(xtt_vec,Atto_vec,Gi,Gip)
+	Gtemp = @view Gip[:,1:size(xtt_vec,3),:,1:size(xtt_vec,3),:]
 	@tensor begin
-		M1[a,b,c,d] := xtt_vec[y,z,a]*Gi[:,1:size(xtt_vec,2),:,1:size(xtt_vec,2),:][y,z,b,c,d] #size(ri,ni,rim,rAi)
+		M1[a,b,c,d] := xtt_vec[y,z,a]*view(Gi[:,1:size(xtt_vec,2),:,1:size(xtt_vec,2),:],:,:,:,:,:)[y,z,b,c,d] #size(ri,ni,rim,rAi)
 		M2[a,b,c] := xtt_vec[y,z,a]*M1[b,y,z,c] #size(ri,ri,rAi)
-		@view(Gip[:,1:size(xtt_vec,3),:,1:size(xtt_vec,3),:])[a,b,c,d,e] = M2[d,b,z]*Atto_vec[a,c,z,e] #size(nip,ri,nip,ri,rAip)
+		Gtemp[a,b,c,d,e] = M2[d,b,z]*Atto_vec[a,c,z,e] #size(nip,ri,nip,ri,rAip)
 	end
 end
 
 function updateG_bip!(xtt_vec,btt_vec,G_bi,G_bip)
+	Gbtemp = @view G_bip[:,:,1:size(xtt_vec,3)]
 	@tensor begin
-		M_b[a,b] := G_bi[:,:,1:size(xtt_vec,2)][a,y,z]*xtt_vec[y,z,b] #size(rbi,ri)
-		@view(G_bip[:,:,1:size(xtt_vec,3)])[a,b,c] = btt_vec[b,z,a]*M_b[z,c] #size(rbip,nip,ri)
+		M_b[a,b] := view(G_bi[:,:,1:size(xtt_vec,2)],:,:,:)[a,y,z]*xtt_vec[y,z,b] #size(rbi,ri)
+		Gbtemp[a,b,c] = btt_vec[b,z,a]*M_b[z,c] #size(rbip,nip,ri)
 	end
 end
 
@@ -91,14 +95,14 @@ function K_eigmin_mals(Gi,Hi,ttv_vec_i,ttv_vec_ip;it_solver=false,itslv_thresh=2
 	if it_solver || prod(K_dims) > itslv_thresh
 		function K_matfree(V;Gi=Gi,Hi=Hi,K_dims=K_dims)
 			H = zeros(K_dims...)
-			@tensor H[a,b,c,d] = Gi[:,1:K_dims[1],:,1:K_dims[1],:][f,e,b,a,z]*Hi[1:K_dims[4],1:K_dims[4],:,:,:][d,h,g,c,z]*reshape(V,K_dims...)[e,f,g,h]
+			@tensor H[a,b,c,d] = @view(Gi[:,1:K_dims[1],:,1:K_dims[1],:])[f,e,b,a,z]*@view(Hi[1:K_dims[4],1:K_dims[4],:,:,:])[d,h,g,c,z]*reshape(V,K_dims...)[e,f,g,h]
 			return H[:]
 		end
 		@tensor X0[a,b,c,d] := ttv_vec_i[b,a,z]*ttv_vec_ip[c,z,d]
 		r = lobpcg(LinearMap(K_matfree,prod(K_dims);issymmetric = true),false,X0[:],1;maxiter=1000)
 		return r.λ[1], reshape(r.X[:,1],K_dims...)
 	else
-		@tensor K[a,b,c,d,e,f,g,h] := Gi[:,1:K_dims[1],:,1:K_dims[1],:][f,e,b,a,z]*Hi[1:K_dims[4],1:K_dims[4],:,:,:][d,h,g,c,z] #size(rim,ni,nip,rip,rim,ni,nip,rip)
+		@tensor K[a,b,c,d,e,f,g,h] := @view(Gi[:,1:K_dims[1],:,1:K_dims[1],:])[f,e,b,a,z]*@view(Hi[1:K_dims[4],1:K_dims[4],:,:,:])[d,h,g,c,z] #size(rim,ni,nip,rip,rim,ni,nip,rip)
 		F = eigen(reshape(K,prod(K_dims),:))
 		return real(F.values[1]),real.(reshape(F.vectors[:,1],K_dims...))
 	end	
