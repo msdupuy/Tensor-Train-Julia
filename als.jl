@@ -258,6 +258,9 @@ function als_eig(A :: ttoperator, tt_start :: ttvector ; sweep_schedule=[2],rmax
 					Htemp = zeros(tt_opt.ttv_rks[i],tt_opt.ttv_rks[i],A.tto_rks[i])
 					Htemp[1:size(H[i],1),1:size(H[i],2),1:size(H[i],3)] = H[i] 
 					H[i] = Htemp
+					Gtemp = zeros(dims[i+1],tt_opt.ttv_rks[i],dims[i+1],tt_opt.ttv_rks[i],A.tto_rks[i+1])
+					Gtemp[1:size(G[i+1],1),1:size(G[i+1],2),1:size(G[i+1],3),1:size(G[i+1],4),1:size(G[i+1],5)] = G[i+1]
+					G[i+1] = Gtemp
 				end
 			end
 		end
