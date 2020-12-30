@@ -9,7 +9,7 @@ MALS auxiliary functions
 """
 
 function updateHim!(xtt_vec, Atto, Hi, Him)
-	Htemp = @view Him[1:size(xtt_vec,2),1:size(xtt_vec,2),:,:,:]
+	Htemp = @view(Him[1:size(xtt_vec,2),1:size(xtt_vec,2),:,:,:])
 	@tensor begin
 		N1[a,b,c,d] := xtt_vec[y,a,z]*view(Hi[1:size(xtt_vec,3),1:size(xtt_vec,3),:,:,:],:,:,:,:,:)[b,z,y,c,d] #size(ri,rip,nip,rAi)
 		N2[a,b,c] := xtt_vec[y,a,z]*N1[b,z,y,c] #size(ri,ri,rAi)
@@ -18,7 +18,7 @@ function updateHim!(xtt_vec, Atto, Hi, Him)
 end
 
 function updateH_bim!(xtt_vec, btt_vec, Hbi, Hbim)
-	Hbtemp = @view Hbim[1:size(xtt_vec,2),:,:]
+	Hbtemp = @view(Hbim[1:size(xtt_vec,2),:,:])
 	@tensor begin
 		N_b[a,b] := xtt_vec[z,a,y]*view(Hbi[1:size(xtt_vec,3),:,:],:,:,:)[y,z,b] #size(ri,rbi)
 		Hbtemp[a,b,c] = N_b[a,z]*btt_vec[b,c,z] #size(ri,ni,rbim)
@@ -26,7 +26,7 @@ function updateH_bim!(xtt_vec, btt_vec, Hbi, Hbim)
 end
 
 function updateGip!(xtt_vec,Atto_vec,Gi,Gip)
-	Gtemp = @view Gip[:,1:size(xtt_vec,3),:,1:size(xtt_vec,3),:]
+	Gtemp = @view(Gip[:,1:size(xtt_vec,3),:,1:size(xtt_vec,3),:])
 	@tensor begin
 		M1[a,b,c,d] := xtt_vec[y,z,a]*view(Gi[:,1:size(xtt_vec,2),:,1:size(xtt_vec,2),:],:,:,:,:,:)[y,z,b,c,d] #size(ri,ni,rim,rAi)
 		M2[a,b,c] := xtt_vec[y,z,a]*M1[b,y,z,c] #size(ri,ri,rAi)
@@ -35,7 +35,7 @@ function updateGip!(xtt_vec,Atto_vec,Gi,Gip)
 end
 
 function updateG_bip!(xtt_vec,btt_vec,G_bi,G_bip)
-	Gbtemp = @view G_bip[:,:,1:size(xtt_vec,3)]
+	Gbtemp = @view(G_bip[:,:,1:size(xtt_vec,3)])
 	@tensor begin
 		M_b[a,b] := view(G_bi[:,:,1:size(xtt_vec,2)],:,:,:)[a,y,z]*xtt_vec[y,z,b] #size(rbi,ri)
 		Gbtemp[a,b,c] = btt_vec[b,z,a]*M_b[z,c] #size(rbip,nip,ri)
@@ -92,8 +92,8 @@ end
 
 function K_eigmin_mals(Gi,Hi,ttv_vec_i,ttv_vec_ip;it_solver=false,itslv_thresh=2500)
 	K_dims = [size(ttv_vec_i,2),size(ttv_vec_i,1),size(ttv_vec_ip,1),size(ttv_vec_ip,3)]
-	Gtemp = @view Gi[:,1:K_dims[1],:,1:K_dims[1],:]
-	Htemp = @view Hi[1:K_dims[4],1:K_dims[4],:,:,:]
+	Gtemp = view(Gi[:,1:K_dims[1],:,1:K_dims[1],:],:,:,:,:,:)
+	Htemp = view(Hi[1:K_dims[4],1:K_dims[4],:,:,:],:,:,:,:,:)
 	if it_solver || prod(K_dims) > itslv_thresh
 		function K_matfree(V;K_dims=K_dims)
 			H = zeros(K_dims...)
@@ -191,11 +191,10 @@ function mals(A :: ttoperator, b :: ttvector, tt_start :: ttvector; tol=1e-12::F
 	return tt_opt
 end
 
-function mals_eig(A :: ttoperator, tt_start :: ttvector; tol=1e-12::Float64,sweep_schedule=[2],rmax_schedule=[round(Int,sqrt(prod(tt_start.ttv_dims)))],it_solver=false)
-	# mals finds the minimum of the operator J(x)=1/2*<Ax,x> - <x,b>
+function mals_eig(A :: ttoperator, tt_start :: ttvector; tol=1e-12::Float64,sweep_schedule=[2]::Array{Int,1},rmax_schedule=[round(Int,sqrt(prod(tt_start.ttv_dims)))]::Array{Int,1},it_solver=false)
+	# mals_eig finds the minimum of the operator J(x)=<Ax,x>/<x,x>
 	# input:
 	# 	A: the tensor operator in its tensor train format
-	#   b: the tensor in its tensor train format
 	#	tt_start: start value in its tensor train format
 	#	opt_rks: rank vector considered to be optimal enough
 	#	tol: tolerated inaccuracy
@@ -203,6 +202,7 @@ function mals_eig(A :: ttoperator, tt_start :: ttvector; tol=1e-12::Float64,swee
 	#	tt_opt: stationary point of J up to tolerated inaccuracy
 	# 			in its tensor train format
 
+	@assert(length(rmax_schedule)==length(sweep_schedule),"Sweep schedule error")	
 	# Initialize the to be returned tensor in its tensor train format
 	tt_opt = deepcopy(tt_start)
 	dims = tt_start.ttv_dims
@@ -230,7 +230,7 @@ function mals_eig(A :: ttoperator, tt_start :: ttvector; tol=1e-12::Float64,swee
 	H[d-1][1:1,1:1,:,:,:] = reshape(A.tto_vec[d], 1, 1, dims[d], dims[d], :) # k'_d,k_d,x_d,y_d,j_(d-1)
 
 	nsweeps = 0 #sweeps counter
-	i_schedule,i_μit = 1,0
+	i_schedule = 1
 	while i_schedule <= length(sweep_schedule) 
 		nsweeps+=1
 		println("Macro-iteration $nsweeps; bond dimension $(rmax_schedule[i_schedule])")
