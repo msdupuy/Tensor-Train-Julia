@@ -147,7 +147,7 @@ function mals(A :: ttoperator, b :: ttvector, tt_start :: ttvector; tol=1e-12::F
 		G_b[i] = zeros(b_rks[i+1],dims[i],rmax_i)
 	end
 	for i in 1:d-1
-		rmax_i = min(rmax,prod(dims[1:i]),prod(dims[i+1:end]))
+		rmax_i = min(rmax,prod(dims[1:i+1]),prod(dims[i+2:end]))
 		H[i] = zeros(rmax_i,rmax_i,dims[i+1],dims[i+1],A_rks[i+1])
 		H_b[i] = zeros(rmax_i,dims[i+1],b_rks[i])
 	end
@@ -223,7 +223,7 @@ function mals_eig(A :: ttoperator, tt_start :: ttvector; tol=1e-12::Float64,swee
 		G[i] = zeros(dims[i],rmax_i,dims[i],rmax_i,A_rks[i+1])
 	end
 	for i in 1:d-1
-		rmax_i = min(rmax,prod(dims[1:i]),prod(dims[i+1:end]))
+		rmax_i = min(rmax,prod(dims[1:i+1]),prod(dims[i+2:end]))
 		H[i] = zeros(rmax_i,rmax_i,dims[i+1],dims[i+1],A_rks[i+1])
 	end
 	G[1][:,1:1,:,1:1,:] = reshape(A.tto_vec[1][:,:,1,:], dims[1],1,dims[1], 1, :)
