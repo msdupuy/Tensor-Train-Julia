@@ -49,6 +49,7 @@ function left_core_move_mals(xtt::ttvector,i::Integer,V,tol::Float64,rmax::Integ
 	s_trunc = sv_trunc(s_V,tol)
 	# Update the ranks to the truncated one
 	xtt.ttv_rks[i] = min(length(s_trunc),rmax)
+	println("Discarded weight: $((norm(s_V)-norm(s_V[1:xtt.ttv_rks[i]]))/norm(s_V))")
 
 	# xtt.ttv_vec[i+1] = truncated Transpose(v_V)
 	xtt.ttv_vec[i+1] = permutedims(reshape(v_V[:, 1:xtt.ttv_rks[i]],size(V,3),size(V,4),xtt.ttv_rks[i]),[1,3,2])
@@ -69,6 +70,7 @@ function right_core_move_mals(xtt::ttvector,i::Integer,V,tol::Float64,rmax::Inte
 	s_trunc = sv_trunc(s_V,tol)
 	# Update the ranks to the truncated one
 	xtt.ttv_rks[i] = min(length(s_trunc),rmax)
+	println("Discarded weight: $((norm(s_V)-norm(s_V[1:xtt.ttv_rks[i]]))/norm(s_V))")
 
 	# xtt.ttv_vec[i] = truncated u_V
 	xtt.ttv_vec[i] = permutedims(reshape(u_V[:, 1:xtt.ttv_rks[i]], size(V,1), size(V,2), xtt.ttv_rks[i]), [2 1 3])
@@ -90,18 +92,19 @@ function Ksolve_mals(Gi, Hi, G_bi, H_bi, rim, rip)
 	return reshape(V,size(K)[1:4]...)
 end
 
-function K_eigmin_mals(Gi,Hi,ttv_vec_i,ttv_vec_ip;it_solver=false,itslv_thresh=2500)
+function K_eigmin_mals(Gi::Array{Float64,5},Hi::Array{Float64,5},ttv_vec_i::Array{Float64,3},ttv_vec_ip::Array{Float64,3};it_solver=false,itslv_thresh=2500,maxiter=maxiter,tol=tol)
 	K_dims = [size(ttv_vec_i,2),size(ttv_vec_i,1),size(ttv_vec_ip,1),size(ttv_vec_ip,3)]
 	Gtemp = view(Gi[:,1:K_dims[1],:,1:K_dims[1],:],:,:,:,:,:)
 	Htemp = view(Hi[1:K_dims[4],1:K_dims[4],:,:,:],:,:,:,:,:)
 	if it_solver || prod(K_dims) > itslv_thresh
 		function K_matfree(V;K_dims=K_dims)
-			H = zeros(K_dims...)
+			H = zeros(Float64,K_dims...)
 			@tensor H[a,b,c,d] = Gtemp[f,e,b,a,z]*Htemp[d,h,g,c,z]*reshape(V,K_dims...)[e,f,g,h]
 			return H[:]
 		end
+		X0 = zeros(Float64,K_dims...)
 		@tensor X0[a,b,c,d] := ttv_vec_i[b,a,z]*ttv_vec_ip[c,z,d]
-		r = lobpcg(LinearMap(K_matfree,prod(K_dims);issymmetric = true),false,X0[:],1;maxiter=1000)
+		r = lobpcg(LinearMap(K_matfree,prod(K_dims);issymmetric = true),false,X0[:],1;maxiter=maxiter,tol=tol)
 		return r.λ[1], reshape(r.X[:,1],K_dims...)
 	else
 		@tensor K[a,b,c,d,e,f,g,h] := Gtemp[f,e,b,a,z]*Htemp[d,h,g,c,z] #size(rim,ni,nip,rip,rim,ni,nip,rip)
@@ -109,7 +112,6 @@ function K_eigmin_mals(Gi,Hi,ttv_vec_i,ttv_vec_ip;it_solver=false,itslv_thresh=2
 		return real(F.values[1]),real.(reshape(F.vectors[:,1],K_dims...))
 	end	
 end
-
 
 function mals(A :: ttoperator, b :: ttvector, tt_start :: ttvector; tol=1e-12::Float64,rmax=round(Int,sqrt(prod(tt_start.ttv_dims))))
 	# mals finds the minimum of the operator J(x)=1/2*<Ax,x> - <x,b>
@@ -176,7 +178,7 @@ function mals(A :: ttoperator, b :: ttvector, tt_start :: ttvector; tol=1e-12::F
 			updateG_bip!(tt_opt.ttv_vec[i],b.ttv_vec[i+1],G_b[i],G_b[i+1])
 		end
 
-		# Second half sweap
+		# Second half sweep
 		for i = d-1:(-1):1
 			# Define V as solution of K*x=P2b in x
 			V = Ksolve_mals(G[i],H[i],G_b[i],H_b[i],size(tt_opt.ttv_vec[i],2),size(tt_opt.ttv_vec[i+1],3))
@@ -191,7 +193,7 @@ function mals(A :: ttoperator, b :: ttvector, tt_start :: ttvector; tol=1e-12::F
 	return tt_opt
 end
 
-function mals_eig(A :: ttoperator, tt_start :: ttvector; tol=1e-12::Float64,sweep_schedule=[2]::Array{Int,1},rmax_schedule=[round(Int,sqrt(prod(tt_start.ttv_dims)))]::Array{Int,1},it_solver=false)
+function mals_eig(A :: ttoperator, tt_start :: ttvector; tol=1e-12::Float64,sweep_schedule=[2]::Array{Int,1},rmax_schedule=[round(Int,sqrt(prod(tt_start.ttv_dims)))]::Array{Int,1},it_solver=false,linsolv_maxiter=200,linsolv_tol=max(sqrt(tol),1e-8))
 	# mals_eig finds the minimum of the operator J(x)=<Ax,x>/<x,x>
 	# input:
 	# 	A: the tensor operator in its tensor train format
@@ -252,7 +254,8 @@ function mals_eig(A :: ttoperator, tt_start :: ttvector; tol=1e-12::Float64,swee
 			# If i is the index of the core matrices do the optimization
 			if tt_opt.ttv_ot[i] == 0
 				# Define V as solution of K*x=P2b in x
-				λ,V = K_eigmin_mals(G[i],H[i],tt_opt.ttv_vec[i],tt_opt.ttv_vec[i+1];it_solver=it_solver)
+				λ,V = K_eigmin_mals(G[i],H[i],tt_opt.ttv_vec[i],tt_opt.ttv_vec[i+1];it_solver=it_solver,maxiter=linsolv_maxiter,tol=linsolv_tol)
+				println("Eigenvalue: $λ")
 				E = vcat(E,λ)
 				tt_opt = right_core_move_mals(tt_opt,i,V,tol,rmax_schedule[i_schedule])
 				r_hist = vcat(r_hist,maximum(tt_opt.ttv_rks))
@@ -265,7 +268,8 @@ function mals_eig(A :: ttoperator, tt_start :: ttvector; tol=1e-12::Float64,swee
 		for i = d-1:(-1):1
 			println("Backward sweep: core optimization $(d-i) out of $(d-1)")
 			# Define V as solution of K*x=P2b in x
-			λ,V = K_eigmin_mals(G[i],H[i],tt_opt.ttv_vec[i],tt_opt.ttv_vec[i+1];it_solver=it_solver)
+			λ,V = K_eigmin_mals(G[i],H[i],tt_opt.ttv_vec[i],tt_opt.ttv_vec[i+1];it_solver=it_solver,maxiter=linsolv_maxiter,tol=linsolv_tol)
+			println("Eigenvalue: $λ")
 			E = vcat(E,λ)
 			tt_opt = left_core_move_mals(tt_opt,i,V,tol,rmax_schedule[i_schedule])
 			r_hist = vcat(r_hist,maximum(tt_opt.ttv_rks))
