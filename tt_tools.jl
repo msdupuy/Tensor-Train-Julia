@@ -13,17 +13,17 @@ struct ttvector
 	ttv_vec :: Array{Array{Float64,3},1}
 
 	# ttv_dims is an vector of the dimensions n_i i=1,...,d
-	ttv_dims :: Array{Int64}
+	ttv_dims :: Array{Int64,1}
 
 	# ttv_rks is the array of all ranks of the tensor train matrices
 	# r_i i=1,...,d
-	ttv_rks :: Array{Int64}
+	ttv_rks :: Array{Int64,1}
 
 	# ttv_ot includes information about the orthogonality properties
 	# ttv_ot[i] =  1 if the i-th matrices are rightorthonormal
 	# ttv_ot[i] =  0 if there is no information or the i-th matrices aren't orthogonal
 	# ttv_ot[i] = -1 if the i-th matrices are leftorthonormal
-	ttv_ot :: Array{Int64}
+	ttv_ot :: Array{Int64,1}
 end
 
 struct ttoperator
@@ -34,17 +34,17 @@ struct ttoperator
 	tto_vec :: Array{Array{Float64,4},1}
 
 	# tto_dims stores the dimensions n_i i=1,...,d
-	tto_dims :: Array{Int64}
+	tto_dims :: Array{Int64,1}
 
 	# tto_rks is the array of all ranks of the tensor train matrices
 	# r_i i=1,...,d
-	tto_rks :: Array{Int64}
+	tto_rks :: Array{Int64,1}
 
 	# tto_ot is a matrix storing information about the orthoganlity properties
 	# tto_ot[i] =  1 if the i-th matrices are rightorthogonal
 	# tto_ot[i] =  0 if there is no information or the i-th matrices aren't orthogonal
 	# tto_ot[i] = -1 if the i-th matrices are leftorthogonal
-	tto_ot :: Array{Int64}
+	tto_ot :: Array{Int64,1}
 end
 
 function empty_tt()
