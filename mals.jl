@@ -49,6 +49,7 @@ function left_core_move_mals(xtt::ttvector,i::Integer,V,tol::Float64,rmax::Integ
 	s_trunc = sv_trunc(s_V,tol)
 	# Update the ranks to the truncated one
 	xtt.ttv_rks[i] = min(length(s_trunc),rmax)
+	println("Rank: $(xtt.ttv_rks[i]),	Max rank=$rmax")
 	println("Discarded weight: $((norm(s_V)-norm(s_V[1:xtt.ttv_rks[i]]))/norm(s_V))")
 
 	# xtt.ttv_vec[i+1] = truncated Transpose(v_V)
