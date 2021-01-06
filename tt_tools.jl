@@ -283,7 +283,7 @@ function tto_add(x::ttoperator,y::ttoperator)
     @assert(x.tto_dims == y.tto_dims, DimensionMismatch)
     d = length(x.tto_dims)
     tto_vec = Array{Array{Float64,4},1}(undef,d)
-    rks = vcat([1],x.tto_rks + y.tto_rks)
+    rks = vcat(1,x.tto_rks + y.tto_rks)
     rks[d+1] = 1
     #initialize tto_vec
     for k in 1:d
@@ -323,6 +323,26 @@ function test_tto_add()
     @test(isapprox(tto_to_tensor(z_tt),x+y))
 end
 
+function tto_to_ttv(A::ttoperator)
+	d = length(A.tto_dims)
+	xtt_vec = Array{Array{Float64,3},1}(undef,d)
+	A_rks = vcat(1,A.tto_rks)
+	for i in 1:d
+		xtt_vec[i] = reshape(A.tto_vec[i],A.tto_dims[i]^2,A_rks[i],A_rks[i+1])
+	end
+	return ttvector(xtt_vec,A.tto_dims.^2,A.tto_rks,A.tto_ot)
+end
+
+function ttv_to_tto(x::ttvector)
+	d = length(x.ttv_dims)
+	@assert(isqrt.(x.ttv_dims).^2 == x.ttv_dims, DimensionMismatch)
+	Att_vec = Array{Array{Float64,4},1}(undef,d)
+	x_rks = vcat(1,x.ttv_rks)
+	for i in 1:d
+		Att_vec[i] = reshape(x.ttv_vec[i],isqrt(x.ttv_dims[i]),isqrt(x.ttv_dims[i]),x_rks[i],x_rks[i+1])
+	end
+	return ttoperator(Att_vec,isqrt.(x.ttv_dims),x.ttv_rks,x.ttv_ot)
+end
 
 """
 A : n_1 x r_0 x r_1
@@ -360,8 +380,8 @@ function left_compression(A,B;tol=1e-12)
 end
 
 function tt_compression_par(X::ttvector;tol=1e-14,Imax=2)
-    Y = X.ttv_vec
-    rks = X.ttv_rks :: Array{Int64}
+    Y = deepcopy(X.ttv_vec) :: Array{Array{Float64,3},1}
+    rks = deepcopy(X.ttv_rks) :: Array{Int64}
     d = length(X.ttv_dims)
     rks_prev = zeros(Integer,d)
     i=0
@@ -381,6 +401,10 @@ function tt_compression_par(X::ttvector;tol=1e-14,Imax=2)
         end
     end
     return ttvector(Y,X.ttv_dims,rks,zeros(Integer,d))
+end
+
+function tt_compression_par(A::ttoperator;tol=1e-14,Imax=2)
+	return ttv_to_tto(tt_compression_par(tto_to_ttv(A);tol=tol,Imax=Imax))
 end
 
 function test_compression_par()
