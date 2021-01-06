@@ -99,8 +99,8 @@ function K_eigmin_mals(Gi::Array{Float64,5},Hi::Array{Float64,5},ttv_vec_i::Arra
 	Gtemp = view(Gi[:,1:K_dims[1],:,1:K_dims[1],:],:,:,:,:,:)
 	Htemp = view(Hi[1:K_dims[4],1:K_dims[4],:,:,:],:,:,:,:,:)
 	if it_solver || prod(K_dims) > itslv_thresh
-		function K_matfree(V;K_dims=K_dims)
-			H = zeros(Float64,K_dims...)
+		H = zeros(Float64,K_dims...)
+		function K_matfree(V;K_dims=K_dims,H=H)
 			@tensor H[a,b,c,d] = Gtemp[f,e,b,a,z]*Htemp[d,h,g,c,z]*reshape(V,K_dims...)[e,f,g,h]
 			return H[:]
 		end
