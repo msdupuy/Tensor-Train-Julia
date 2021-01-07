@@ -10,28 +10,25 @@ MALS auxiliary functions
 
 function updateHim!(xtt_vec, Atto, Hi, Him)
 	Htemp = @view(Him[1:size(xtt_vec,2),1:size(xtt_vec,2),:,:,:])
-	@tensor begin
-		N1[a,b,c,d] := xtt_vec[y,a,z]*view(Hi[1:size(xtt_vec,3),1:size(xtt_vec,3),:,:,:],:,:,:,:,:)[b,z,y,c,d] #size(ri,rip,nip,rAi)
-		N2[a,b,c] := xtt_vec[y,a,z]*N1[b,z,y,c] #size(ri,ri,rAi)
-		Htemp[a,b,c,d,e] = N2[a,b,z]*Atto[c,d,e,z] #size(ri,ri,ni,ni,rAim)
-	end
+	@tensoropt((a,b,z),N1[a,b,c,d] := xtt_vec[y,a,z]*view(Hi[1:size(xtt_vec,3),1:size(xtt_vec,3),:,:,:],:,:,:,:,:)[b,z,y,c,d]) #size(ri,rip,nip,rAi)
+	@tensoropt((a,b,z),N2[a,b,c] := xtt_vec[y,a,z]*N1[b,z,y,c])#size(ri,ri,rAi)
+	@tensoropt((a,b),Htemp[a,b,c,d,e] = N2[a,b,z]*Atto[c,d,e,z]) #size(ri,ri,ni,ni,rAim)
+	nothing
 end
 
 function updateH_bim!(xtt_vec, btt_vec, Hbi, Hbim)
 	Hbtemp = @view(Hbim[1:size(xtt_vec,2),:,:])
-	@tensor begin
-		N_b[a,b] := xtt_vec[z,a,y]*view(Hbi[1:size(xtt_vec,3),:,:],:,:,:)[y,z,b] #size(ri,rbi)
-		Hbtemp[a,b,c] = N_b[a,z]*btt_vec[b,c,z] #size(ri,ni,rbim)
-	end
+	@tensoropt((a,y),N_b[a,b] := xtt_vec[z,a,y]*view(Hbi[1:size(xtt_vec,3),:,:],:,:,:)[y,z,b]) #size(ri,rbi)
+	@tensor Hbtemp[a,b,c] = N_b[a,z]*btt_vec[b,c,z] #size(ri,ni,rbim)
+	nothing
 end
 
 function updateGip!(xtt_vec,Atto_vec,Gi,Gip)
 	Gtemp = @view(Gip[:,1:size(xtt_vec,3),:,1:size(xtt_vec,3),:])
-	@tensor begin
-		M1[a,b,c,d] := xtt_vec[y,z,a]*view(Gi[:,1:size(xtt_vec,2),:,1:size(xtt_vec,2),:],:,:,:,:,:)[y,z,b,c,d] #size(ri,ni,rim,rAi)
-		M2[a,b,c] := xtt_vec[y,z,a]*M1[b,y,z,c] #size(ri,ri,rAi)
-		Gtemp[a,b,c,d,e] = M2[d,b,z]*Atto_vec[a,c,z,e] #size(nip,ri,nip,ri,rAip)
-	end
+	@tensoropt((a,z,c), M1[a,b,c,d] := xtt_vec[y,z,a]*view(Gi[:,1:size(xtt_vec,2),:,1:size(xtt_vec,2),:],:,:,:,:,:)[y,z,b,c,d]) #size(ri,ni,rim,rAi)
+	@tensoropt((a,b,z), M2[a,b,c] := xtt_vec[y,z,a]*M1[b,y,z,c]) #size(ri,ri,rAi)
+	@tensoropt((b,d), Gtemp[a,b,c,d,e] = M2[d,b,z]*Atto_vec[a,c,z,e]) #size(nip,ri,nip,ri,rAip)
+	nothing
 end
 
 function updateG_bip!(xtt_vec,btt_vec,G_bi,G_bip)
@@ -42,7 +39,7 @@ function updateG_bip!(xtt_vec,btt_vec,G_bi,G_bip)
 	end
 end
 
-function left_core_move_mals(xtt::ttvector,i::Integer,V,tol::Float64,rmax::Integer)
+function left_core_move_mals(xtt::ttvector,i::Integer,V::Array{Float64,4},tol::Float64,rmax::Integer)
 	# Perform the truncated svd
 	u_V, s_V, v_V, = svd(reshape(V, prod(size(V)[1:2]), :))
 	# Determine the truncated rank
@@ -64,7 +61,7 @@ function left_core_move_mals(xtt::ttvector,i::Integer,V,tol::Float64,rmax::Integ
 	return xtt
 end
 
-function right_core_move_mals(xtt::ttvector,i::Integer,V,tol::Float64,rmax::Integer)
+function right_core_move_mals(xtt::ttvector,i::Integer,V::Array{Float64,4},tol::Float64,rmax::Integer)
 	# Perform the truncated svd
 	u_V, s_V, v_V, = svd(reshape(V, prod(size(V)[1:2]), :))
 	# Determine the truncated rank
@@ -94,24 +91,25 @@ function Ksolve_mals(Gi, Hi, G_bi, H_bi, rim, rip)
 	return reshape(V,size(K)[1:4]...)
 end
 
-function K_eigmin_mals(Gi::Array{Float64,5},Hi::Array{Float64,5},ttv_vec_i::Array{Float64,3},ttv_vec_ip::Array{Float64,3};it_solver=false,itslv_thresh=2500,maxiter=maxiter,tol=tol)
+function K_eigmin_mals(Gi::Array{Float64,5},Hi::Array{Float64,5},ttv_vec_i::Array{Float64,3},ttv_vec_ip::Array{Float64,3};it_solver=false,itslv_thresh=1024::Int64,maxiter=maxiter::Int64,tol=tol::Float64)
 	K_dims = [size(ttv_vec_i,2),size(ttv_vec_i,1),size(ttv_vec_ip,1),size(ttv_vec_ip,3)]
 	Gtemp = view(Gi[:,1:K_dims[1],:,1:K_dims[1],:],:,:,:,:,:)
 	Htemp = view(Hi[1:K_dims[4],1:K_dims[4],:,:,:],:,:,:,:,:)
 	if it_solver || prod(K_dims) > itslv_thresh
 		H = zeros(Float64,K_dims...)
-		function K_matfree(V;K_dims=K_dims,H=H)
-			@tensor H[a,b,c,d] = Gtemp[f,e,b,a,z]*Htemp[d,h,g,c,z]*reshape(V,K_dims...)[e,f,g,h]
+		function K_matfree(V;K_dims=K_dims::Array{Int64,1},H=H)
+			@tensoropt((a,d,e,h), H[a,b,c,d] = Gtemp[f,e,b,a,z]*Htemp[d,h,g,c,z]*reshape(V,K_dims...)[e,f,g,h])
 			return H[:]
 		end
 		X0 = zeros(Float64,K_dims...)
-		@tensor X0[a,b,c,d] := ttv_vec_i[b,a,z]*ttv_vec_ip[c,z,d]
+		@tensoropt((a,z,d), X0[a,b,c,d] := ttv_vec_i[b,a,z]*ttv_vec_ip[c,z,d])
 		r = lobpcg(LinearMap(K_matfree,prod(K_dims);issymmetric = true),false,X0[:],1;maxiter=maxiter,tol=tol)
-		return r.λ[1], reshape(r.X[:,1],K_dims...)
+		return r.λ[1]::Float64, reshape(r.X[:,1],K_dims...)::Array{Float64,4}
 	else
-		@tensor K[a,b,c,d,e,f,g,h] := Gtemp[f,e,b,a,z]*Htemp[d,h,g,c,z] #size(rim,ni,nip,rip,rim,ni,nip,rip)
+		K = zeros(Float64,K_dims...,K_dims...)
+		@tensoropt((a,d,e,h), K[a,b,c,d,e,f,g,h] = Gtemp[f,e,b,a,z]*Htemp[d,h,g,c,z]) #size(rim,ni,nip,rip,rim,ni,nip,rip)
 		F = eigen(reshape(K,prod(K_dims),:))
-		return real(F.values[1]),real.(reshape(F.vectors[:,1],K_dims...))
+		return real(F.values[1])::Float64,real.(reshape(F.vectors[:,1],K_dims...))::Array{Float64,4}
 	end	
 end
 
@@ -195,7 +193,7 @@ function mals(A :: ttoperator, b :: ttvector, tt_start :: ttvector; tol=1e-12::F
 	return tt_opt
 end
 
-function mals_eig(A :: ttoperator, tt_start :: ttvector; tol=1e-12::Float64,sweep_schedule=[2]::Array{Int,1},rmax_schedule=[round(Int,sqrt(prod(tt_start.ttv_dims)))]::Array{Int,1},it_solver=false,linsolv_maxiter=200,linsolv_tol=max(sqrt(tol),1e-8))
+function mals_eig(A :: ttoperator, tt_start :: ttvector; tol=1e-12::Float64,sweep_schedule=[2]::Array{Int64,1},rmax_schedule=[round(Int,sqrt(prod(tt_start.ttv_dims)))]::Array{Int64,1},it_solver=false::Bool,linsolv_maxiter=200::Int64,linsolv_tol=max(sqrt(tol),1e-8)::Float64)
 	# mals_eig finds the minimum of the operator J(x)=<Ax,x>/<x,x>
 	# input:
 	# 	A: the tensor operator in its tensor train format
