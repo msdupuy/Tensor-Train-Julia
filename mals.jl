@@ -96,14 +96,16 @@ function K_eigmin_mals(Gi::Array{Float64,5},Hi::Array{Float64,5},ttv_vec_i::Arra
 	Gtemp = view(Gi[:,1:K_dims[1],:,1:K_dims[1],:],:,:,:,:,:)
 	Htemp = view(Hi[1:K_dims[4],1:K_dims[4],:,:,:],:,:,:,:,:)
 	if it_solver || prod(K_dims) > itslv_thresh
-		H = zeros(Float64,K_dims...)
+		H = zeros(Float64,prod(K_dims))
 		function K_matfree(V;K_dims=K_dims::Array{Int64,1},H=H)
-			@tensoropt((a,d,e,h), H[a,b,c,d] = Gtemp[f,e,b,a,z]*Htemp[d,h,g,c,z]*reshape(V,K_dims...)[e,f,g,h])
-			return H[:]
+			Hrshp = reshape(H,K_dims...)
+			@tensoropt((a,d,e,h), Hrshp[a,b,c,d] = Gtemp[f,e,b,a,z]*Htemp[d,h,g,c,z]*reshape(V,K_dims...)[e,f,g,h])
+			return H::Array{Float64,1}
 		end
-		X0 = zeros(Float64,K_dims...)
-		@tensoropt((a,z,d), X0[a,b,c,d] := ttv_vec_i[b,a,z]*ttv_vec_ip[c,z,d])
-		r = lobpcg(LinearMap(K_matfree,prod(K_dims);issymmetric = true),false,X0[:],1;maxiter=maxiter,tol=tol)
+		X0 = zeros(Float64,prod(K_dims))
+		X0_temp = reshape(X0,K_dims...)
+		@tensoropt((a,z,d), X0_temp[a,b,c,d] = ttv_vec_i[b,a,z]*ttv_vec_ip[c,z,d])
+		r = lobpcg(LinearMap(K_matfree,prod(K_dims);issymmetric = true),false,X0,1;maxiter=maxiter,tol=tol)
 		return r.λ[1]::Float64, reshape(r.X[:,1],K_dims...)::Array{Float64,4}
 	else
 		K = zeros(Float64,K_dims...,K_dims...)
