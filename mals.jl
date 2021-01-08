@@ -55,8 +55,6 @@ function left_core_move_mals(xtt::ttvector,i::Integer,V::Array{Float64,4},tol::F
 
 	# xtt.ttv_vec[i] = truncated u_V * Diagonal(s_V)
 	xtt.ttv_vec[i] = permutedims(reshape(u_V[:, 1:xtt.ttv_rks[i]] * Diagonal(s_trunc[1:xtt.ttv_rks[i]]),size(V,1),size(V,2),:),[2,1,3])
-#		permutedims(reshape(u_V[:, 1:ri_trunc] * Diagonal(s_trunc),
-#							rim, ni, :), [2 1 3])
 	xtt.ttv_ot[i] = 0
 	return xtt
 end
@@ -100,7 +98,7 @@ function K_eigmin_mals(Gi::Array{Float64,5},Hi::Array{Float64,5},ttv_vec_i::Arra
 		function K_matfree(V;K_dims=K_dims::Array{Int64,1},H=H)
 			Hrshp = reshape(H,K_dims...)
 			@tensoropt((a,d,e,h), Hrshp[a,b,c,d] = Gtemp[f,e,b,a,z]*Htemp[d,h,g,c,z]*reshape(V,K_dims...)[e,f,g,h])
-			return H::Array{Float64,1}
+			return H
 		end
 		X0 = zeros(Float64,prod(K_dims))
 		X0_temp = reshape(X0,K_dims...)
@@ -281,5 +279,6 @@ function mals_eig(A :: ttoperator, tt_start :: ttvector; tol=1e-12::Float64,swee
 			end
 		end
 	end
+	return E,tt_opt, r_hist
 end
 
