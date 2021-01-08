@@ -28,18 +28,14 @@ end
 function left_core_move(x_tt::ttvector,V::Array{Float64,3},i::Int,x_rks)
 	rim2,rim,ri = x_rks[i-1],x_rks[i],x_rks[i+1]
 	ni = x_tt.ttv_dims[i]
-#	rim_new = min(ri*ni, rim)
 
 	# Prepare core movements
-#	rim_new = min(ri*ni, rim)
 	QV = zeros(ni*ri, ni*ri)
 	RV = zeros(rim, rim)
-#	x_tt.ttv_rks[i-1] = rim_new
 	QV, RV = qr(reshape(permutedims(V, [1 3 2]), ni*ri, :)) #QV: ni*ri x ni*ri; RV ni*ri x rim
 
 	# Apply core movement 3.2
 	x_tt.ttv_vec[i] = permutedims(reshape(QV[:, 1:rim], ni, ri, :),[1 3 2])
-#	x_tt.ttv_vec[i][1:ni, (rim_new+1):rim, 1:ri] = zeros(ni, rim-rim_new, ri)
 	x_tt.ttv_ot[i] = 1
 
 	# Apply core movement 3.2
