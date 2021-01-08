@@ -25,32 +25,30 @@ function init_H_and_Hb(x_tt::ttvector,A_tto::ttoperator;b_tt::ttvector=empty_tt(
 	return H,H_b
 end
 
-function left_core_move(x_tt::ttvector,V,i::Int,x_rks,x_dims)
+function left_core_move(x_tt::ttvector,V::Array{Float64,3},i::Int,x_rks)
 	rim2,rim,ri = x_rks[i-1],x_rks[i],x_rks[i+1]
-	nim,ni = x_dims[i-1],x_dims[i]
-	rim_new = min(ri*ni, rim)
+	ni = x_tt.ttv_dims[i]
+#	rim_new = min(ri*ni, rim)
 
 	# Prepare core movements
-	rim_new = min(ri*ni, rim)
+#	rim_new = min(ri*ni, rim)
 	QV = zeros(ni*ri, ni*ri)
 	RV = zeros(rim, rim)
-	x_tt.ttv_rks[i-1] = rim_new
-	QV[1:ni*ri, 1:ni*ri], RV[1:rim_new, 1:rim] =
-			qr(reshape(permutedims(V[1:ni, 1:rim, 1:ri], [1 3 2]), ni*ri, :))
+#	x_tt.ttv_rks[i-1] = rim_new
+	QV, RV = qr(reshape(permutedims(V, [1 3 2]), ni*ri, :)) #QV: ni*ri x ni*ri; RV ni*ri x rim
 
 	# Apply core movement 3.2
-	x_tt.ttv_vec[i][1:ni, 1:rim_new, 1:ri] =
-			permutedims(reshape(QV[1:ni*ri, 1:rim_new], ni, ri, :),[1 3 2])
-	x_tt.ttv_vec[i][1:ni, (rim_new+1):rim, 1:ri] = zeros(ni, rim-rim_new, ri)
+	x_tt.ttv_vec[i] = permutedims(reshape(QV[:, 1:rim], ni, ri, :),[1 3 2])
+#	x_tt.ttv_vec[i][1:ni, (rim_new+1):rim, 1:ri] = zeros(ni, rim-rim_new, ri)
 	x_tt.ttv_ot[i] = 1
 
 	# Apply core movement 3.2
-	@tensor x_tt.ttv_vec[i-1][a,b,c] := x_tt.ttv_vec[i-1][a,b,z]*RV[1:rim_new, 1:rim][c,z] #size (nim,rim2,rim_new)
+	@tensoropt((b,c,z) , x_tt.ttv_vec[i-1][a,b,c] := x_tt.ttv_vec[i-1][a,b,z]*RV[1:rim,:][c,z]) #size (nim,rim2,rim_new)
 	x_tt.ttv_ot[i-1] = 0
-	return x_tt,rim_new
+	return x_tt,rim
 end
 
-function right_core_move(x_tt::ttvector,V,i::Int,x_rks,x_dims)
+function right_core_move(x_tt::ttvector,V::Array{Float64,3},i::Int,x_rks,x_dims)
 	rim,ri,rip = x_rks[i],x_rks[i+1],x_rks[i+2]
 	ni,nip = x_dims[i],x_dims[i+1]
 	ri_new = min(rim*ni, ri)
@@ -72,13 +70,11 @@ function right_core_move(x_tt::ttvector,V,i::Int,x_rks,x_dims)
 	return x_tt,ri_new
 end
 
-function update_G_Gb!(x_tt::ttvector,A_tto::ttoperator,i,Gi,Gip;G_bi=[],G_bip=[],b_tt::ttvector=empty_tt())
-	@tensor begin
-		M1[a,b,c,d] := x_tt.ttv_vec[i][y,z,a]*Gi[y,z,b,c,d] #size (ri,ni,rim,rAi)
-		M2[a,b,c] := x_tt.ttv_vec[i][y,z,a]*M1[b,y,z,c] #size (ri,ri,rAi)
-		Gip[a,b,c,d,e] = M2[d,b,z]*A_tto.tto_vec[i+1][a,c,z,e]
-	end
-	if G_bi != []
+function update_G_Gb!(x_tt::ttvector,A_tto::ttoperator,i,Gi::Array{Float64,5},Gip::Array{Float64,5};G_bi=Float64[],G_bip=Float64[],b_tt::ttvector=empty_tt())
+	@tensoropt((a,c,z), M1[a,b,c,d] := x_tt.ttv_vec[i][y,z,a]*Gi[y,z,b,c,d]) #size (ri,ni,rim,rAi)
+	@tensoropt((a,b,z), M2[a,b,c] := x_tt.ttv_vec[i][y,z,a]*M1[b,y,z,c]) #size (ri,ri,rAi)
+	@tensoropt((b,d), Gip[a,b,c,d,e] = M2[d,b,z]*A_tto.tto_vec[i+1][a,c,z,e])
+	if G_bi != Float64[]
 		@tensor begin
 			M_b[a,b] := G_bi[a,y,z]*x_tt.ttv_vec[i][y,z,b]
 			G_bip[a,b,c] = b_tt.ttv_vec[i+1][b,z,a]*M_b[z,c] # j_(i+1), x_(i+1), k_i
@@ -86,13 +82,11 @@ function update_G_Gb!(x_tt::ttvector,A_tto::ttoperator,i,Gi,Gip;G_bi=[],G_bip=[]
 	end
 end
 
-function update_H_Hb!(x_tt::ttvector,A_tto::ttoperator,i,Hi,Him;H_bi=[],H_bim=[],b_tt::ttvector=empty_tt())
-	@tensor begin
-		N1[a,b,c,d] := x_tt.ttv_vec[i][a,b,z]*Hi[z,c,d] #size (ni,rim,ri,rAi)
-		N2[a,b,c,d] := N1[y,a,b,z]*A_tto.tto_vec[i][y,c,d,z] #size (rim,ri,ni,rAim)
-		Him[a,b,c] = x_tt.ttv_vec[i][z,b,y]*N2[a,y,z,c] #k_i,k'_i,l_i
-	end
-	if H_bi != []
+function update_H_Hb!(x_tt::ttvector,A_tto::ttoperator,i,Hi::Array{Float64,3},Him::Array{Float64,3};H_bi=Float64[],H_bim=Float64[],b_tt::ttvector=empty_tt())
+	@tensoropt((b,c,z), N1[a,b,c,d] := x_tt.ttv_vec[i][a,b,z]*Hi[z,c,d]) #size (ni,rim,ri,rAi)
+	@tensoropt((a,b), N2[a,b,c,d] := N1[y,a,b,z]*A_tto.tto_vec[i][y,c,d,z]) #size (rim,ri,ni,rAim)
+	@tensoropt((a,b,y), Him[a,b,c] = x_tt.ttv_vec[i][z,b,y]*N2[a,y,z,c]) #k_i,k'_i,l_i
+	if H_bi != Float64[]
 		@tensor begin
 			N_b[a,b,c] := x_tt.ttv_vec[i][a,b,z]*H_bi[z,c] #size(ni,rim,rbi)
 			H_bim[a,b] = N_b[y,a,z]*b_tt.ttv_vec[i][y,b,z] #size(rbim, rim)
@@ -116,7 +110,7 @@ function K_eigmin(Gi,Hi,ttv_vec;it_solver=false,itslv_thresh=1024::Int64,maxiter
 		H = zeros(Float64,prod(K_dims))
 		function K_matfree(V;Gi=Gi,Hi=Hi,K_dims=K_dims,H=H)
 			Hrshp = reshape(H,K_dims...)
-			@tensor Hrshp[a,b,c] = Gi[d,e,a,b,z]*Hi[f,c,z]*reshape(V,K_dims...)[d,e,f]
+			@tensoropt((b,c,e,f), Hrshp[a,b,c] = Gi[d,e,a,b,z]*Hi[f,c,z]*reshape(V,K_dims...)[d,e,f])
 			return H
 		end
 		r = lobpcg(LinearMap(K_matfree,prod(K_dims);issymmetric = true),false,ttv_vec[:],1;maxiter=maxiter,tol=tol)
@@ -124,7 +118,7 @@ function K_eigmin(Gi,Hi,ttv_vec;it_solver=false,itslv_thresh=1024::Int64,maxiter
 	else
 		K = zeros(Float64,prod(K_dims),prod(K_dims))
 		Krshp = reshape(K,K_dims...,K_dims...)
-		@tensor Krshp[a,b,c,d,e,f] = Gi[d,e,a,b,z]*Hi[f,c,z] #size (ni,rim,ri,ni,rim,ri)
+		@tensoropt((b,c,e,f), Krshp[a,b,c,d,e,f] = Gi[d,e,a,b,z]*Hi[f,c,z]) #size (ni,rim,ri,ni,rim,ri)
 		F = eigen(K)
 		return real(F.values[1]),real.(reshape(F.vectors[:,1],K_dims...))
 	end	
@@ -161,7 +155,7 @@ function als(A :: ttoperator, b :: ttvector, tt_start :: ttvector ;sweep_count=2
 	dims = tt_start.ttv_dims
 	d = length(dims)
 	# Define the array of ranks of tt_opt [r_0=1,r_1,...,r_d]
-	rks = vcat([1], tt_start.ttv_rks)
+	rks = vcat(1, tt_start.ttv_rks)
 
 	# Initialize the arrays of G and G_b
 	G = Array{Array{Float64}}(undef, d)
@@ -204,7 +198,7 @@ function als(A :: ttoperator, b :: ttvector, tt_start :: ttvector ;sweep_count=2
 				println("Backward sweep: core optimization $i out of $d")
 				# Define V as solution of K*x=Pb in x
 				V = Ksolve(G[i],G_b[i],H[i],H_b[i])
-				tt_opt,rks[i] = left_core_move(tt_opt,V,i,rks,dims)
+				tt_opt,rks[i] = left_core_move(tt_opt,V,i,rks)
 				update_H_Hb!(tt_opt,A,i,H[i],H[i-1];H_bi=H_b[i],H_bim=H_b[i-1],b_tt=b)
 			end
 		end
@@ -215,7 +209,7 @@ end
 """
 Warning probably only works for left-orthogonal starting tensor
 """
-function als_eig(A :: ttoperator, tt_start :: ttvector ; sweep_schedule=[2],rmax_schedule=[maximum(tt_start.ttv_rks)],noise_schedule=zeros(length(rmax_schedule)),tol=1e-10,it_solver=false,itslv_thresh=2500,maxiter=1024)
+function als_eig(A :: ttoperator, tt_start :: ttvector ; sweep_schedule=[2]::Array{Int64,1},rmax_schedule=[maximum(tt_start.ttv_rks)]::Array{Int64,1},noise_schedule=zeros(length(rmax_schedule))::Array{Float64,1},tol=1e-10::Float64,it_solver=false::Bool,itslv_thresh=1024::Int64,maxiter=200::Int64)
 	# als finds the minimum of the operator J:1/2*<Ax,Ax> - <x,b>
 	# input:
 	# 	A: the tensor operator in its tensor train format
@@ -232,7 +226,7 @@ function als_eig(A :: ttoperator, tt_start :: ttvector ; sweep_schedule=[2],rmax
 	d = length(dims)
 	E = zeros(Float64,2d*(sweep_schedule[end]+1)) #output eigenvalue
 	# Define the array of ranks of tt_opt [r_0=1,r_1,...,r_d]
-	rks = vcat([1], tt_start.ttv_rks)
+	rks = vcat(1, tt_start.ttv_rks)
 
 	# Initialize the array G
 	G = Array{Array{Float64}}(undef, d)
@@ -289,10 +283,11 @@ function als_eig(A :: ttoperator, tt_start :: ttvector ; sweep_schedule=[2],rmax
 			i_μit += 1
 			E[i_μit],V = K_eigmin(G[i],H[i],tt_opt.ttv_vec[i];it_solver=it_solver,itslv_thresh=itslv_thresh,maxiter=maxiter,tol=tol)
 			println("Eigenvalue: $(E[i_μit])")
-			tt_opt,rks[i] = left_core_move(tt_opt,V,i,vcat(1,tt_opt.ttv_rks),dims)
+			tt_opt,rks[i] = left_core_move(tt_opt,V,i,vcat(1,tt_opt.ttv_rks))
 			update_H_Hb!(tt_opt,A,i,H[i],H[i-1])
 		end
 	end
+	return E[1:i_μit],tt_opt
 end
 
 """
@@ -379,7 +374,7 @@ function als_gen_eig(A :: ttoperator, S::ttoperator, tt_start :: ttvector ; swee
 			i_μit += 1
 			E[i_μit],V = K_eiggenmin(G[i],H[i],K[i],L[i],tt_opt.ttv_vec[i];it_solver=it_solver,itslv_thresh=itslv_thresh)
 			println("Eigenvalue: $(E[i_μit])")
-			tt_opt,rks[i] = left_core_move(tt_opt,V,i,rks,dims)
+			tt_opt,rks[i] = left_core_move(tt_opt,V,i,rks)
 			update_H_Hb!(tt_opt,A,i,H[i],H[i-1])
 			update_H_Hb!(tt_opt,S,i,L[i],L[i-1])
 		end
