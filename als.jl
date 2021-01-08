@@ -91,11 +91,11 @@ function Ksolve(Gi,G_bi,Hi,H_bi)
 	return V
 end
 
-function K_eigmin(Gi::Array{Float64,5},Hi::Array{Float64,5},ttv_vec::Array{Float64,3};it_solver=false,itslv_thresh=1024::Int64,maxiter=maxiter::Int64,tol=tol::Float64)
+function K_eigmin(Gi::Array{Float64,5},Hi::Array{Float64,3},ttv_vec::Array{Float64,3};it_solver=false,itslv_thresh=1024::Int64,maxiter=maxiter::Int64,tol=tol::Float64)
 	K_dims = [size(Gi,1),size(Gi,2),size(Hi,1)]
 	if it_solver || prod(K_dims) > itslv_thresh
 		H = zeros(Float64,prod(K_dims))
-		function K_matfree(V;Gi=Gi::Array{Float64,5},Hi=Hi::Array{Float64,5},K_dims=K_dims,H=H)
+		function K_matfree(V;Gi=Gi::Array{Float64,5},Hi=Hi::Array{Float64,3},K_dims=K_dims,H=H)
 			Hrshp = reshape(H,K_dims...)
 			@tensoropt((b,c,e,f), Hrshp[a,b,c] = Gi[d,e,a,b,z]*Hi[f,c,z]*reshape(V,K_dims...)[d,e,f])
 			return H
