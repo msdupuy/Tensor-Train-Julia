@@ -12,11 +12,9 @@ function init_H_and_Hb(x_tt::ttvector,A_tto::ttoperator;b_tt::ttvector=empty_tt(
 		H_b[d] = ones(1,1)
 	end
 	for i = d : -1 : 2
-		@tensor begin
-			N1[a,b,c,d] := x_tt.ttv_vec[i][a,b,z]*H[i][z,c,d]
-			N2[a,b,c,d] := N1[y,a,b,z]*A_tto.tto_vec[i][y,c,d,z]
-			H[i-1][a,b,c] := x_tt.ttv_vec[i][z,b,y]*N2[a,y,z,c] #size (rim, rim, rAim)
-		end
+		@tensoropt((b,c,z), N1[a,b,c,d] := x_tt.ttv_vec[i][a,b,z]*H[i][z,c,d])
+		@tensoropt((a,b), N2[a,b,c,d] := N1[y,a,b,z]*A_tto.tto_vec[i][y,c,d,z])
+		@tensoropt((a,b,y), H[i-1][a,b,c] := x_tt.ttv_vec[i][z,b,y]*N2[a,y,z,c]) #size (rim, rim, rAim)
 		if !isempty(b_tt)
 			@tensor begin
 				N_b[a,b,c] := x_tt.ttv_vec[i][a,b,z]*H_b[i][z,c] #size (ni,rim,rbi)
@@ -112,19 +110,22 @@ function Ksolve(Gi,G_bi,Hi,H_bi)
 	return V
 end
 
-function K_eigmin(Gi,Hi,ttv_vec;it_solver=false,itslv_thresh=2500)
+function K_eigmin(Gi,Hi,ttv_vec;it_solver=false,itslv_thresh=1024::Int64,maxiter=maxiter::Int64,tol=tol::Float64)
 	K_dims = [size(Gi,1),size(Gi,2),size(Hi,1)]
 	if it_solver || prod(K_dims) > itslv_thresh
-		function K_matfree(V;Gi=Gi,Hi=Hi,K_dims=K_dims)
-			H = zeros(K_dims...)
-			@tensor H[a,b,c] = Gi[d,e,a,b,z]*Hi[f,c,z]*reshape(V,K_dims...)[d,e,f]
-			return H[:]
+		H = zeros(Float64,prod(K_dims))
+		function K_matfree(V;Gi=Gi,Hi=Hi,K_dims=K_dims,H=H)
+			Hrshp = reshape(H,K_dims...)
+			@tensor Hrshp[a,b,c] = Gi[d,e,a,b,z]*Hi[f,c,z]*reshape(V,K_dims...)[d,e,f]
+			return H
 		end
-		r = lobpcg(LinearMap(K_matfree,prod(K_dims);issymmetric = true),false,ttv_vec[:],1;maxiter=1000)
+		r = lobpcg(LinearMap(K_matfree,prod(K_dims);issymmetric = true),false,ttv_vec[:],1;maxiter=maxiter,tol=tol)
 		return r.λ[1], reshape(r.X[:,1],K_dims...)
 	else
-		@tensor K[a,b,c,d,e,f] := Gi[d,e,a,b,z]*Hi[f,c,z] #size (ni,rim,ri,ni,rim,ri)
-		F = eigen(reshape(K,prod(K_dims),:))
+		K = zeros(Float64,prod(K_dims),prod(K_dims))
+		Krshp = reshape(K,K_dims...,K_dims...)
+		@tensor Krshp[a,b,c,d,e,f] = Gi[d,e,a,b,z]*Hi[f,c,z] #size (ni,rim,ri,ni,rim,ri)
+		F = eigen(K)
 		return real(F.values[1]),real.(reshape(F.vectors[:,1],K_dims...))
 	end	
 end
@@ -214,7 +215,7 @@ end
 """
 Warning probably only works for left-orthogonal starting tensor
 """
-function als_eig(A :: ttoperator, tt_start :: ttvector ; sweep_schedule=[2],rmax_schedule=[maximum(tt_start.ttv_rks)],noise_schedule=zeros(length(rmax_schedule)),tol=1e-10,it_solver=false,itslv_thresh=2500)
+function als_eig(A :: ttoperator, tt_start :: ttvector ; sweep_schedule=[2],rmax_schedule=[maximum(tt_start.ttv_rks)],noise_schedule=zeros(length(rmax_schedule)),tol=1e-10,it_solver=false,itslv_thresh=2500,maxiter=1024)
 	# als finds the minimum of the operator J:1/2*<Ax,Ax> - <x,b>
 	# input:
 	# 	A: the tensor operator in its tensor train format
@@ -272,7 +273,7 @@ function als_eig(A :: ttoperator, tt_start :: ttvector ; sweep_schedule=[2],rmax
 			if tt_opt.ttv_ot[i] == 0
 				# Define V as solution of K*x=Pb in x
 				i_μit += 1
-				E[i_μit],V = K_eigmin(G[i],H[i],tt_opt.ttv_vec[i];it_solver=it_solver,itslv_thresh=itslv_thresh)
+				E[i_μit],V = K_eigmin(G[i],H[i],tt_opt.ttv_vec[i];it_solver=it_solver,itslv_thresh=itslv_thresh,maxiter=maxiter,tol=tol)
 				println("Eigenvalue: $(E[i_μit])")
 				tt_opt, rks[i+1] = right_core_move(tt_opt,V,i,vcat(1,tt_opt.ttv_rks),dims)
 			end
@@ -286,7 +287,7 @@ function als_eig(A :: ttoperator, tt_start :: ttvector ; sweep_schedule=[2],rmax
 			println("Backward sweep: core optimization $(d+1-i) out of $(d-1)")
 			# Define V as solution of K*x=Pb in x
 			i_μit += 1
-			E[i_μit],V = K_eigmin(G[i],H[i],tt_opt.ttv_vec[i];it_solver=it_solver,itslv_thresh=itslv_thresh)
+			E[i_μit],V = K_eigmin(G[i],H[i],tt_opt.ttv_vec[i];it_solver=it_solver,itslv_thresh=itslv_thresh,maxiter=maxiter,tol=tol)
 			println("Eigenvalue: $(E[i_μit])")
 			tt_opt,rks[i] = left_core_move(tt_opt,V,i,vcat(1,tt_opt.ttv_rks),dims)
 			update_H_Hb!(tt_opt,A,i,H[i],H[i-1])
