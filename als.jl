@@ -32,7 +32,7 @@ function left_core_move(x_tt::ttvector,V::Array{Float64,3},i::Int,x_rks)
 	# Prepare core movements
 	QV, RV = qr(reshape(permutedims(V, [1 3 2]), ni*ri, :)) #QV: ni*ri x ni*ri; RV ni*ri x rim
 
-	# Apply core movement 3.2
+	# Apply core movement 3.1
 	x_tt.ttv_vec[i] = permutedims(reshape(QV[:, 1:rim], ni, ri, :),[1 3 2])
 	x_tt.ttv_ot[i] = 1
 
@@ -91,11 +91,11 @@ function Ksolve(Gi,G_bi,Hi,H_bi)
 	return V
 end
 
-function K_eigmin(Gi,Hi,ttv_vec;it_solver=false,itslv_thresh=1024::Int64,maxiter=maxiter::Int64,tol=tol::Float64)
+function K_eigmin(Gi::Array{Float64,5},Hi::Array{Float64,5},ttv_vec::Array{Float64,3};it_solver=false,itslv_thresh=1024::Int64,maxiter=maxiter::Int64,tol=tol::Float64)
 	K_dims = [size(Gi,1),size(Gi,2),size(Hi,1)]
 	if it_solver || prod(K_dims) > itslv_thresh
 		H = zeros(Float64,prod(K_dims))
-		function K_matfree(V;Gi=Gi,Hi=Hi,K_dims=K_dims,H=H)
+		function K_matfree(V;Gi=Gi::Array{Float64,5},Hi=Hi::Array{Float64,5},K_dims=K_dims,H=H)
 			Hrshp = reshape(H,K_dims...)
 			@tensoropt((b,c,e,f), Hrshp[a,b,c] = Gi[d,e,a,b,z]*Hi[f,c,z]*reshape(V,K_dims...)[d,e,f])
 			return H
@@ -235,7 +235,7 @@ function als_eig(A :: ttoperator, tt_start :: ttvector ; sweep_schedule=[2]::Arr
 			if i_schedule > length(sweep_schedule)
 				return E[1:i_μit],tt_opt
 			else
-				tt_opt = tt_up_rks(tt_opt,rmax_schedule[i_schedule])
+				tt_opt = tt_up_rks(tt_opt,rmax_schedule[i_schedule];ϵ_wn=noise_schedule[i_schedule])
 				for i in 1:d-1
 					Htemp = zeros(tt_opt.ttv_rks[i],tt_opt.ttv_rks[i],A.tto_rks[i])
 					Htemp[1:size(H[i],1),1:size(H[i],2),1:size(H[i],3)] = H[i] 
