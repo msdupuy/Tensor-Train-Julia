@@ -145,43 +145,52 @@ function ttv_to_tensor(ttv :: ttvector)
 	return tensor
 end
 
-function tt_up_rks_noise(tt_vec,rkm,rk,ϵ_wn)
+#returns partial isometry Q ∈ R^{n x m}
+function rand_orthogonal(n,m)
+    N = max(n,m)
+    q,r = qr(rand(N,N))
+    return q[1:n,1:m]
+end
+
+function tt_up_rks_noise(tt_vec,tt_ot_i,rkm,rk,ϵ_wn)
 	vec_out = zeros(Float64,size(tt_vec,1),rkm,rk)
 	vec_out[:,1:size(tt_vec,2),1:size(tt_vec,3)] = tt_vec
 	if !iszero(ϵ_wn)
-		vec_out[:,size(tt_vec,2)+1:rkm,size(tt_vec,3)+1:rk] = ϵ_wn*randn(size(tt_vec,1),rkm-size(tt_vec,2),rk-size(tt_vec,3))
+		if rkm == size(tt_vec,2) && rk>size(tt_vec,3)
+			Q = rand_orthogonal(size(tt_vec,1)*rkm,rk-size(tt_vec,3))
+			vec_out[:,:,size(tt_vec,3)+1:rk] = ϵ_wn*reshape(Q,size(tt_vec,1),rkm,rk-size(tt_vec,3))
+			tt_ot_i =0
+		elseif rk == size(tt_vec,3) && rkm>size(tt_vec,2)
+			Q = rand_orthogonal(size(tt_vec,1)*rk,rkm-size(tt_vec,2))
+			vec_out[:,size(tt_vec,2)+1:rkm,:] = ϵ_wn*permutedims(reshape(Q,rk,size(tt_vec,1),rkm-size(tt_vec,2)),[2 3 1])
+			tt_ot_i =0
+		elseif rk>size(tt_vec,3) && rkm>size(tt_vec,2)
+			if tt_ot_i == -1 #leftorthogonal
+				Q = rand_orthogonal(size(tt_vec,1)*(rkm-size(tt_vec,2)),rk-size(tt_vec,3))
+				vec_out[:,size(tt_vec,2)+1:rkm,size(tt_vec,3)+1:rk] = ϵ_wn*reshape(Q,size(tt_vec,1),rkm-size(tt_vec,2),rk-size(tt_vec,3))
+			else #tt_ot_i =1 or 0
+				Q = rand_orthogonal(rkm-size(tt_vec,2),size(tt_vec,1)*(rk-size(tt_vec,3)))
+				vec_out[:,size(tt_vec,2)+1:rkm,size(tt_vec,3)+1:rk] = ϵ_wn*permutedims(reshape(Q,rkm-size(tt_vec,2),size(tt_vec,1),rk-size(tt_vec,3)),[2,1,3])
+			end
+		end
 	end
-	return vec_out
+	return vec_out,tt_ot_i
 end
 
 function tt_up_rks(x_tt::ttvector,rk_max::Int;rks=vcat(1,rk_max*ones(Int,length(x_tt.ttv_dims)-1),1),ϵ_wn=0.0)
 	d = length(x_tt.ttv_dims)
 	vec_out = Array{Array{Float64}}(undef,d)
+	out_ot = zeros(Int64,d)
 	@assert(rk_max >= maximum(x_tt.ttv_rks),"New bond dimension too low")
-	n_in = x_tt.ttv_dims[1]
-	n_out = prod(x_tt.ttv_dims[2:d])
-	rks[2] = min(n_in,n_out,rks[2])
-	vec_out[1] = tt_up_rks_noise(x_tt.ttv_vec[1],1,rks[2],ϵ_wn)
-	out_ot = zeros(Int,d)
-	if rks[2] == x_tt.ttv_rks[1] && x_tt.ttv_ot[1] == -1
-		out_ot[1] = -1
-	end
-	for i in 2:d-1
+	n_in = 1
+	n_out = prod(x_tt.ttv_dims)
+	for i in 1:d
 		n_in *= x_tt.ttv_dims[i]
 		n_out = Int(n_out/x_tt.ttv_dims[i])
 		rks[i+1] = min(rks[i+1],n_in,n_out)
-		vec_out[i] = tt_up_rks_noise(x_tt.ttv_vec[i],rks[i],rks[i+1],ϵ_wn)
-		if x_tt.ttv_ot[i] == 1 && x_tt.ttv_rks[i-1] == rks[i] 
-			out_ot[i] = 1
-		elseif x_tt.ttv_ot[i] == -1 && x_tt.ttv_rks[i] == rks[i+1]
-			out_ot[i] = -1
-		end
+		vec_out[i],out_ot[i] = tt_up_rks_noise(x_tt.ttv_vec[i],x_tt.ttv_ot[i],rks[i],rks[i+1],ϵ_wn)
 	end	
-	if rks[d] == x_tt.ttv_rks[d-1] && x_tt.ttv_ot[d] == 1
-		out_ot[d] = 1
-	end
-	vec_out[d] = tt_up_rks_noise(x_tt.ttv_vec[d],rks[d],1,ϵ_wn)
-	return ttvector(vec_out,x_tt.ttv_dims,rks[2:end],out_ot)
+	return ttvector(vec_out,x_tt.ttv_dims,rks[2:end],x_tt.ttv_ot)
 end
 
 function test_tt_up_rks()
