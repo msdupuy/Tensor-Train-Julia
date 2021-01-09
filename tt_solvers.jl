@@ -115,12 +115,6 @@ function init_core(A_k,dim_X,B_k,Ql,Qr)
     return reshape(X,dim_X[1],dim_X[2],dim_X[3])
 end
 
-#returns partial isometry Q ∈ R^{n x m}
-function rand_orthogonal(n,m)
-    N = max(n,m)
-    q,r = qr(rand(N,N))
-    return q[1:n,1:m]
-end
 
 function rand_norm(n,m) #m>=n
     A = randn(n,m)
