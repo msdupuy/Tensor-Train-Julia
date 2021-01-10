@@ -203,6 +203,33 @@ function test_tt_up_rks()
 	@test isapprox(x,ttv_to_tensor(z_tt),atol=1e-6)
 end
 
+function tt_orthogonalize(x_tt::ttvector,i::Integer)
+	d = length(x_tt.ttv_dims)
+	x_rks = vcat(1,x_tt.ttv_rks)
+	@assert(1≤i≤d, DimensionMismatch("Impossible orthogonalization"))
+	y_vec = deepcopy(x_tt.ttv_vec)
+	y_ot = zeros(Int64,d)
+	for j in 1:i-1
+		y_ot[j]=-1
+		y_vectemp = reshape(y_vec[j],x_tt.ttv_dims[j]*x_rks[j],x_rks[j+1])
+		q,r = qr(y_vectemp)
+		y_vec[j] = reshape(q[:,1:x_rks[j+1]],x_tt.ttv_dims[j],x_rks[j],x_rks[j+1])
+		@threads for k in 1:x_tt.ttv_dims[j]
+			y_vec[j+1][k,:,:] = r[1:x_rks[j+1],1:x_rks[j+1]]*y_vec[j+1][k,:,:]
+		end
+	end
+	for j in d:-1:i+1
+		y_ot[j]=1
+		y_vectemp = reshape(permutedims(y_vec[j],[2,1,3]),x_rks[j],x_tt.ttv_dims[j]*x_rks[j+1])
+		l,q = lq(y_vectemp)
+		y_vec[j] = permutedims(reshape(q[1:x_rks[j],:],x_rks[j],x_tt.ttv_dims[j],x_rks[j+1]),[2 1 3])
+		@threads for k in 1:x_tt.ttv_dims[j]
+			y_vec[j-1][k,:,:] = y_vec[j-1][k,:,:]*l[1:x_rks[j],1:x_rks[j]]
+		end
+	end
+	return ttvector(y_vec,x_tt.ttv_dims,x_tt.ttv_rks,y_ot)
+end
+
 function tto_decomp(tensor::Array{Float64}, index)
 	# Decomposes a tensor operator into its tensor train
 	# with core matrices at i=index
