@@ -1,6 +1,5 @@
 include("tt_tools.jl")
 using LinearMaps
-using Arpack
 
 #TODO: include IterativeSolvers option for als
 
