@@ -209,6 +209,7 @@ function als_eig(A :: ttoperator, tt_start :: ttvector ; sweep_schedule=[2]::Arr
 
 	# Initialize the to be returned tensor in its tensor train format
 	tt_opt = deepcopy(tt_start)
+	tt_opt = tt_orthogonalize(tt_opt,1)
 	dims = tt_start.ttv_dims
 	d = length(dims)
 	E = zeros(Float64,2d*(sweep_schedule[end]+1)) #output eigenvalue
@@ -236,6 +237,7 @@ function als_eig(A :: ttoperator, tt_start :: ttvector ; sweep_schedule=[2]::Arr
 				return E[1:i_μit],tt_opt
 			else
 				tt_opt = tt_up_rks(tt_opt,rmax_schedule[i_schedule];ϵ_wn=noise_schedule[i_schedule])
+				tt_opt = tt_orthogonalize(tt_opt,1)
 				H,H_b = init_H_and_Hb(tt_opt,A)
 				for i in 1:d-1
 					Gtemp = zeros(dims[i+1],tt_opt.ttv_rks[i],dims[i+1],tt_opt.ttv_rks[i],A.tto_rks[i+1])
@@ -247,16 +249,11 @@ function als_eig(A :: ttoperator, tt_start :: ttvector ; sweep_schedule=[2]::Arr
 		# First half sweep
 		for i = 1:(d-1)
 			println("Forward sweep: core optimization $i out of $(d-1)")
-
-			# If i is the index of the core matrices do the optimization
-			if tt_opt.ttv_ot[i] == 0
-				# Define V as solution of K*x=Pb in x
-				i_μit += 1
-				E[i_μit],V = K_eigmin(G[i],H[i],tt_opt.ttv_vec[i];it_solver=it_solver,itslv_thresh=itslv_thresh,maxiter=maxiter,tol=tol)
-				println("Eigenvalue: $(E[i_μit])")
-				tt_opt, rks[i+1] = right_core_move(tt_opt,V,i,vcat(1,tt_opt.ttv_rks))
-			end
-
+			# Define V as solution of K*x=Pb in x
+			i_μit += 1
+			E[i_μit],V = K_eigmin(G[i],H[i],tt_opt.ttv_vec[i];it_solver=it_solver,itslv_thresh=itslv_thresh,maxiter=maxiter,tol=tol)
+			println("Eigenvalue: $(E[i_μit])")
+			tt_opt, rks[i+1] = right_core_move(tt_opt,V,i,vcat(1,tt_opt.ttv_rks))
 			#update G,G_b
 			update_G_Gb!(tt_opt,A,i,G[i],G[i+1])
 		end
