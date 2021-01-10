@@ -1,5 +1,6 @@
 include("tt_tools.jl")
 using LinearMaps
+using Arpack
 
 #TODO: include IterativeSolvers option for als
 
@@ -196,7 +197,7 @@ end
 """
 Warning probably only works for left-orthogonal starting tensor
 """
-function als_eig(A :: ttoperator, tt_start :: ttvector ; sweep_schedule=[2]::Array{Int64,1},rmax_schedule=[maximum(tt_start.ttv_rks)]::Array{Int64,1},noise_schedule=zeros(length(rmax_schedule))::Array{Float64,1},tol=1e-10::Float64,it_solver=false::Bool,itslv_thresh=1024::Int64,maxiter=200::Int64)
+function als_eig(A :: ttoperator, tt_start :: ttvector ; sweep_schedule=[2]::Array{Int64,1},rmax_schedule=[maximum(tt_start.ttv_rks)]::Array{Int64,1},noise_schedule=zeros(length(rmax_schedule))::Array{Float64,1},tol=1e-10::Float64,it_solver=false::Bool,itslv_thresh=1024::Int64,maxiter=200::Int64,linsolv_tol=max(sqrt(tol),1e-8))
 	# als finds the minimum of the operator J:1/2*<Ax,Ax> - <x,b>
 	# input:
 	# 	A: the tensor operator in its tensor train format
@@ -251,7 +252,7 @@ function als_eig(A :: ttoperator, tt_start :: ttvector ; sweep_schedule=[2]::Arr
 			println("Forward sweep: core optimization $i out of $(d-1)")
 			# Define V as solution of K*x=Pb in x
 			i_μit += 1
-			E[i_μit],V = K_eigmin(G[i],H[i],tt_opt.ttv_vec[i];it_solver=it_solver,itslv_thresh=itslv_thresh,maxiter=maxiter,tol=tol)
+			E[i_μit],V = K_eigmin(G[i],H[i],tt_opt.ttv_vec[i];it_solver=it_solver,itslv_thresh=itslv_thresh,maxiter=maxiter,tol=linsolv_tol)
 			println("Eigenvalue: $(E[i_μit])")
 			tt_opt, rks[i+1] = right_core_move(tt_opt,V,i,vcat(1,tt_opt.ttv_rks))
 			#update G,G_b
@@ -263,7 +264,7 @@ function als_eig(A :: ttoperator, tt_start :: ttvector ; sweep_schedule=[2]::Arr
 			println("Backward sweep: core optimization $(d+1-i) out of $(d-1)")
 			# Define V as solution of K*x=Pb in x
 			i_μit += 1
-			E[i_μit],V = K_eigmin(G[i],H[i],tt_opt.ttv_vec[i];it_solver=it_solver,itslv_thresh=itslv_thresh,maxiter=maxiter,tol=tol)
+			E[i_μit],V = K_eigmin(G[i],H[i],tt_opt.ttv_vec[i];it_solver=it_solver,itslv_thresh=itslv_thresh,maxiter=maxiter,tol=linsolv_tol)
 			println("Eigenvalue: $(E[i_μit])")
 			tt_opt,rks[i] = left_core_move(tt_opt,V,i,vcat(1,tt_opt.ttv_rks))
 			update_H_Hb!(tt_opt,A,i,H[i],H[i-1])
