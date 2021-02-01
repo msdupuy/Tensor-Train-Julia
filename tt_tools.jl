@@ -152,6 +152,7 @@ function rand_orthogonal(n,m)
     return q[1:n,1:m]
 end
 
+#local ttvec rank increase function with noise ϵ_wn
 function tt_up_rks_noise(tt_vec,tt_ot_i,rkm,rk,ϵ_wn)
 	vec_out = zeros(Float64,size(tt_vec,1),rkm,rk)
 	vec_out[:,1:size(tt_vec,2),1:size(tt_vec,3)] = tt_vec
@@ -177,6 +178,7 @@ function tt_up_rks_noise(tt_vec,tt_ot_i,rkm,rk,ϵ_wn)
 	return vec_out,tt_ot_i
 end
 
+#returns the ttvector with ranks rks and noise ϵ_wn for the updated ranks
 function tt_up_rks(x_tt::ttvector,rk_max::Int;rks=vcat(1,rk_max*ones(Int,length(x_tt.ttv_dims)-1),1),ϵ_wn=0.0)
 	d = length(x_tt.ttv_dims)
 	vec_out = Array{Array{Float64}}(undef,d)
@@ -203,6 +205,7 @@ function test_tt_up_rks()
 	@test isapprox(x,ttv_to_tensor(z_tt),atol=1e-6)
 end
 
+#returns the orthogonalized ttvector with root i
 function tt_orthogonalize(x_tt::ttvector,i::Integer)
 	d = length(x_tt.ttv_dims)
 	x_rks = vcat(1,x_tt.ttv_rks)
@@ -229,6 +232,24 @@ function tt_orthogonalize(x_tt::ttvector,i::Integer)
 	end
 	return ttvector(y_vec,x_tt.ttv_dims,x_tt.ttv_rks,y_ot)
 end
+
+#returns the higher-order singular values of a TT
+function tt_svdvals(x_tt::ttvector)
+	d = length(x_tt.ttv_dims)
+	if x_tt.ttv_ot[2:d] != ones(d-1)
+		y_tt = tt_orthogonalize(x_tt,1)
+	else
+		y_tt = deepcopy(x_tt)
+	end
+	sing_val = zeros(d-1,maximum(y_tt.ttv_rks))
+	for j in d-1:-1:1
+		@tensor A[i1,α1,i2,α2] := y_tt.ttv_vec[j][i1,α1,z]*y_tt.ttv_vec[j+1][i2,z,α2]
+		s = svdvals(reshape(A,size(A,1)*size(A,2),:))
+		sing_val[j,1:length(s)] = s
+	end
+	return sing_val
+end
+
 
 function tto_decomp(tensor::Array{Float64}, index)
 	# Decomposes a tensor operator into its tensor train
@@ -415,6 +436,7 @@ function left_compression(A,B;tol=1e-12)
     return U, permutedims(B,[2,1,3])
 end
 
+#parallel compression of the ttvector
 function tt_compression_par(X::ttvector;tol=1e-14,Imax=2)
     Y = deepcopy(X.ttv_vec) :: Array{Array{Float64,3},1}
     rks = deepcopy(X.ttv_rks) :: Array{Int64}
