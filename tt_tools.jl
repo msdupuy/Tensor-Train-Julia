@@ -241,7 +241,7 @@ function tt_svdvals(x_tt::ttvector)
 	else
 		y_tt = deepcopy(x_tt)
 	end
-	sing_val = zeros(d-1,maximum(y_tt.ttv_rks))
+	sing_val = zeros(d-1,maximum(x_tt.ttv_dims)*maximum(y_tt.ttv_rks))
 	for j in d-1:-1:1
 		@tensor A[i1,α1,i2,α2] := y_tt.ttv_vec[j][i1,α1,z]*y_tt.ttv_vec[j+1][i2,z,α2]
 		s = svdvals(reshape(A,size(A,1)*size(A,2),:))
