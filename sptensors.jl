@@ -211,7 +211,7 @@ function tto_spdecomp(spm :: sparsetensor_mat, index)
 	return ttoperator(tto_vec, tto_dims, rks[2:(d+1)], ttv.ttv_ot)
 end
 
-function Lap(n::Integer, d::Integer)
+function Lap_sp(n::Integer, d::Integer)
 	# Returns the tensor of the discrete Laplacian in a box [0,1]^d
 	# with n equidistant discretization points in each direction
 	# as an element of R^[n^d,n^d]
