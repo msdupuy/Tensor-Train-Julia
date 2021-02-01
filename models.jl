@@ -3,18 +3,11 @@ include("sptensors.jl")
 include("als.jl")
 using Combinatorics
 
-"""
-returns an MPO version of 
-H = Σ_{ij} h_ij a_i† a_j + Σ_{ijkl} V_{ijkl} a_i†a_j†a_ka_l
-
-TODO: a_i†a_j†a_ka_l in MPO, tto_add function and hubbard_1d/2d? 
-test with aklt model
-"""
 
 """
 one_body_to_matrix and two_body_to_matrix for testing purposes
+returns the 2^L×2^L matrices of a_k^†a_l and a_k^† a_l^† a_m a_n 
 """
-
 function one_body_to_matrix(k,l,L)
     A = zeros(Float64,2^L,2^L)
     for i in 0:2^L-1
@@ -71,9 +64,8 @@ function sc_to_mat(h,V)
     return A
 end
 
-#returns the h,V for the hubbard model
 #odd index = spin up, even index = spin down
-
+#returns TT of a half-filled state
 function half_filling(N)
     tt_vec = Array{Array{Float64,3},1}(undef,2N)
     for i in 1:N
@@ -112,7 +104,7 @@ function mpo_core_annihilation()
     return out
 end
 
-#returns MPO of a_p^†a_q
+#returns bosonic or fermionic MPO of a_p^†a_q
 function one_body_mpo(p,q,L;fermion=true)
     H = Array{Array{Float64,4},1}(undef,L)
     if p == q
@@ -150,7 +142,7 @@ function test_1body_mpo()
     @test isapprox(norm(H-reshape(H2,2^L,2^L)),0.0,atol=1e-10)
 end
 
-#returns MPO of a_k^† a^†_l a_m a_n 
+#returns bosonic or fermionic MPO of a_k^† a^†_l a_m a_n 
 #assume k<l,m<n
 function two_body_mpo(k,l,m,n,L)
     H = Array{Array{Float64,4},1}(undef,L) 
@@ -176,7 +168,7 @@ function test_2body_mpo()
     @test isapprox(norm(H-reshape(H2,2^L,2^L)),0.0,atol=1e-10)
 end
 
-#assuming natural labelling of sites
+#returns the h,V for the hubbard model (assuming natural labelling of sites)
 function hubbard_1D(L;t=1,U=1, pbc=false)
     h = zeros(2L,2L)
     V = zeros(2L,2L,2L,2L)
@@ -193,7 +185,15 @@ function hubbard_1D(L;t=1,U=1, pbc=false)
     return h,V
 end
 
-#hubbard with cylindrical boundary conditions along L
+#switch sites j and k in a one-dimensional spin chain model
+function site_switch(j::Integer,k::Integer,L::Integer)
+    out = collect(1:2L)
+    out[2j-1],out[2j] = 2k-1,2k
+    out[2k-1],out[2k] = 2j-1,2j
+    return out
+end
+
+#2D Hubbard with cylindrical boundary conditions along L
 function hubbard_2D(w,L;t=1,U=1,w_pbc = false,L_pbc=true)
     h = zeros(2w*L,2w*L)
     V = zeros(2w*L,2w*L,2w*L,2w*L)
@@ -237,6 +237,10 @@ function hubbard_2D(w,L;t=1,U=1,w_pbc = false,L_pbc=true)
     return h,V
 end
 
+"""
+returns an MPO version of 
+H = Σ_{ij} h_ij a_i† a_j + Σ_{ijkl} V_{ijkl} a_i†a_j†a_ka_l
+"""
 #assuming diagonal terms are divided by 2 in the h and V matrix
 function hV_to_mpo(h,V)
     L = size(h,1)
