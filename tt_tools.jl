@@ -477,7 +477,7 @@ function test_compression_par()
     @test(isapprox(ttv_to_tensor(tt_compression_par(y_tt))[:],y))
 end
 
-
+#matrix vector multiplication in TT format
 function mult(A::ttoperator,v::ttvector)
     @assert(A.tto_dims==v.ttv_dims,"Dimension mismatch!")
     d = length(A.tto_dims)
@@ -494,6 +494,7 @@ function mult(A::ttoperator,v::ttvector)
     return ttvector(Y,A.tto_dims,A.tto_rks.*v.ttv_rks,zeros(Integer,d))
 end
 
+#matrix matrix multiplication in TT format
 function mult(A::ttoperator,B::ttoperator)
     @assert(A.tto_dims==B.tto_dims,"Dimension mismatch!")
     d = length(A.tto_dims)
@@ -538,19 +539,17 @@ end
 function tt_dot(A::ttvector,B::ttvector)
     @assert(A.ttv_dims == B.ttv_dims, "Dimension mismatch")
     d = length(A.ttv_dims)
-    Y = Array{Array{Float64},1}(undef,d)
-    A_rks = vcat([1],A.ttv_rks)::Array{Int64}
-    B_rks = vcat([1],B.ttv_rks)
+    Y = Array{Array{Float64,2},1}(undef,d)
+    A_rks = vcat(1,A.ttv_rks)::Array{Int64}
+    B_rks = vcat(1,B.ttv_rks)
+	C = zeros(maximum(A_rks.*B_rks))
     @threads for k in 1:d
-        M = reshape(permutedims(A.ttv_vec[k],[2,3,1]),A_rks[k]*A_rks[k+1],A.ttv_dims[k]) #A_k of size R_{k-1} R_k x n_k
-        x = reshape(B.ttv_vec[k],B.ttv_dims[k],B_rks[k]*B_rks[k+1]) #v_k of size n_k x r_{k-1} r_k
-        Y[k] = reshape(M*x, A_rks[k], A_rks[k+1], B_rks[k], B_rks[k+1])
-        Y[k] = permutedims(Y[k], [1,3,2,4])
-        Y[k] = reshape(Y[k],A_rks[k]*B_rks[k], A_rks[k+1]*B_rks[k+1])
+		@tensor M[a,b,c,d] := A.ttv_vec[k][z,a,c]*B.ttv_vec[k][z,b,d] #size R^A_{k-1} ×  R^B_{k-1} × R^A_{k} × R^B_{k} 
+		Y[k] = reshape(M, A_rks[k]*B_rks[k], A_rks[k+1]*B_rks[k+1])
     end
-    C = Y[1]
-    for k in 2:d
-        C = C*Y[k]
+    C[1:length(Y[d])] = Y[d][:]
+    for k in d-1:-1:1
+        C[1:size(Y[k],1)] = Y[k]*C[1:1:size(Y[k],2)]
     end
     return C[1]::Float64
 end
