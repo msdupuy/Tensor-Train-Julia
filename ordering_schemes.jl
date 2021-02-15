@@ -6,7 +6,7 @@ using StatsBase
 ordering schemes for QC-DMRG or 2D statistical models
 """
 
-#one-orbital rdm
+#returns the list of one-orbital reduced density matrix
 function one_rdm(x_tt::ttvector)
     d = length(x_tt.ttv_dims)
     @assert(2*ones(Int,d)==x_tt.ttv_dims)
@@ -31,6 +31,7 @@ function test_one_rdm()
     @test(isapprox(γ[i,:,:],A,atol=1e-12))
 end
 
+#returns the list of two-orbitals reduced density matrix
 function two_rdm(x_tt::ttvector;fermion=true)
     d = length(x_tt.ttv_dims)
     @assert(2*ones(Int,d)==x_tt.ttv_dims)
@@ -67,6 +68,10 @@ function test_two_rdm()
     @test(isapprox(γ[i,j,:,:,:,:],A,atol=1e-12))
 end
 
+"""
+returns the entropy of a matrix M
+if a==1 : von Neumann entropy, else Renyi entropy
+"""
 function entropy(a,M)
    x = eigvals(M)
    x = x[x.>1e-15]
@@ -79,6 +84,7 @@ function entropy(a,M)
    end
 end
 
+#γ_1 = one orbital RDM, γ_2 = two orbital RDM
 function mutual_information(γ1,γ2;a=1) #a=1 von neumann entropy
     d = size(γ1,1)
     IM = zeros(d,d)
@@ -91,6 +97,7 @@ function mutual_information(γ1,γ2;a=1) #a=1 von neumann entropy
     return Symmetric(IM)
 end
 
+#returns the fiedler order of a mutual information matrix IM
 function fiedler(IM)
    L = size(IM)[1]
    Lap = Diagonal([sum(IM[i,:]) for i=1:L]) - IM
@@ -99,12 +106,20 @@ function fiedler(IM)
    return sortperm(F.vectors[:,2]) #to get 2nd eigenvector
 end
 
-function one_prmd(x_tt::ttvector)
+function fiedler_order(x_tt::ttvector;a=1) #a=1 : von Neumann entropy
+    γ1 = one_rdm(x_tt)
+    γ2 = two_rdm(x_tt)
+    IM = mutual_information(γ1,γ2;a=a)
+    return fiedler(IM)
+end
+
+#returns the one particle reduced density matrix of a state encoded in the TT x_tt
+function one_prdm(x_tt::ttvector)
     d = length(x_tt.ttv_dims)
     γ = zeros(d,d)
     for i in 1:d
         γ[i,i] = tt_dot(x_tt,mult(one_body_mpo(i,i,d),x_tt))
-        for j in i+1:d-1
+        for j in i+1:d
             γ[i,j] = tt_dot(x_tt,mult(one_body_mpo(i,j,d),x_tt))
         end
     end
