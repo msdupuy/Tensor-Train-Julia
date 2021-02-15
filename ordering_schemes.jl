@@ -131,19 +131,18 @@ function cost(x;tol=1e-10)
 end
 
 #best weighted prefactor order
+#Warning: V needs to be given in a row-"occupancy" way i.e. V[i,:] represents the coefficients of the natural orbital ψ_i in the basis of the ϕ_j, 1 ≤ j ≤ L
 function bwpo_entropy(N,L,V;imax=1000,sigma_current=collect(1:L),CAS=[collect(1:N)],i_cuts=[N],tol=1e-10,temp=1.0)
    iter = 0
    x_N = sigma_current
    cost_max = sum([cost(ones(min(i,L-N,N)),tol=tol) for i in i_cuts])*length(CAS)
    prefactor = sum([cost(svdvals(V[i_cas,x_N[1:i]]),tol=tol) for i in i_cuts for i_cas in CAS]) 
-   println(cost_max)
    while iter < imax && temp*prefactor/(imax*cost_max) < rand()
       #nouveau voisin
       j,k = sample(1:L,2,replace=false)
       x_temp = copy(x_N) 
       x_temp[k],x_temp[j] = x_N[j],x_N[k]
       new_prefactor = sum([cost(svdvals(V[i_cas,x_temp[1:i]]),tol=tol) for i in i_cuts for i_cas in CAS])
-      println(new_prefactor)
       if new_prefactor > prefactor
          x_N = x_temp
          prefactor = new_prefactor
