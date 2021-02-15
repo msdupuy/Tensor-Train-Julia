@@ -481,15 +481,13 @@ end
 function mult(A::ttoperator,v::ttvector)
     @assert(A.tto_dims==v.ttv_dims,"Dimension mismatch!")
     d = length(A.tto_dims)
-    Y = Array{Array{Float64}}(undef, d)
+    Y = Array{Array{Float64,3},1}(undef, d)
     A_rks = vcat([1],A.tto_rks) #R_0, ..., R_d
     v_rks = vcat([1],v.ttv_rks) #r_0, ..., r_d
     @threads for k in 1:d
-        M = reshape(permutedims(A.tto_vec[k],[1,3,4,2]),:,A.tto_dims[k]) #A_k of size n_k R_{k-1} R_k x n_k
-        x = reshape(v.ttv_vec[k],v.ttv_dims[k],v_rks[k]*v_rks[k+1]) #v_k of size n_k x r_{k-1} r_k
-        Y[k] = reshape(M*x, A.tto_dims[k], A_rks[k], A_rks[k+1], v_rks[k], v_rks[k+1])
-        Y[k] = permutedims(Y[k], [1,2,4,3,5])
-        Y[k] = reshape(Y[k], A.tto_dims[k], A_rks[k]*v_rks[k], A_rks[k+1]*v_rks[k+1])
+		M = zeros(A.tto_dims[k], A_rks[k],v_rks[k], A_rks[k+1],v_rks[k+1])
+		@tensor M[a,b,c,d,e] = A.tto_vec[k][a,z,b,d]*v.ttv_vec[k][z,c,e]
+        Y[k] = reshape(M, A.tto_dims[k], A_rks[k]*v_rks[k], A_rks[k+1]*v_rks[k+1])
     end
     return ttvector(Y,A.tto_dims,A.tto_rks.*v.ttv_rks,zeros(Integer,d))
 end
@@ -498,15 +496,13 @@ end
 function mult(A::ttoperator,B::ttoperator)
     @assert(A.tto_dims==B.tto_dims,"Dimension mismatch!")
     d = length(A.tto_dims)
-    Y = Array{Array{Float64}}(undef, d)
+    Y = Array{Array{Float64,4},1}(undef, d)
     A_rks = vcat([1],A.tto_rks) #R_0, ..., R_d
     B_rks = vcat([1],B.tto_rks) #r_0, ..., r_d
     @threads for k in 1:d
-        M = reshape(permutedims(A.tto_vec[k],[1,3,4,2]),:,A.tto_dims[k]) #A_k of size n_k R_{k-1} R_k x n_k
-        N = reshape(B.tto_vec[k],B.tto_dims[k],B.tto_dims[k]*B_rks[k]*B_rks[k+1]) #B_k of size n_k x n_k r_{k-1} r_k
-        Y[k] = reshape(M*N, A.tto_dims[k], A_rks[k], A_rks[k+1], B.tto_dims[k], B_rks[k], B_rks[k+1])
-        Y[k] = permutedims(Y[k], [1,4,2,5,3,6])
-        Y[k] = reshape(Y[k], A.tto_dims[k], A.tto_dims[k], A_rks[k]*B_rks[k], A_rks[k+1]*B_rks[k+1])
+		M = zeros(A.tto_dims[k],A.tto_dims[k],A_rks[k],B_rks[k],A_rks[k+1],B_rks[k+1])
+		@tensor M[a,b,c,d,e,f] = A.tto_vec[k][a,z,c,e]*B.tto_vec[k][z,b,d,f]
+        Y[k] = reshape(M, A.tto_dims[k], A.tto_dims[k], A_rks[k]*B_rks[k], A_rks[k+1]*B_rks[k+1])
     end
     return ttoperator(Y,A.tto_dims,A.tto_rks.*B.tto_rks,zeros(Integer,d))
 end
@@ -544,7 +540,8 @@ function tt_dot(A::ttvector,B::ttvector)
     B_rks = vcat(1,B.ttv_rks)
 	C = zeros(maximum(A_rks.*B_rks))
     @threads for k in 1:d
-		@tensor M[a,b,c,d] := A.ttv_vec[k][z,a,c]*B.ttv_vec[k][z,b,d] #size R^A_{k-1} ×  R^B_{k-1} × R^A_{k} × R^B_{k} 
+		M = zeros(A_rks[k],B_rks[k],A_rks[k+1],B_rks[k+1])
+		@tensor M[a,b,c,d] = A.ttv_vec[k][z,a,c]*B.ttv_vec[k][z,b,d] #size R^A_{k-1} ×  R^B_{k-1} × R^A_{k} × R^B_{k} 
 		Y[k] = reshape(M, A_rks[k]*B_rks[k], A_rks[k+1]*B_rks[k+1])
     end
     C[1:length(Y[d])] = Y[d][:]
