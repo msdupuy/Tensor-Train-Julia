@@ -5,7 +5,8 @@ using Plots
 using IterativeSolvers
 
 """
-MALS auxiliary functions
+Implementation based on the presentation in 
+Holtz, Sebastian, Thorsten Rohwedder, and Reinhold Schneider. "The alternating linear scheme for tensor optimization in the tensor train format." SIAM Journal on Scientific Computing 34.2 (2012): A683-A713.
 """
 
 function updateHim!(xtt_vec, Atto, Hi, Him)
