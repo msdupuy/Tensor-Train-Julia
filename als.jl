@@ -53,7 +53,6 @@ end
 
 function right_core_move(x_tt::ttvector,V::Array{Float64,3},i::Int,x_rks)
 	rim,ri = x_rks[i],x_rks[i+1]
-	println(rim,ri)
 	ni = x_tt.ttv_dims[i]
 	QV, RV = qr(reshape(V, ni*rim, :)) #QV: ni*rim x ni*rim; RV ni*rim x ri
 
@@ -97,13 +96,19 @@ function update_Hb!(x_tt::ttvector,i,H_bi::Array{Float64,2},H_bim::Array{Float64
 	end
 end
 
-function Ksolve(Gi,G_bi,Hi,H_bi)
-	@tensor begin
-		K[a,b,c,d,e,f] := Gi[d,e,a,b,z]*Hi[f,c,z] #size (ni,rim,ri,ni,rim,ri)
-		Pb[a,b,c] := G_bi[z,a,b]*H_bi[c,z] #size (ni,rim,ri)
-	end
-	V = md_div(K,Pb,[1 2 3 4 5 6],[1 2 3],3,3,[1 2 3])
-	return V
+#full assemble of matrix K
+function K_full(Gi::Array{Float64,5},Hi::Array{Float64,3},K_dims::Array{Int})
+	K = zeros(Float64,prod(K_dims),prod(K_dims))
+	Krshp = reshape(K,K_dims...,K_dims...)
+	@tensoropt((b,c,e,f), Krshp[a,b,c,d,e,f] = Gi[d,e,a,b,z]*Hi[f,c,z]) #size (ni,rim,ri,ni,rim,ri)
+	return K
+end
+
+function Ksolve(Gi::Array{Float64,5},G_bi::Array{Float64,3},Hi::Array{Float64,3},H_bi::Array{Float64,2})
+	K_dims = [size(Gi,1),size(Gi,2),size(Hi,1)]
+	K = K_full(Gi,Hi,K_dims)
+	@tensoropt((b,c), Pb[a,b,c] := G_bi[z,a,b]*H_bi[c,z]) #size (ni,rim,ri)
+	return reshape(K\Pb[:],K_dims...)
 end
 
 function K_eigmin(Gi::Array{Float64,5},Hi::Array{Float64,3},ttv_vec::Array{Float64,3};it_solver=false,itslv_thresh=1024::Int64,maxiter=maxiter::Int64,tol=tol::Float64)
@@ -118,9 +123,7 @@ function K_eigmin(Gi::Array{Float64,5},Hi::Array{Float64,3},ttv_vec::Array{Float
 		r = lobpcg(LinearMap(K_matfree,prod(K_dims);issymmetric = true),false,ttv_vec[:],1;maxiter=maxiter,tol=tol)
 		return r.λ[1], reshape(r.X[:,1],K_dims...)
 	else
-		K = zeros(Float64,prod(K_dims),prod(K_dims))
-		Krshp = reshape(K,K_dims...,K_dims...)
-		@tensoropt((b,c,e,f), Krshp[a,b,c,d,e,f] = Gi[d,e,a,b,z]*Hi[f,c,z]) #size (ni,rim,ri,ni,rim,ri)
+		K = K_full(Gi,Hi,K_dims)
 		F = eigen(K)
 		return real(F.values[1]),real.(reshape(F.vectors[:,1],K_dims...))
 	end	
