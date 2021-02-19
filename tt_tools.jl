@@ -6,6 +6,10 @@ using IterativeSolvers
 using TensorOperations
 import Base.isempty
 
+#TT constructor of a tensor
+#C[μ_1,…,μ_L] = C_tt.ttv_vec[1]*⋯*C_tt.ttv_vec[L]
+#the normalization of the TT cores are kept in ttv_ot
+
 struct ttvector
 	# ttv_vec is an array of all matrix arrays for the tensor train format
 	# ttv_vec[i] stores the matrices A_i in the following way
@@ -20,10 +24,20 @@ struct ttvector
 	ttv_rks :: Array{Int64,1}
 
 	# ttv_ot includes information about the orthogonality properties
-	# ttv_ot[i] =  1 if the i-th matrices are rightorthonormal
+	# ttv_ot[i] =  1 if the i-th matrices are rightorthogonal
 	# ttv_ot[i] =  0 if there is no information or the i-th matrices aren't orthogonal
-	# ttv_ot[i] = -1 if the i-th matrices are leftorthonormal
+	# ttv_ot[i] = -1 if the i-th matrices are leftorthogonal
 	ttv_ot :: Array{Int64,1}
+end
+
+struct tt_vidal
+	#Vidal representation of a higher-order tensor 
+	#C[μ_1,…,μ_L] = core[μ_1] * Diagonal(Σ_1) * … * Diagonal(Σ_{L-1}) * core[μ_L]
+	#Cores are orthogonal and Σ are the higher-order singular values
+	core :: Array{Array{Float64,3},1}
+	Σ :: Array{Array{Float64,1},1}
+	dims :: Array{Int64,1}
+	rks :: Array{Int64,1}
 end
 
 struct ttoperator
@@ -233,23 +247,42 @@ function tt_orthogonalize(x_tt::ttvector,i::Integer)
 	return ttvector(y_vec,x_tt.ttv_dims,x_tt.ttv_rks,y_ot)
 end
 
-#returns the higher-order singular values of a TT
-function tt_svdvals(x_tt::ttvector)
+#returns the Vidal representation of a TT
+function tt_to_vidal(x_tt::ttvector;tol=1e-14)
 	d = length(x_tt.ttv_dims)
-	if x_tt.ttv_ot[2:d] != ones(d-1)
-		y_tt = tt_orthogonalize(x_tt,1)
-	else
-		y_tt = deepcopy(x_tt)
+	core = Array{Array{Float64,3},1}(undef,d)
+	Σ = Array{Array{Float64,1},1}(undef,d-1)
+	y_tt = tt_orthogonalize(x_tt,1)
+	y_rks = vcat(1,y_tt.ttv_rks)
+	for j in 1:d-1
+		A = zeros(y_tt.ttv_dims[j],y_rks[j],y_tt.ttv_dims[j+1],y_rks[j+2])
+		@tensor A[a,b,c,d] = y_tt.ttv_vec[j][a,b,z]*y_tt.ttv_vec[j+1][c,z,d]
+		u,s,v = svd(reshape(A,size(A,1)*size(A,2),:))
+		Σ[j] = s[s.>tol]
+		y_rks[j+1] = length(Σ[j])
+		core[j] = reshape(u[:,s.>tol],y_tt.ttv_dims[j],y_rks[j],:)
+		y_tt.ttv_vec[j+1] = permutedims(reshape(v[:,s.>tol],y_tt.ttv_dims[j+1],y_rks[j+2],:),[1 3 2])
 	end
-	sing_val = zeros(d-1,maximum(x_tt.ttv_dims)*maximum(y_tt.ttv_rks))
-	for j in d-1:-1:1
-		@tensor A[i1,α1,i2,α2] := y_tt.ttv_vec[j][i1,α1,z]*y_tt.ttv_vec[j+1][i2,z,α2]
-		s = svdvals(reshape(A,size(A,1)*size(A,2),:))
-		sing_val[j,1:length(s)] = s
-	end
-	return sing_val
+	core[d] = y_tt.ttv_vec[d]
+	return tt_vidal(core,Σ,y_tt.ttv_dims,y_rks[2:end])
 end
 
+#returns the singular values of the reshaped tensor x[μ_1⋯μ_k;μ_{k+1}⋯μ_d]
+function tt_svdvals(x_tt::ttvector;tol=1e-14)
+	d = length(x_tt.ttv_dims)
+	Σ = Array{Array{Float64,1},1}(undef,d-1)
+	y_tt = tt_orthogonalize(x_tt,1)
+	y_rks = vcat(1,y_tt.ttv_rks)
+	for j in 1:d-1
+		A = zeros(y_tt.ttv_dims[j],y_rks[j],y_tt.ttv_dims[j+1],y_rks[j+2])
+		@tensor A[a,b,c,d] = y_tt.ttv_vec[j][a,b,z]*y_tt.ttv_vec[j+1][c,z,d]
+		u,s,v = svd(reshape(A,size(A,1)*size(A,2),:))
+		Σ[j] = s[s.>tol]
+		y_rks[j+1] = length(Σ[j])
+		y_tt.ttv_vec[j+1] = permutedims(reshape(v[:,s.>tol]*Diagonal(Σ[j]),y_tt.ttv_dims[j+1],y_rks[j+2],:),[1 3 2])
+	end
+	return Σ
+end
 
 function tto_decomp(tensor::Array{Float64}, index)
 	# Decomposes a tensor operator into its tensor train
