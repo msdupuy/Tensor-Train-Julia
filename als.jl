@@ -1,7 +1,12 @@
 include("tt_tools.jl")
 using LinearMaps
 
-#TODO: include IterativeSolvers option for als
+"""
+TODO: include IterativeSolvers option for als
+
+Implementation based on the presentation in 
+Holtz, Sebastian, Thorsten Rohwedder, and Reinhold Schneider. "The alternating linear scheme for tensor optimization in the tensor train format." SIAM Journal on Scientific Computing 34.2 (2012): A683-A713.
+"""
 
 function init_H_and_Hb(x_tt::ttvector,A_tto::ttoperator;b_tt::ttvector=empty_tt())
 	d = length(x_tt.ttv_dims)
@@ -81,7 +86,6 @@ function update_H_Hb!(x_tt::ttvector,A_tto::ttoperator,i,Hi::Array{Float64,3},Hi
 	end	
 end
 
-
 function Ksolve(Gi,G_bi,Hi,H_bi)
 	@tensor begin
 		K[a,b,c,d,e,f] := Gi[d,e,a,b,z]*Hi[f,c,z] #size (ni,rim,ri,ni,rim,ri)
@@ -154,7 +158,7 @@ function als(A :: ttoperator, b :: ttvector, tt_start :: ttvector ;sweep_count=2
 		G_b[i] = zeros(b.ttv_rks[i],dims[i],rks[i])
 	end
 	G[1] = reshape(A.tto_vec[1][:,:,1,:], dims[1],1,dims[1], 1, :)
-	G_b[1] = permutedims(reshape(b.ttv_vec[1][:,1,1:b.ttv_rks[1]], dims[1], 1, :), [3 1 2])
+	G_b[1] = permutedims(reshape(b.ttv_vec[1], dims[1], 1, :), [3 1 2])
 
 	#Initialize H and H_b
 	H,H_b = init_H_and_Hb(tt_opt,A,b_tt=b)
@@ -195,16 +199,17 @@ end
 
 """
 Warning probably only works for left-orthogonal starting tensor
+Returns the lowest eigenvalue of A by minimizing the Rayleigh quotient
 """
-function als_eig(A :: ttoperator, tt_start :: ttvector ; sweep_schedule=[2]::Array{Int64,1},rmax_schedule=[maximum(tt_start.ttv_rks)]::Array{Int64,1},noise_schedule=zeros(length(rmax_schedule))::Array{Float64,1},tol=1e-10::Float64,it_solver=false::Bool,itslv_thresh=1024::Int64,maxiter=200::Int64,linsolv_tol=max(sqrt(tol),1e-8))
-	# als finds the minimum of the operator J:1/2*<Ax,Ax> - <x,b>
-	# input:
-	# 	A: the tensor operator in its tensor train format
-	#	tt_start: start value in its tensor train format
-	#	opt_rks: rank vector considered to be optimal enough
-	# output:
-	#	tt_opt: stationary point of J up to tolerated rank opt_rks
-	# 			in its tensor train format
+function als_eig(A :: ttoperator,
+	 tt_start :: ttvector ; #TT initial guess
+	 sweep_schedule=[2]::Array{Int64,1}, #Number of sweeps for each bond dimension in rmax_schedule
+	 rmax_schedule=[maximum(tt_start.ttv_rks)]::Array{Int64,1}, #bond dimension at each sweep
+	 noise_schedule=zeros(length(rmax_schedule))::Array{Float64,1}, #noise at each bond dimension increase
+	 it_solver=false::Bool, #linear solver for the microstep
+	 itslv_thresh=1024::Int64, #switch from full to iterative
+	 maxiter=200::Int64, #maximum of iterations for the iterative solver
+	 linsolv_tol=1e-8) #tolerance of the iterative linear solver
 	@assert(length(rmax_schedule)==length(sweep_schedule)==length(noise_schedule),"Sweep schedule error")	
 
 	# Initialize the to be returned tensor in its tensor train format
