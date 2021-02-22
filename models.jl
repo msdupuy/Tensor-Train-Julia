@@ -168,6 +168,35 @@ function test_2body_mpo()
     @test isapprox(norm(H-reshape(H2,2^L,2^L)),0.0,atol=1e-10)
 end
 
+"""
+returns an MPO version of 
+H = Σ_{ij} h_ij (a_i† a_j + c.c.) + Σ_{ijkl} V_{ijkl} (a_i†a_j†a_ka_l + c.c.)
+"""
+#assuming diagonal terms are divided by 2 in the h and V matrix
+function hV_to_mpo(h,V)
+    L = size(h,1)
+    i_list = findall(!iszero,h)
+    if length(i_list)>0
+        i = i_list[1]
+        A = mult_a_tt(h[i],tto_add(one_body_mpo(i[1],i[2],L),one_body_mpo(i[2],i[1],L)))
+        for i in i_list[2:end]
+            H = one_body_mpo(i[1],i[2],L)
+            G = one_body_mpo(i[2],i[1],L)
+            A = tto_add(A,mult_a_tt(h[i],tto_add(G,H)))
+        end
+    end
+    for i in findall(!iszero,V)
+        H = two_body_mpo(i[1],i[2],i[3],i[4],L)
+        G = two_body_mpo(i[4],i[3],i[2],i[1],L)
+        A = tto_add(A,mult_a_tt(V[i],tto_add(H,G)))
+    end
+    return A
+end
+
+"""
+Examples of standard Hamiltonians
+"""
+
 #returns the h,V for the hubbard model (assuming natural labelling of sites)
 function hubbard_1D(L;t=1,U=1, pbc=false)
     h = zeros(2L,2L)
@@ -238,26 +267,30 @@ function hubbard_2D(w,L;t=1,U=1,w_pbc = false,L_pbc=true)
 end
 
 """
-returns an MPO version of 
-H = Σ_{ij} h_ij a_i† a_j + Σ_{ijkl} V_{ijkl} a_i†a_j†a_ka_l
+PPP Hamiltonian for cyclic polyene C_NH_N (ref. G. Fano, F. Ortolani † and L. Ziosi, The density matrix renormalization group method. Application to the PPP model of a cyclic polyene chain, J. Chem. Phys. 1998)
+H = β ∑_{<μ,ν>,σ} a^†_μσ a^†_νσ + c.c. + 0.5 ∑_μ,ν (n_μ-1)(n_ν-1)
+
+β = -2.5eV, γ_μν = 1/(γ0^-1+d_μν), γ0 = 10.84eV
+d_μν = b sin(π/N*(μ-ν [N]))/sin(π/N), b = 1.4 A
 """
-#assuming diagonal terms are divided by 2 in the h and V matrix
-function hV_to_mpo(h,V)
-    L = size(h,1)
-    i_list = findall(!iszero,h)
-    if length(i_list)>0
-        i = i_list[1]
-        A = mult_a_tt(h[i],tto_add(one_body_mpo(i[1],i[2],L),one_body_mpo(i[2],i[1],L)))
-        for i in i_list[2:end]
-            H = one_body_mpo(i[1],i[2],L)
-            G = one_body_mpo(i[2],i[1],L)
-            A = tto_add(A,mult_a_tt(h[i],tto_add(G,H)))
+function PPP_C_NH_N(N;β=-2.5/27.2113845,b=1.4*1.8897259886,γ0=10.84/27.2113845)
+    h = zeros(2N,2N)
+    γ = sum(1/(1/γ0+b*sin(k/N*pi)/sin(pi/N)) for k in 1:N)
+    for i in 1:N-1
+        h[2i-1,2i+1] = β
+        h[2i,2i+2] = β
+    end
+    h[2N,2] = β
+    h[2N-1,1] = β
+    H_tto = hV_to_mpo(h,zeros(2N,2N,2N,2N))
+    for i in 1:N
+        Hi = tto_add(tto_add(one_body_mpo(2i,2i,2N),one_body_mpo(2i-1,2i-1,2N)),mult_a_tt(-1.0,id_tto(2N)))
+        for j in 1:N
+            Hj = tto_add(tto_add(one_body_mpo(2j,2j,2N),one_body_mpo(2j-1,2j-1,2N)),mult_a_tt(-1.0,id_tto(2N)))
+            Htemp = mult(Hi,Hj)
+            γij = 1/(1/γ0+b*sin(pi/N*mod(i-j,N))/sin(pi/N))
+            H_tto = tto_add(H_tto,mult_a_tt(0.5*γij,Htemp))
         end
     end
-    for i in findall(!iszero,V)
-        H = two_body_mpo(i[1],i[2],i[3],i[4],L)
-        G = two_body_mpo(i[4],i[3],i[2],i[1],L)
-        A = tto_add(A,mult_a_tt(V[i],tto_add(H,G)))
-    end
-    return A
+    return H_tto
 end
