@@ -664,3 +664,13 @@ function tt_compression(X::ttvector,tol=1e-12)
     return ttvector(Y,X.ttv_dims,rks,zeros(Integer,d))
 end
 
+#TTO representation of the identity matrix
+function id_tto(d;n_dim=2)
+	dims = n_dim*ones(Int64,d)
+	A = Array{Array{Float64,4},1}(undef,d)
+	for j in 1:d
+		A[j] = zeros(2,2,1,1)
+		A[j][:,:,1,1] = Matrix{Float64}(I,2,2)
+	end
+	return ttoperator(A,dims,ones(Int64,d),zeros(d))
+end
