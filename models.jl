@@ -272,8 +272,11 @@ H = β ∑_{<μ,ν>,σ} a^†_μσ a^†_νσ + c.c. + 0.5 ∑_μ,ν (n_μ-1)(n_
 
 β = -2.5eV, γ_μν = 1/(γ0^-1+d_μν), γ0 = 10.84eV
 d_μν = b sin(π/N*(μ-ν [N]))/sin(π/N), b = 1.4 A
+
+Ground-state energy = -12.72 eV
 """
-function PPP_C_NH_N(N;β=-2.5/27.2113845,b=1.4*1.8897259886,γ0=10.84/27.2113845)
+function PPP_C_NH_N(N;β=-2.5/27.2113845,b=1.4*1.8897259886,γ0=10.84/27.2113845,order=collect(1:2N))
+    @assert(isperm(order),"Ordering given is not a permutation.")
     h = zeros(2N,2N)
     γ = sum(1/(1/γ0+b*sin(k/N*pi)/sin(pi/N)) for k in 1:N)
     for i in 1:N-1
@@ -282,11 +285,12 @@ function PPP_C_NH_N(N;β=-2.5/27.2113845,b=1.4*1.8897259886,γ0=10.84/27.2113845
     end
     h[2N,2] = β
     h[2N-1,1] = β
-    H_tto = hV_to_mpo(h,zeros(2N,2N,2N,2N))
+    H_tto = hV_to_mpo(h[order,order],zeros(2N,2N,2N,2N))
+    σ = invperm(order)
     for i in 1:N
-        Hi = tto_add(tto_add(one_body_mpo(2i,2i,2N),one_body_mpo(2i-1,2i-1,2N)),mult_a_tt(-1.0,id_tto(2N)))
+        Hi = tto_add(tto_add(one_body_mpo(σ[2i],σ[2i],2N),one_body_mpo(σ[2i-1],σ[2i-1],2N)),mult_a_tt(-1.0,id_tto(2N)))
         for j in 1:N
-            Hj = tto_add(tto_add(one_body_mpo(2j,2j,2N),one_body_mpo(2j-1,2j-1,2N)),mult_a_tt(-1.0,id_tto(2N)))
+            Hj = tto_add(tto_add(one_body_mpo(σ[2j],σ[2j],2N),one_body_mpo(σ[2j-1],σ[2j-1],2N)),mult_a_tt(-1.0,id_tto(2N)))
             Htemp = mult(Hi,Hj)
             γij = 1/(1/γ0+b*sin(pi/N*mod(i-j,N))/sin(pi/N))
             H_tto = tto_add(H_tto,mult_a_tt(0.5*γij,Htemp))
