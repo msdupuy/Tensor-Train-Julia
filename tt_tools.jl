@@ -167,7 +167,7 @@ function rand_orthogonal(n,m)
 end
 
 #local ttvec rank increase function with noise ϵ_wn
-function tt_up_rks_noise(tt_vec,tt_ot_i,rkm,rk,ϵ_wn)
+function tt_up_rks_noise(tt_vec,rkm,rk,ϵ_wn)
 	vec_out = zeros(Float64,size(tt_vec,1),rkm,rk)
 	vec_out[:,1:size(tt_vec,2),1:size(tt_vec,3)] = tt_vec
 	if !iszero(ϵ_wn)
@@ -189,7 +189,7 @@ function tt_up_rks_noise(tt_vec,tt_ot_i,rkm,rk,ϵ_wn)
 			end
 		end
 	end
-	return vec_out,tt_ot_i
+	return vec_out
 end
 
 #returns the ttvector with ranks rks and noise ϵ_wn for the updated ranks
@@ -204,7 +204,7 @@ function tt_up_rks(x_tt::ttvector,rk_max::Int;rks=vcat(1,rk_max*ones(Int,length(
 		n_in *= x_tt.ttv_dims[i]
 		n_out = Int(n_out/x_tt.ttv_dims[i])
 		rks[i+1] = min(rks[i+1],n_in,n_out)
-		vec_out[i],out_ot[i] = tt_up_rks_noise(x_tt.ttv_vec[i],x_tt.ttv_ot[i],rks[i],rks[i+1],ϵ_wn)
+		vec_out[i] = tt_up_rks_noise(x_tt.ttv_vec[i],rks[i],rks[i+1],ϵ_wn)
 	end	
 	return ttvector(vec_out,x_tt.ttv_dims,rks[2:end],x_tt.ttv_ot)
 end
@@ -265,6 +265,23 @@ function tt_to_vidal(x_tt::ttvector;tol=1e-14)
 	end
 	core[d] = y_tt.ttv_vec[d]
 	return tt_vidal(core,Σ,y_tt.ttv_dims,y_rks[2:end])
+end
+
+#returns a TT representation where the Vidal SVD lower than tol are discarded
+function tt_rounding(x_tt::ttvector;tol=1e-14)
+	d = length(x_tt.ttv_dims)
+	y_rks = vcat(1,x_tt.ttv_rks)
+	y_vec = deepcopy(x_tt.ttv_vec)
+	for j in 1:d-1
+		A = zeros(x_tt.ttv_dims[j],y_rks[j],x_tt.ttv_dims[j+1],y_rks[j+2])
+		@tensor A[a,b,c,d] = y_vec[j][a,b,z]*y_vec[j+1][c,z,d]
+		u,s,v = svd(reshape(A,size(A,1)*size(A,2),:))
+		Σ = s[s.>tol]
+		y_rks[j+1] = length(Σ)
+		y_vec[j] = reshape(u[:,s.>tol],x_tt.ttv_dims[j],y_rks[j],:)
+		y_vec[j+1] = permutedims(reshape(v[:,s.>tol]*Diagonal(Σ),x_tt.ttv_dims[j+1],y_rks[j+2],:),[1 3 2])
+	end
+	return ttvector(y_vec,x_tt.ttv_dims,y_rks[2:end],vcat(-ones(Int64,d-1),0))
 end
 
 #returns the singular values of the reshaped tensor x[μ_1⋯μ_k;μ_{k+1}⋯μ_d]
