@@ -281,7 +281,20 @@ function tt_rounding(x_tt::ttvector;tol=1e-14)
 		y_vec[j] = reshape(u[:,s.>tol],x_tt.ttv_dims[j],y_rks[j],:)
 		y_vec[j+1] = permutedims(reshape(v[:,s.>tol]*Diagonal(Σ),x_tt.ttv_dims[j+1],y_rks[j+2],:),[1 3 2])
 	end
-	return ttvector(y_vec,x_tt.ttv_dims,y_rks[2:end],vcat(-ones(Int64,d-1),0))
+	for j in d:-1:2
+		A = zeros(x_tt.ttv_dims[j-1],y_rks[j-1],x_tt.ttv_dims[j],y_rks[j+1])
+		@tensor A[a,b,c,d] = y_vec[j-1][a,b,z]*y_vec[j][c,z,d]
+		u,s,v = svd(reshape(A,size(A,1)*size(A,2),:))
+		Σ = s[s.>tol]
+		y_rks[j] = length(Σ)
+		y_vec[j] = permutedims(reshape(v[:,s.>tol],x_tt.ttv_dims[j],y_rks[j+1],:),[1 3 2])
+		y_vec[j-1] = reshape(u[:,s.>tol]*Diagonal(Σ),x_tt.ttv_dims[j-1],y_rks[j-1],:)
+	end
+	return ttvector(y_vec,x_tt.ttv_dims,y_rks[2:end],vcat(0,ones(Int64,d-1)))
+end
+
+function tt_rounding(A_tto::ttoperator;tol=1e-14)
+	return ttv_to_tto(tt_rounding(tto_to_ttv(A_tto);tol=tol))
 end
 
 #returns the singular values of the reshaped tensor x[μ_1⋯μ_k;μ_{k+1}⋯μ_d]
