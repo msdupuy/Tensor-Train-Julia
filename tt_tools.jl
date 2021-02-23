@@ -167,7 +167,7 @@ function rand_orthogonal(n,m)
 end
 
 #local ttvec rank increase function with noise ϵ_wn
-function tt_up_rks_noise(tt_vec,rkm,rk,ϵ_wn)
+function tt_up_rks_noise(tt_vec,tt_ot_i,rkm,rk,ϵ_wn)
 	vec_out = zeros(Float64,size(tt_vec,1),rkm,rk)
 	vec_out[:,1:size(tt_vec,2),1:size(tt_vec,3)] = tt_vec
 	if !iszero(ϵ_wn)
@@ -204,7 +204,7 @@ function tt_up_rks(x_tt::ttvector,rk_max::Int;rks=vcat(1,rk_max*ones(Int,length(
 		n_in *= x_tt.ttv_dims[i]
 		n_out = Int(n_out/x_tt.ttv_dims[i])
 		rks[i+1] = min(rks[i+1],n_in,n_out)
-		vec_out[i] = tt_up_rks_noise(x_tt.ttv_vec[i],rks[i],rks[i+1],ϵ_wn)
+		vec_out[i] = tt_up_rks_noise(x_tt.ttv_vec[i],x_tt.ttv_ot[i],rks[i],rks[i+1],ϵ_wn)
 	end	
 	return ttvector(vec_out,x_tt.ttv_dims,rks[2:end],x_tt.ttv_ot)
 end
