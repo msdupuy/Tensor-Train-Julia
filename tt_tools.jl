@@ -7,7 +7,7 @@ using TensorOperations
 import Base.isempty
 
 #TT constructor of a tensor
-#C[μ_1,…,μ_L] = C_tt.ttv_vec[1]*⋯*C_tt.ttv_vec[L]
+#C[μ_1,…,μ_d] = C_tt.ttv_vec[1][μ₁]*⋯*C_tt.ttv_vec[L][μ_d]
 #the normalization of the TT cores are kept in ttv_ot
 
 struct ttvector
@@ -458,10 +458,12 @@ function ttv_to_tto(x::ttvector)
 	@assert(isqrt.(x.ttv_dims).^2 == x.ttv_dims, DimensionMismatch)
 	Att_vec = Array{Array{Float64,4},1}(undef,d)
 	x_rks = vcat(1,x.ttv_rks)
+	A_dims = zeros(Int64,d)
 	for i in 1:d
-		Att_vec[i] = reshape(x.ttv_vec[i],isqrt(x.ttv_dims[i]),isqrt(x.ttv_dims[i]),x_rks[i],x_rks[i+1])
+		A_dims[i] = isqrt(x.ttv_dims[i])
+		Att_vec[i] = reshape(x.ttv_vec[i],A_dims[i],A_dims[i],x_rks[i],x_rks[i+1])
 	end
-	return ttoperator(Att_vec,isqrt.(x.ttv_dims),x.ttv_rks,x.ttv_ot)
+	return ttoperator(Att_vec,A_dims,x.ttv_rks,x.ttv_ot)
 end
 
 """
