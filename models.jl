@@ -273,9 +273,9 @@ H = β ∑_{<μ,ν>,σ} a^†_μσ a^†_νσ + c.c. + 0.5 ∑_μ,ν (n_μ-1)(n_
 β = -2.5eV, γ_μν = 1/(γ0^-1+d_μν), γ0 = 10.84eV
 d_μν = b sin(π/N*(μ-ν [N]))/sin(π/N), b = 1.4 A
 
-Ground-state energy = -12.72 eV
+Ground-state energy = -12.72 eV (N=6)
 """
-function PPP_C_NH_N(N;β=-2.5/27.2113845,b=1.4*1.8897259886,γ0=10.84/27.2113845,order=collect(1:2N))
+function PPP_C_NH_N(N;β=-2.5/27.2113845,b=1.4*1.8897259886,γ0=10.84/27.2113845,order=collect(1:2N),tol=1e-10)
     @assert(isperm(order),"Ordering given is not a permutation.")
     h = zeros(2N,2N)
     γ = sum(1/(1/γ0+b*sin(k/N*pi)/sin(pi/N)) for k in 1:N)
@@ -295,6 +295,7 @@ function PPP_C_NH_N(N;β=-2.5/27.2113845,b=1.4*1.8897259886,γ0=10.84/27.2113845
             γij = 1/(1/γ0+b*sin(pi/N*mod(i-j,N))/sin(pi/N))
             H_tto = tto_add(H_tto,mult_a_tt(0.5*γij,Htemp))
         end
+        H_tto = tt_rounding(H_tto,tol=tol)
     end
     return H_tto
 end
