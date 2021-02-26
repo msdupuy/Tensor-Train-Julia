@@ -173,7 +173,7 @@ returns an MPO version of
 H = Σ_{ij} h_ij (a_i† a_j + c.c.) + Σ_{ijkl} V_{ijkl} (a_i†a_j†a_ka_l + c.c.)
 """
 #assuming diagonal terms are divided by 2 in the h and V matrix
-function hV_to_mpo(h,V)
+function hV_to_mpo(h,V;tol=1e-10)
     L = size(h,1)
     i_list = findall(!iszero,h)
     if length(i_list)>0
@@ -184,13 +184,14 @@ function hV_to_mpo(h,V)
             G = one_body_mpo(i[2],i[1],L)
             A = tto_add(A,mult_a_tt(h[i],tto_add(G,H)))
         end
+        A = tt_rounding(A,tol=tol)
     end
     for i in findall(!iszero,V)
         H = two_body_mpo(i[1],i[2],i[3],i[4],L)
         G = two_body_mpo(i[4],i[3],i[2],i[1],L)
         A = tto_add(A,mult_a_tt(V[i],tto_add(H,G)))
     end
-    return A
+    return tt_rounding(A,tol=tol)
 end
 
 """
