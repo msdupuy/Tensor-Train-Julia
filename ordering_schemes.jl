@@ -140,10 +140,7 @@ function bwpo_entropy(N,L,V;imax=1000,sigma_current=collect(1:L),CAS=[collect(1:
    prefactor = sum([cost(svdvals(V[i_cas,x_N[1:i]]),tol=tol) for i in i_cuts for i_cas in CAS]) 
    while iter < imax && temp*prefactor/(imax*cost_max) < rand()
       #nouveau voisin
-      j = rand(1:N)
-      k = rand(N+1:L)
-      x_temp = copy(x_N) 
-      x_temp[k],x_temp[j] = x_N[j],x_N[k]
+      x_temp = randperm(L)
       new_prefactor = sum([cost(svdvals(V[i_cas,x_temp[1:i]]),tol=tol) for i in i_cuts for i_cas in CAS])
       if new_prefactor > prefactor
          x_N = x_temp
