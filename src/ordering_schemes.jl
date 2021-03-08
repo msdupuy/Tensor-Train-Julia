@@ -1,5 +1,3 @@
-include("tt_tools.jl")
-include("models.jl")
 using StatsBase
 using Random
 
@@ -20,17 +18,6 @@ function one_rdm(x_tt::ttvector)
     return γ
 end
 
-function test_one_rdm()
-    C = randn(2,2,2,2)
-    C = 1/norm(C)*C
-    C_tt =ttv_decomp(C,1)
-    γ = one_rdm(C_tt)
-    i = rand(1:4)
-    A = zeros(2,2)
-    A[1,1] = dot(selectdim(C,i,1),selectdim(C,i,1))
-    A[2,2] = 1-A[1,1]
-    @test(isapprox(γ[i,:,:],A,atol=1e-12))
-end
 
 #returns the list of two-orbitals reduced density matrix
 function two_rdm(x_tt::ttvector;fermion=true)
@@ -50,24 +37,6 @@ function two_rdm(x_tt::ttvector;fermion=true)
     return γ
 end
 
-function test_two_rdm()
-    C = randn(2,2,2,2)
-    C = 1/norm(C)*C
-    C_tt =ttv_decomp(C,1)
-    γ = two_rdm(C_tt;fermion=false)
-    i = rand(1:4)
-    j = rand(setdiff(1:4,i))
-    i,j = min(i,j),max(i,j)
-    A = zeros(2,2,2,2)
-    A[1,1,1,1] = norm(selectdim(selectdim(C,j,1),i,1))^2
-    A[1,2,1,2] = norm(selectdim(selectdim(C,j,2),i,1))^2
-    A[2,1,2,1] = norm(selectdim(selectdim(C,j,1),i,2))^2
-    A[2,2,2,2] = norm(selectdim(selectdim(C,j,2),i,2))^2
-    A[1,2,2,1] = dot(selectdim(selectdim(C,j,2),i,1),selectdim(selectdim(C,j,1),i,2))
-    A[2,1,1,2] = A[1,2,2,1]
-    #return A,γ[i,j,:,:,:,:]
-    @test(isapprox(γ[i,j,:,:,:,:],A,atol=1e-12))
-end
 
 """
 returns the entropy of a matrix M
@@ -103,7 +72,7 @@ function fiedler(IM)
    L = size(IM)[1]
    Lap = Diagonal([sum(IM[i,:]) for i=1:L]) - IM
    F = eigen(Lap)
-   @test isapprox(F.values[1],0.,atol=1e-14)
+   @assert isapprox(F.values[1],0.,atol=1e-14)
    return sortperm(F.vectors[:,2]) #to get 2nd eigenvector
 end
 

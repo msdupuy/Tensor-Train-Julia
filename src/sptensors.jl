@@ -1,7 +1,5 @@
-include("tt_tools.jl")
-include("als.jl")
 using SparseArrays
-#using IterativeSolvers
+using IterativeSolvers
 
 struct sparsetensor_vec
     # dims is the array of dimensions of the tensor

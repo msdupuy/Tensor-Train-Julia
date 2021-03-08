@@ -1,4 +1,3 @@
-using Test
 using Random
 using LinearAlgebra
 using Base.Threads
@@ -209,15 +208,6 @@ function tt_up_rks(x_tt::ttvector,rk_max::Int;rks=vcat(1,rk_max*ones(Int,length(
 	return ttvector(vec_out,x_tt.ttv_dims,rks[2:end],x_tt.ttv_ot)
 end
 
-function test_tt_up_rks()
-	x = randn(4,4,4,4)
-	x_tt = ttv_decomp(x,2,tol=0.1)
-	x = ttv_to_tensor(x_tt)
-	y_tt = tt_up_rks(x_tt,20)
-	@test isapprox(x,ttv_to_tensor(y_tt),atol=1e-10)
-	z_tt = tt_up_rks(x_tt,20,ϵ_wn=1e-10)
-	@test isapprox(x,ttv_to_tensor(z_tt),atol=1e-6)
-end
 
 #returns the orthogonalized ttvector with root i
 function tt_orthogonalize(x_tt::ttvector,i::Integer)
@@ -423,25 +413,6 @@ function tto_add(x::ttoperator,y::ttoperator)
     return ttoperator(tto_vec,x.tto_dims,rks[2:d+1],zeros(d))
 end
 
-function test_tt_add()
-    n=5
-    x=randn(n,n,n,n,n)
-    y=randn(n,n,n,n,n)
-    x_tt = ttv_decomp(x,1)
-    y_tt = ttv_decomp(y,1)
-    z_tt = tt_add(x_tt,y_tt)
-    @test(isapprox(ttv_to_tensor(z_tt),x+y))
-end
-
-function test_tto_add()
-    n=3
-    x=randn(n,n,n,n,n,n)
-    y=randn(n,n,n,n,n,n)
-    x_tt = tto_decomp(x,1)
-    y_tt = tto_decomp(y,1)
-    z_tt = tto_add(x_tt,y_tt)
-    @test(isapprox(tto_to_tensor(z_tt),x+y))
-end
 
 function tto_to_ttv(A::ttoperator)
 	d = length(A.tto_dims)
@@ -530,17 +501,6 @@ function tt_compression_par(A::ttoperator;tol=1e-14,Imax=2)
 	return ttv_to_tto(tt_compression_par(tto_to_ttv(A);tol=tol,Imax=Imax))
 end
 
-function test_compression_par()
-    n=5
-    d=3
-    L = randn(n,n,n,n,n,n)
-    x = randn(n,n,n)
-    y = reshape(L,n^d,:)*x[:]
-    L_tt = tto_decomp(reshape(L,n*ones(Int,2d)...),1)
-    x_tt = ttv_decomp(x,1)
-    y_tt = mult(L_tt,x_tt)
-    @test(isapprox(ttv_to_tensor(tt_compression_par(y_tt))[:],y))
-end
 
 #matrix vector multiplication in TT format
 function mult(A::ttoperator,v::ttvector)
@@ -572,29 +532,6 @@ function mult(A::ttoperator,B::ttoperator)
     return ttoperator(Y,A.tto_dims,A.tto_rks.*B.tto_rks,zeros(Integer,d))
 end
 
-function test_mult()
-    n=5
-    d=3
-    L = randn(n,n,n,n,n,n)
-    x = randn(n,n,n)
-    y = reshape(L,n^d,:)*x[:]
-    L_tt = tto_decomp(reshape(L,n*ones(Int,2d)...),1)
-    x_tt = ttv_decomp(x,1)
-    y_tt = mult(L_tt,x_tt)
-    @test(isapprox(ttv_to_tensor(y_tt)[:],y))
-end
-
-function test_mult_tto()
-    n=3
-    d=3
-    L = randn(n,n,n,n,n,n)
-    S = randn(n,n,n,n,n,n)
-    y = reshape(L,n^d,:)*reshape(S,n^d,:)
-    L_tt = tto_decomp(L,1)
-    S_tt = tto_decomp(S,1)
-    y_tt = mult(L_tt,S_tt)
-    @test(isapprox(reshape(tto_to_tensor(y_tt),n^d,:),y))
-end
 
 #tt_dot returns the dot product of two tt
 function tt_dot(A::ttvector,B::ttvector)
@@ -616,18 +553,6 @@ function tt_dot(A::ttvector,B::ttvector)
     return C[1]::Float64
 end
 
-function test_tt_dot()
-    n=5
-    d=3
-    x = randn(n,n,n)
-    y = randn(n,n,n)
-    z = randn(n,n,n)
-    x_tt = ttv_decomp(x,1)
-    y_tt = ttv_decomp(y,1)
-    z_tt = ttv_decomp(z,1)
-    a_tt = tt_add(y_tt,z_tt)
-    @test isapprox(x[:]'*(y+z)[:], tt_dot(x_tt,a_tt))
-end
 
 function mult_a_tt(a::Real,A::ttvector)
     i = findfirst(isequal(0),A.ttv_ot)
@@ -643,14 +568,6 @@ function mult_a_tt(a::Real,A::ttoperator)
     return ttoperator(X,A.tto_dims,A.tto_rks,A.tto_ot)
 end
 
-function test_mult_real()
-    n=10
-    d=3
-    x = randn(n,n,n)
-    a = randn()
-    x_tt = ttv_decomp(x,1)
-    @test isapprox(a.*x, ttv_to_tensor(mult_a_tt(a,x_tt)))
-end
 
 function tt_core_compression(A,B,C;tol=1e-12)
     dim_A = [i for i in size(A)]

@@ -1,5 +1,5 @@
-include("tt_tools.jl")
 using LinearMaps
+using TensorOperations
 
 """
 TODO: include IterativeSolvers option for als
@@ -135,7 +135,7 @@ function K_eiggenmin(Gi,Hi,Ki,Li,ttv_vec;it_solver=false,itslv_thresh=2500)
 		S[a,b,c,d,e,f] := Ki[d,e,a,b,z]*Li[f,c,z] #size (ni,rim,ri,ni,rim,ri)	
 	end
 	if it_solver || prod(size(K)[1:3]) > itslv_thresh
-		r = lobpcg(reshape(K,prod(size(K)[1:3]),:),reshape(S,prod(size(S)[1:3]),:),false,ttv_vec[:],1)
+		r = lobpcg(reshape(K,prod(size(K)[1:3]),:),reshape(S,prod(size(S)[1:3]),:),false,ttv_vec[:],1;maxiter=500,tol=1e-8)
 		return r.λ[1], reshape(r.X[:,1],size(K)[1:3]...)
 	else
 		F = eigen(reshape(K,prod(size(K)[1:3]),:),reshape(S,prod(size(K)[1:3]),:),)
@@ -144,7 +144,7 @@ function K_eiggenmin(Gi,Hi,Ki,Li,ttv_vec;it_solver=false,itslv_thresh=2500)
 end
 
 #sweep scheduler: Array of Int, Int, Float: sweep, rks, E_change in last sweep 
-function als(A :: ttoperator, b :: ttvector, tt_start :: ttvector ;sweep_count=2,it_solver=false,r_itsolver=5000)
+function als_linsolv(A :: ttoperator, b :: ttvector, tt_start :: ttvector ;sweep_count=2,it_solver=false,r_itsolver=5000)
 	# als finds the minimum of the operator J:1/2*<Ax,Ax> - <x,b>
 	# input:
 	# 	A: the tensor operator in its tensor train format
@@ -217,7 +217,7 @@ end
 Warning probably only works for left-orthogonal starting tensor
 Returns the lowest eigenvalue of A by minimizing the Rayleigh quotient
 """
-function als_eig(A :: ttoperator,
+function als_eigsolv(A :: ttoperator,
 	 tt_start :: ttvector ; #TT initial guess
 	 sweep_schedule=[2]::Array{Int64,1}, #Number of sweeps for each bond dimension in rmax_schedule
 	 rmax_schedule=[maximum(tt_start.ttv_rks)]::Array{Int64,1}, #bond dimension at each sweep
@@ -297,7 +297,7 @@ end
 returns the smallest eigenpair Ax = Sx
 """
 
-function als_gen_eig(A :: ttoperator, S::ttoperator, tt_start :: ttvector ; sweep_schedule=[2],rmax_schedule=[maximum(tt_start.ttv_rks)],tol=1e-10,it_solver=false,itslv_thresh=2500)
+function als_gen_eigsolv(A :: ttoperator, S::ttoperator, tt_start :: ttvector ; sweep_schedule=[2],rmax_schedule=[maximum(tt_start.ttv_rks)],tol=1e-10,it_solver=false,itslv_thresh=2500)
 	# als finds the minimum of the operator J:1/2*<Ax,Ax> - <x,b>
 	# input:
 	# 	A: the tensor operator in its tensor train format

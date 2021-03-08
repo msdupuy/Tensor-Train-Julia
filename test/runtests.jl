@@ -1,4 +1,7 @@
-include("test_als.jl")
-include("test_mals.jl")
+using .TensorTrains
 
-export test_linsolv, test_als_eig, test_als_eig_schedule, test_als_gen_eig
+#include("test_tt_tools.jl")
+#include("test_als.jl")
+#include("test_mals.jl")
+include("test_ordering_schemes.jl")
+include("test_models.jl")

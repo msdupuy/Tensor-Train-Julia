@@ -1,6 +1,3 @@
-include("tt_tools.jl")
-include("ordering_schemes.jl")
-
 using Primes
 
 #returns a random orthogonal matrix of size n
