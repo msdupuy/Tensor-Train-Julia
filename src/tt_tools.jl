@@ -265,7 +265,7 @@ function tt_rounding(x_tt::ttvector;tol=1e-14)
 	for j in 1:d-1
 		A = zeros(x_tt.ttv_dims[j],y_rks[j],x_tt.ttv_dims[j+1],y_rks[j+2])
 		@tensor A[a,b,c,d] = y_vec[j][a,b,z]*y_vec[j+1][c,z,d]
-		u,s,v = svd(reshape(A,size(A,1)*size(A,2),:))
+		u,s,v = svd(reshape(A,size(A,1)*size(A,2),:),alg=LinearAlgebra.QRIteration)
 		Σ = s[s.>tol]
 		y_rks[j+1] = length(Σ)
 		y_vec[j] = reshape(u[:,s.>tol],x_tt.ttv_dims[j],y_rks[j],:)
@@ -274,7 +274,7 @@ function tt_rounding(x_tt::ttvector;tol=1e-14)
 	for j in d:-1:2
 		A = zeros(x_tt.ttv_dims[j-1],y_rks[j-1],x_tt.ttv_dims[j],y_rks[j+1])
 		@tensor A[a,b,c,d] = y_vec[j-1][a,b,z]*y_vec[j][c,z,d]
-		u,s,v = svd(reshape(A,size(A,1)*size(A,2),:))
+		u,s,v = svd(reshape(A,size(A,1)*size(A,2),:),alg=LinearAlgebra.QRIteration)
 		Σ = s[s.>tol]
 		y_rks[j] = length(Σ)
 		y_vec[j] = permutedims(reshape(v[:,s.>tol],x_tt.ttv_dims[j],y_rks[j+1],:),[1 3 2])
