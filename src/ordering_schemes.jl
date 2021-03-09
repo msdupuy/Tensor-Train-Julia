@@ -146,24 +146,10 @@ function bwpo_order(V,N,L;
     end
 end
 
-#function bwpo_entropy(N,L,V;imax=1000,σ_current=collect(1:L),CAS=[collect(1:N)],i_cuts=[Int(L/2)],tol=1e-10,temp=1.0)
-#   iter = 0
-#   x_N = σ_current
-#   cost_max = sum([cost(ones(min(i,L-N,N)),tol=tol) for i in i_cuts])*length(CAS)
-#   prefactor = sum([cost(svdvals(V[i_cas,x_N[1:i]]),tol=tol) for i in i_cuts for i_cas in CAS]) 
-#   while iter < imax && temp*prefactor/(imax*cost_max) < rand()
-#      #nouveau voisin
-#      x_temp = randperm(L)
-#      new_prefactor = sum([cost(svdvals(V[i_cas,x_temp[1:i]]),tol=tol) for i in i_cuts for i_cas in CAS])
-#      if new_prefactor > prefactor
-#         x_N = x_temp
-#         prefactor = new_prefactor
-#      end
-#      iter = iter+1
-#   end
-#   if iter == imax
-#        return x_N,prefactor
-#   else
-#        return bwpo_entropy(N,L,V;imax=imax-iter,σ_current = x_N,CAS=CAS,i_cuts)
-#   end
-#end
+function bwpo_order(ψ_tt::ttvector;order = collect(1:length(ψ_tt.ttv_dims));tol=1e-8,imax=2000,rand_or_full=500,temp=1e-4)
+    γ = one_prdm(ψ_tt)
+    N = tr(γ)
+    F = eigen(γ)
+    V = reverse(F.vectors,dims=2)[:,1:N]'
+    return bwpo_order(V,N,length(ψ_tt.ttv_dims),tol=tol,imax=imax,rand_or_full=rand_or_full,temp=temp)
+end
