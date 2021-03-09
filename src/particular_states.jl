@@ -1,4 +1,5 @@
 using Primes
+using LinearAlgebra
 
 #returns a random orthogonal matrix of size n
 function random_orthogonal(n::Int)
