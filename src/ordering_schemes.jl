@@ -1,7 +1,6 @@
-include("tt_tools.jl")
-include("models.jl")
 using StatsBase
 using Random
+using Combinatorics
 
 """
 ordering schemes for QC-DMRG or 2D statistical models
@@ -20,17 +19,6 @@ function one_rdm(x_tt::ttvector)
     return γ
 end
 
-function test_one_rdm()
-    C = randn(2,2,2,2)
-    C = 1/norm(C)*C
-    C_tt =ttv_decomp(C,1)
-    γ = one_rdm(C_tt)
-    i = rand(1:4)
-    A = zeros(2,2)
-    A[1,1] = dot(selectdim(C,i,1),selectdim(C,i,1))
-    A[2,2] = 1-A[1,1]
-    @test(isapprox(γ[i,:,:],A,atol=1e-12))
-end
 
 #returns the list of two-orbitals reduced density matrix
 function two_rdm(x_tt::ttvector;fermion=true)
@@ -50,24 +38,6 @@ function two_rdm(x_tt::ttvector;fermion=true)
     return γ
 end
 
-function test_two_rdm()
-    C = randn(2,2,2,2)
-    C = 1/norm(C)*C
-    C_tt =ttv_decomp(C,1)
-    γ = two_rdm(C_tt;fermion=false)
-    i = rand(1:4)
-    j = rand(setdiff(1:4,i))
-    i,j = min(i,j),max(i,j)
-    A = zeros(2,2,2,2)
-    A[1,1,1,1] = norm(selectdim(selectdim(C,j,1),i,1))^2
-    A[1,2,1,2] = norm(selectdim(selectdim(C,j,2),i,1))^2
-    A[2,1,2,1] = norm(selectdim(selectdim(C,j,1),i,2))^2
-    A[2,2,2,2] = norm(selectdim(selectdim(C,j,2),i,2))^2
-    A[1,2,2,1] = dot(selectdim(selectdim(C,j,2),i,1),selectdim(selectdim(C,j,1),i,2))
-    A[2,1,1,2] = A[1,2,2,1]
-    #return A,γ[i,j,:,:,:,:]
-    @test(isapprox(γ[i,j,:,:,:,:],A,atol=1e-12))
-end
 
 """
 returns the entropy of a matrix M
@@ -103,7 +73,7 @@ function fiedler(IM)
    L = size(IM)[1]
    Lap = Diagonal([sum(IM[i,:]) for i=1:L]) - IM
    F = eigen(Lap)
-   @test isapprox(F.values[1],0.,atol=1e-14)
+   @assert isapprox(F.values[1],0.,atol=1e-14)
    return sortperm(F.vectors[:,2]) #to get 2nd eigenvector
 end
 
@@ -133,20 +103,53 @@ end
 
 #best weighted prefactor order
 #Warning: V needs to be given in a row-"occupancy" way i.e. V[i,:] represents the coefficients of the natural orbital ψ_i in the basis of the ϕ_j, 1 ≤ j ≤ L
-function bwpo_entropy(N,L,V;imax=1000,sigma_current=collect(1:L),CAS=[collect(1:N)],i_cuts=[N],tol=1e-10,temp=1.0)
-   iter = 0
-   x_N = sigma_current
-   cost_max = sum([cost(ones(min(i,L-N,N)),tol=tol) for i in i_cuts])*length(CAS)
-   prefactor = sum([cost(svdvals(V[i_cas,x_N[1:i]]),tol=tol) for i in i_cuts for i_cas in CAS]) 
-   while iter < imax && temp*prefactor/(imax*cost_max) < rand()
-      #nouveau voisin
-      x_temp = randperm(L)
-      new_prefactor = sum([cost(svdvals(V[i_cas,x_temp[1:i]]),tol=tol) for i in i_cuts for i_cas in CAS])
-      if new_prefactor > prefactor
-         x_N = x_temp
-         prefactor = new_prefactor
-      end
-      iter = iter+1
-   end
-   return x_N,prefactor
+
+function bwpo_order(V,N,L;
+    pivot = round(Int,L/2),nb_l = pivot,
+    nb_r = L-pivot, order=collect(1:L),
+    CAS=[collect(1:N)],imax=1000,rand_or_full=500, tol =1e-8, temp=1e-4)
+    if imax <= 0 || min(nb_l,nb_r) == 0
+        return order[pivot-nb_l+1:pivot+nb_r]
+    else
+        x_N = order
+        cost_max = cost(ones(min(pivot,L-pivot)),tol=tol)*length(CAS)
+        prefactor = sum([cost(svdvals(V[i_cas,x_N[1:pivot]]),tol=tol) for i_cas in CAS]) 
+        iter = 0
+        if binomial(nb_r+nb_l,min(nb_l,nb_r)) > rand_or_full
+            while iter < imax && temp*prefactor/(imax*cost_max) < rand()
+                #nouveau voisin
+                x_temp = vcat(order[1:(pivot-nb_l)],shuffle(order[pivot-nb_l+1:pivot+nb_r]),order[pivot+nb_r+1:L])
+                new_prefactor = sum([cost(svdvals(V[i_cas,x_temp[1:pivot]]),tol=tol) for i_cas in CAS])
+                if new_prefactor > prefactor
+                    x_N = x_temp
+                    prefactor = new_prefactor
+                end
+                iter = iter+1
+            end
+        else #do exhaustive search in the space of the combinations
+            combs_list = collect(combinations(order[pivot-nb_l+1:pivot+nb_r],nb_l))
+            for σ in combs_list
+                σ_c = setdiff(order[pivot-nb_l+1:pivot+nb_r],σ)
+                x_temp = vcat(order[1:(pivot-nb_l)],σ,σ_c,order[pivot+nb_r+1:L])
+                new_prefactor = sum([cost(svdvals(V[i_cas,x_temp[1:pivot]]),tol=tol) for i_cas in CAS])
+                if new_prefactor > prefactor
+                    x_N = x_temp
+                    prefactor = new_prefactor
+                end
+            end
+        end
+        pivotL = pivot-nb_l+1+round(Int,(nb_l-1)/2)
+        order_l = bwpo_order(V,N,L; pivot=pivotL, nb_l=round(Int,(nb_l-1)/2)+1, nb_r=nb_l-1-round(Int,(nb_l-1)/2), order=x_N, CAS=CAS,imax=imax-iter,rand_or_full=rand_or_full, tol =tol, temp=temp)
+        pivotR = pivot + round(Int,nb_r/2)
+        order_r = bwpo_order(V,N,L; pivot=pivotR, nb_l=round(Int,nb_r/2), nb_r=nb_r-round(Int,nb_r/2), order=x_N, CAS=CAS,imax=imax-iter,rand_or_full=rand_or_full, tol =tol, temp=temp)
+        return vcat(order_l,order_r)
+    end
+end
+
+function bwpo_order(ψ_tt::ttvector;order = collect(1:length(ψ_tt.ttv_dims));tol=1e-8,imax=2000,rand_or_full=500,temp=1e-4)
+    γ = one_prdm(ψ_tt)
+    N = tr(γ)
+    F = eigen(γ)
+    V = reverse(F.vectors,dims=2)[:,1:N]'
+    return bwpo_order(V,N,length(ψ_tt.ttv_dims),tol=tol,imax=imax,rand_or_full=rand_or_full,temp=temp)
 end

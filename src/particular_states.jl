@@ -1,7 +1,5 @@
-include("tt_tools.jl")
-include("ordering_schemes.jl")
-
 using Primes
+using LinearAlgebra
 
 #returns a random orthogonal matrix of size n
 function random_orthogonal(n::Int)

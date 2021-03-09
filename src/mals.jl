@@ -1,8 +1,5 @@
-include("tt_tools.jl")
-include("als.jl")
-
-using Plots
 using IterativeSolvers
+using LinearMaps
 
 """
 Implementation based on the presentation in 
@@ -114,7 +111,7 @@ function K_eigmin_mals(Gi::Array{Float64,5},Hi::Array{Float64,5},ttv_vec_i::Arra
 	end	
 end
 
-function mals(A :: ttoperator, b :: ttvector, tt_start :: ttvector; tol=1e-12::Float64,rmax=round(Int,sqrt(prod(tt_start.ttv_dims))))
+function mals_linsolv(A :: ttoperator, b :: ttvector, tt_start :: ttvector; tol=1e-12::Float64,rmax=round(Int,sqrt(prod(tt_start.ttv_dims))))
 	# mals finds the minimum of the operator J(x)=1/2*<Ax,x> - <x,b>
 	# input:
 	# 	A: the tensor operator in its tensor train format
@@ -194,7 +191,7 @@ function mals(A :: ttoperator, b :: ttvector, tt_start :: ttvector; tol=1e-12::F
 	return tt_opt
 end
 
-function mals_eig(A :: ttoperator, tt_start :: ttvector; tol=1e-12::Float64,sweep_schedule=[2]::Array{Int64,1},rmax_schedule=[round(Int,sqrt(prod(tt_start.ttv_dims)))]::Array{Int64,1},it_solver=false::Bool,linsolv_maxiter=200::Int64,linsolv_tol=max(sqrt(tol),1e-8)::Float64)
+function mals_eigsolv(A :: ttoperator, tt_start :: ttvector; tol=1e-12::Float64,sweep_schedule=[2]::Array{Int64,1},rmax_schedule=[round(Int,sqrt(prod(tt_start.ttv_dims)))]::Array{Int64,1},it_solver=false::Bool,linsolv_maxiter=200::Int64,linsolv_tol=max(sqrt(tol),1e-8)::Float64)
 	# mals_eig finds the minimum of the operator J(x)=<Ax,x>/<x,x>
 	# input:
 	# 	A: the tensor operator in its tensor train format

@@ -1,8 +1,4 @@
-include("tt_tools.jl")
-include("sptensors.jl")
-include("als.jl")
 using Combinatorics
-
 
 """
 one_body_to_matrix and two_body_to_matrix for testing purposes
@@ -132,15 +128,6 @@ function one_body_mpo(p,q,L;fermion=true)
     return ttoperator(H,2*ones(Int64,L),ones(Int64,L),zeros(Int64,L))
 end
 
-function test_1body_mpo()
-    L=6
-    p=rand(1:L)
-    q=rand(1:L)
-    H = one_body_to_matrix(p,q,L)
-    Hmpo = one_body_mpo(p,q,L)
-    H2 = tto_to_tensor(Hmpo)
-    @test isapprox(norm(H-reshape(H2,2^L,2^L)),0.0,atol=1e-10)
-end
 
 #returns bosonic or fermionic MPO of a_k^† a^†_l a_m a_n 
 #assume k<l,m<n
@@ -158,15 +145,6 @@ function two_body_mpo(k,l,m,n,L)
     end
 end
 
-#fails but probably becuse two_body_to_matrix is wrong
-function test_2body_mpo()
-    L=6
-    k,l,m,n=1,2,3,4 
-    H = two_body_to_matrix(k,l,m,n,L)
-    Hmpo = two_body_mpo(k,l,m,n,L)
-    H2 = tto_to_tensor(Hmpo)
-    @test isapprox(norm(H-reshape(H2,2^L,2^L)),0.0,atol=1e-10)
-end
 
 """
 returns an MPO version of 

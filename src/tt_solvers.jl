@@ -1,5 +1,3 @@
-include("tt_tools.jl")
-
 """
 TT version of the restarted GMRES algorithm
 """
