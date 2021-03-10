@@ -148,7 +148,7 @@ end
 
 function bwpo_order(ψ_tt::ttvector;order = collect(1:length(ψ_tt.ttv_dims)),tol=1e-8,imax=2000,rand_or_full=500,temp=1e-4)
     γ = one_prdm(ψ_tt)
-    N = tr(γ)
+	 N = round(Int,tr(γ))
     F = eigen(γ)
     V = reverse(F.vectors,dims=2)[:,1:N]'
     return bwpo_order(V,N,length(ψ_tt.ttv_dims),tol=tol,imax=imax,rand_or_full=rand_or_full,temp=temp)
