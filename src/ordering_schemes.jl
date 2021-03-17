@@ -107,19 +107,19 @@ end
 function bwpo_order(V,N,L;
     pivot = round(Int,L/2),nb_l = pivot,
     nb_r = L-pivot, order=collect(1:L),
-    CAS=[collect(1:N)],imax=1000,rand_or_full=500, tol =1e-8, temp=1e-4)
+    CAS=collect(1:N),imax=1000,rand_or_full=500, tol =1e-8, temp=1e-4)
     if imax <= 0 || min(nb_l,nb_r) == 0
         return order[pivot-nb_l+1:pivot+nb_r]
     else
         x_N = order
-        cost_max = cost(ones(min(pivot,L-pivot)),tol=tol)*length(CAS)
-        prefactor = sum([cost(svdvals(V[i_cas,x_N[1:pivot]]),tol=tol) for i_cas in CAS]) 
+        cost_max = cost(ones(min(pivot,L-pivot)),tol=tol)*size(CAS,2)
+        prefactor = sum([cost(svdvals(V[CAS[:,i],x_N[1:pivot]]),tol=tol) for i in size(CAS,2)]) 
         iter = 0
         if binomial(nb_r+nb_l,min(nb_l,nb_r)) > rand_or_full
             while iter < imax && temp*prefactor/(imax*cost_max) < rand()
                 #nouveau voisin
                 x_temp = vcat(order[1:(pivot-nb_l)],shuffle(order[pivot-nb_l+1:pivot+nb_r]),order[pivot+nb_r+1:L])
-                new_prefactor = sum([cost(svdvals(V[i_cas,x_temp[1:pivot]]),tol=tol) for i_cas in CAS])
+                new_prefactor = sum([cost(svdvals(V[CAS[:,i],x_temp[1:pivot]]),tol=tol) for i in size(CAS,2)])
                 if new_prefactor > prefactor
                     x_N = x_temp
                     prefactor = new_prefactor
@@ -131,7 +131,7 @@ function bwpo_order(V,N,L;
             for σ in combs_list
                 σ_c = setdiff(order[pivot-nb_l+1:pivot+nb_r],σ)
                 x_temp = vcat(order[1:(pivot-nb_l)],σ,σ_c,order[pivot+nb_r+1:L])
-                new_prefactor = sum([cost(svdvals(V[i_cas,x_temp[1:pivot]]),tol=tol) for i_cas in CAS])
+                new_prefactor = sum([cost(svdvals(V[CAS[:,i],x_temp[1:pivot]]),tol=tol) for i in size(CAS,2)])
                 if new_prefactor > prefactor
                     x_N = x_temp
                     prefactor = new_prefactor
@@ -148,8 +148,30 @@ end
 
 function bwpo_order(ψ_tt::ttvector;order = collect(1:length(ψ_tt.ttv_dims)),tol=1e-8,imax=2000,rand_or_full=500,temp=1e-4)
     γ = one_prdm(ψ_tt)
-	 N = round(Int,tr(γ))
+	N = round(Int,tr(γ))
     F = eigen(γ)
     V = reverse(F.vectors,dims=2)[:,1:N]'
     return bwpo_order(V,N,length(ψ_tt.ttv_dims),tol=tol,imax=imax,rand_or_full=rand_or_full,temp=temp)
+end
+
+function bwpo_order(γ::Array{Float64,2};CAS=collect(1:round(Int,tr(γ))),tol=1e-8,imax=2000,rand_or_full=500,temp=1e-4)
+	N = round(Int,tr(γ))
+    F = eigen(γ)
+    V = reverse(F.vectors,dims=2)[:,:]'
+    return bwpo_order(V,N,size(γ,1);CAS=CAS,tol=tol,imax=imax,rand_or_full=rand_or_full,temp=temp)
+end
+
+"""
+generate CAS from a list of occupied orbitals and a list of virtual orbitals
+"""
+function CAS_generator(N::Int,n_occ::Array{Int,1},n_virt::Array{Int,1})
+    @assert isempty(intersect(n_occ,n_virt))
+    CAS = collect(1:N)
+    n_frozen = setdiff(1:N,n_occ)
+    for occ in combinations(n_occ,2)
+        for virt in combinations(n_virt,2)
+            CAS = hcat(CAS,vcat(n_frozen, setdiff(n_occ,occ),virt ))
+        end
+    end
+    return CAS
 end
