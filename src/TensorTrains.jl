@@ -1,7 +1,13 @@
 module TensorTrains
 
 include("tt_tools.jl")
-export ttvector,ttoperator,ttv_decomp,tto_decomp,tt_up_rks,tto_add,tt_svdvals,tt_dot,tt_add,tt_rounding,mult,mult_a_tt,ttv_to_tensor,tto_to_tensor,tt_compression_par,tt_orthogonalize
+export ttvector,ttoperator,ttv_decomp,tto_decomp,ttv_to_tensor,tto_to_tensor
+
+include("tt_operations.jl")
+export *, +, dot
+
+include("tt_rounding.jl")
+export tt_svdvals,tt_rounding,tt_compression_par,orthogonalize,tt_up_rks
 
 include("als.jl")
 export als_linsolv, als_eigsolv, als_gen_eigsolv
