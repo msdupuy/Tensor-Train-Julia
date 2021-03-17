@@ -8,11 +8,11 @@ import Base.eltype
 
 """
 TT constructor of a tensor
-``C[\\mu_1,…,\\mu_d] = A_1[1][\\mu_1]*⋯*A_L[L][\\mu_L] \\in \\mathbb{K}^{n_1 \\times ... \\times n_d}``
+``C[\\mu_1,…,\\mu_d] = A_1[1][\\mu_1]*⋯*A_d[d][\\mu_d] \\in \\mathbb{K}^{n_1 \\times ... \\times n_d}``
 The following properties are stored
-	* ttv_vec: the TT cores A_k as a list of 3-order tensors ``(A_1,...,A_L)`` where ``A_k = A_k[\\alpha_{k-1},\\alpha_k,\\mu_k]``, ``1 \\leq \\alpha_{k-1} \\leq r_{k-1}``, ``1 \\leq \\alpha_{k} \\leq r_{k}``, ``1 \\leq \\mu_k \\leq n_k``
+	* ttv_vec: the TT cores A_k as a list of 3-order tensors ``(A_1,...,A_d)`` where ``A_k = A_k[\\alpha_{k-1},\\alpha_k,\\mu_k]``, ``1 \\leq \\alpha_{k-1} \\leq r_{k-1}``, ``1 \\leq \\alpha_{k} \\leq r_{k}``, ``1 \\leq \\mu_k \\leq n_k``
 	* ttv_dims: the dimension of the tensor along each mode
-	* ttv_rks: the TT ranks ``(r_0,...,r_L)`` where ``r_0=r_L=1``
+	* ttv_rks: the TT ranks ``(r_0,...,r_d)`` where ``r_0=r_d=1``
 	* ttv_ot: the orthogonality of the TT where 
 		* ttv_ot[i] = 1 iff ``A_i`` is right-orthogonal *i.e.* ``\\sum_{\\mu_i} A_i[\\mu_i]^T A_i[\\mu_i] = I_{r_i}``
 		* ttv_ot[i] = -1 iff ``A_i`` is left-orthogonal *i.e.* ``\\sum_{\\mu_i} A_i[\\mu_i] A_i[\\mu_i]^T = I_{r_{i-1}}``
@@ -40,12 +40,12 @@ struct tt_vidal{T<:Number}
 end
 
 """	
-TT constructor of a matrix ``M[i_1,..,i_L;j_1,..,j_L] \\in \\mathbb{K}^{n_1 \\cdots n_L \\times n_1 \\cdots n_L}`` where 
-``MM[i_1,..,i_L;j_1,..,j_L] = A_1[i_1,j_1] ... A_L[i_L,j_L]``
+TT constructor of a matrix ``M[i_1,..,i_d;j_1,..,j_d] \\in \\mathbb{K}^{n_1 \\cdots n_d \\times n_1 \\cdots n_d}`` where 
+``MM[i_1,..,i_d;j_1,..,j_d] = A_1[i_1,j_1] ... A_L[i_d,j_d]``
 The following properties are stored
-	* tto_vec: the TT cores A_k as a list of 4-order tensors ``(A_1,...,A_L)``
+	* tto_vec: the TT cores A_k as a list of 4-order tensors ``(A_1,...,A_d)``
 	* ttv_dims: the dimension of the tensor along each mode
-	* ttv_rks: the TT ranks ``(r_0,...,r_L)`` where ``r_0=r_L=1``
+	* ttv_rks: the TT ranks ``(r_0,...,r_d)`` where ``r_0=r_d=1``
 """
 struct ttoperator{T<:Number}
 	tto_vec :: Array{Array{T,4},1}
@@ -138,6 +138,10 @@ function ttv_decomp(tensor::Array{T};index=1,tol=1e-12) where T<:Number
 	return ttvector{eltype(tensor)}(ttv_vec, dims, rks, ttv_ot)
 end
 
+
+"""
+Returns the tensor corresponding to x_tt
+"""
 function ttv_to_tensor(x_tt :: ttvector)
 	d = length(x_tt.ttv_dims)
 	r_max = maximum(x_tt.ttv_rks)
@@ -164,25 +168,20 @@ end
 
 #local ttvec rank increase function with noise ϵ_wn
 function tt_up_rks_noise(tt_vec,tt_ot_i,rkm,rk,ϵ_wn)
-	vec_out = zeros(Float64,size(tt_vec,1),rkm,rk)
-	vec_out[:,1:size(tt_vec,2),1:size(tt_vec,3)] = tt_vec
+	vec_out = zeros(eltype(tt_vec),rkm,rk,size(tt_vec,3))
+	vec_out[1:size(tt_vec,1),1:size(tt_vec,2),:] = tt_vec
 	if !iszero(ϵ_wn)
-		if rkm == size(tt_vec,2) && rk>size(tt_vec,3)
-			Q = rand_orthogonal(size(tt_vec,1)*rkm,rk-size(tt_vec,3))
-			vec_out[:,:,size(tt_vec,3)+1:rk] = ϵ_wn*reshape(Q,size(tt_vec,1),rkm,rk-size(tt_vec,3))
+		if rkm == size(tt_vec,1) && rk>size(tt_vec,2)
+			Q = rand_orthogonal(size(tt_vec,3)*rkm,rk-size(tt_vec,2))
+			vec_out[:,size(tt_vec,2)+1:rk,:] = ϵ_wn*reshape(Q,rkm,rk-size(tt_vec,2),size(tt_vec,3))
 			tt_ot_i =0
-		elseif rk == size(tt_vec,3) && rkm>size(tt_vec,2)
-			Q = rand_orthogonal(size(tt_vec,1)*rk,rkm-size(tt_vec,2))
-			vec_out[:,size(tt_vec,2)+1:rkm,:] = ϵ_wn*permutedims(reshape(Q,rk,size(tt_vec,1),rkm-size(tt_vec,2)),[2 3 1])
+		elseif rk == size(tt_vec,2) && rkm>size(tt_vec,1)
+			Q = rand_orthogonal(rkm-size(tt_vec,1),size(tt_vec,3)*rk)
+			vec_out[size(tt_vec,2)+1:rkm,:,:] = ϵ_wn*reshape(Q,rkm-size(tt_vec,1),rk,size(tt_vec,3))
 			tt_ot_i =0
-		elseif rk>size(tt_vec,3) && rkm>size(tt_vec,2)
-			if tt_ot_i == -1 #leftorthogonal
-				Q = rand_orthogonal(size(tt_vec,1)*(rkm-size(tt_vec,2)),rk-size(tt_vec,3))
-				vec_out[:,size(tt_vec,2)+1:rkm,size(tt_vec,3)+1:rk] = ϵ_wn*reshape(Q,size(tt_vec,1),rkm-size(tt_vec,2),rk-size(tt_vec,3))
-			else #tt_ot_i =1 or 0
-				Q = rand_orthogonal(rkm-size(tt_vec,2),size(tt_vec,1)*(rk-size(tt_vec,3)))
-				vec_out[:,size(tt_vec,2)+1:rkm,size(tt_vec,3)+1:rk] = ϵ_wn*permutedims(reshape(Q,rkm-size(tt_vec,2),size(tt_vec,1),rk-size(tt_vec,3)),[2,1,3])
-			end
+		elseif rk>size(tt_vec,2) && rkm>size(tt_vec,1)
+			Q = rand_orthogonal((rkm-size(tt_vec,1)),(rk-size(tt_vec,2))*size(tt_vec,3))
+			vec_out[size(tt_vec,1)+1:rkm,size(tt_vec,2)+1:rk,:] = ϵ_wn*reshape(Q,rkm-size(tt_vec,1),rk-size(tt_vec,2),size(tt_vec,3))
 		end
 	end
 	return vec_out
@@ -191,7 +190,7 @@ end
 #returns the ttvector with ranks rks and noise ϵ_wn for the updated ranks
 function tt_up_rks(x_tt::ttvector,rk_max::Int;rks=vcat(1,rk_max*ones(Int,length(x_tt.ttv_dims)-1),1),ϵ_wn=0.0)
 	d = length(x_tt.ttv_dims)
-	vec_out = Array{Array{Float64}}(undef,d)
+	vec_out = Array{Array{eltype(x_tt)}}(undef,d)
 	out_ot = zeros(Int64,d)
 	@assert(rk_max >= maximum(x_tt.ttv_rks),"New bond dimension too low")
 	n_in = 1
@@ -202,7 +201,7 @@ function tt_up_rks(x_tt::ttvector,rk_max::Int;rks=vcat(1,rk_max*ones(Int,length(
 		rks[i+1] = min(rks[i+1],n_in,n_out)
 		vec_out[i] = tt_up_rks_noise(x_tt.ttv_vec[i],x_tt.ttv_ot[i],rks[i],rks[i+1],ϵ_wn)
 	end	
-	return ttvector(vec_out,x_tt.ttv_dims,rks[2:end],x_tt.ttv_ot)
+	return ttvector{eltype(x_tt)}(vec_out,x_tt.ttv_dims,rks,x_tt.ttv_ot)
 end
 
 
