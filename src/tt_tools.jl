@@ -4,59 +4,53 @@ using Base.Threads
 using IterativeSolvers
 using TensorOperations
 import Base.isempty
+import Base.eltype
 
-#TT constructor of a tensor
-#C[μ_1,…,μ_d] = C_tt.ttv_vec[1][μ₁]*⋯*C_tt.ttv_vec[L][μ_d]
-#the normalization of the TT cores are kept in ttv_ot
-
-struct ttvector
-	# ttv_vec is an array of all matrix arrays for the tensor train format
-	# ttv_vec[i] stores the matrices A_i in the following way
-	# ttv_vec[i][1:x_(n_i), 1:r_(i-1), 1:r_i]
-	ttv_vec :: Array{Array{Float64,3},1}
-
-	# ttv_dims is an vector of the dimensions n_i i=1,...,d
+"""
+TT constructor of a tensor
+``C[\\mu_1,…,\\mu_d] = A_1[1][\\mu_1]*⋯*A_L[L][\\mu_L] \\in \\mathbb{K}^{n_1 \\times ... \\times n_d}``
+The following properties are stored
+	* ttv_vec: the TT cores A_k as a list of 3-order tensors ``(A_1,...,A_L)`` where ``A_k = A_k[\\alpha_{k-1},\\alpha_k,\\mu_k]``, ``1 \\leq \\alpha_{k-1} \\leq r_{k-1}``, ``1 \\leq \\alpha_{k} \\leq r_{k}``, ``1 \\leq \\mu_k \\leq n_k``
+	* ttv_dims: the dimension of the tensor along each mode
+	* ttv_rks: the TT ranks ``(r_0,...,r_L)`` where ``r_0=r_L=1``
+	* ttv_ot: the orthogonality of the TT where 
+		* ttv_ot[i] = 1 iff ``A_i`` is right-orthogonal *i.e.* ``\\sum_{\\mu_i} A_i[\\mu_i]^T A_i[\\mu_i] = I_{r_i}``
+		* ttv_ot[i] = -1 iff ``A_i`` is left-orthogonal *i.e.* ``\\sum_{\\mu_i} A_i[\\mu_i] A_i[\\mu_i]^T = I_{r_{i-1}}``
+		* ttv_ot[i] = 0 if nothing is known
+"""
+struct ttvector{T<:Number}
+	ttv_vec :: Array{Array{T,3},1}
 	ttv_dims :: Array{Int64,1}
-
-	# ttv_rks is the array of all ranks of the tensor train matrices
-	# r_i i=1,...,d
 	ttv_rks :: Array{Int64,1}
-
-	# ttv_ot includes information about the orthogonality properties
-	# ttv_ot[i] =  1 if the i-th matrices are rightorthogonal
-	# ttv_ot[i] =  0 if there is no information or the i-th matrices aren't orthogonal
-	# ttv_ot[i] = -1 if the i-th matrices are leftorthogonal
 	ttv_ot :: Array{Int64,1}
 end
 
-struct tt_vidal
+Base.eltype(::ttvector{T}) where T<:Number = T 
+"""
+Vidal representation of TT vector
+"""
+struct tt_vidal{T<:Number}
 	#Vidal representation of a higher-order tensor 
 	#C[μ_1,…,μ_L] = core[μ_1] * Diagonal(Σ_1) * … * Diagonal(Σ_{L-1}) * core[μ_L]
 	#Cores are orthogonal and Σ are the higher-order singular values
-	core :: Array{Array{Float64,3},1}
+	core :: Array{Array{T,3},1}
 	Σ :: Array{Array{Float64,1},1}
 	dims :: Array{Int64,1}
 	rks :: Array{Int64,1}
 end
 
-struct ttoperator
-	# tto_vec is an array of all matrices of the tensor train format
-	# of an operator A(x1,...,xd,y1,...,yd)
-	# tto_vec[i] stores the matrices A_i i=1,...,d in the following way
-	# ttv_vec[i][1:x_(n_i), 1:y_(n_i), 1:r_(i-1), 1:r_i]
-	tto_vec :: Array{Array{Float64,4},1}
-
-	# tto_dims stores the dimensions n_i i=1,...,d
+"""	
+TT constructor of a matrix ``M[i_1,..,i_L;j_1,..,j_L] \\in \\mathbb{K}^{n_1 \\cdots n_L \\times n_1 \\cdots n_L}`` where 
+``MM[i_1,..,i_L;j_1,..,j_L] = A_1[i_1,j_1] ... A_L[i_L,j_L]``
+The following properties are stored
+	* tto_vec: the TT cores A_k as a list of 4-order tensors ``(A_1,...,A_L)``
+	* ttv_dims: the dimension of the tensor along each mode
+	* ttv_rks: the TT ranks ``(r_0,...,r_L)`` where ``r_0=r_L=1``
+"""
+struct ttoperator{T<:Number}
+	tto_vec :: Array{Array{T,4},1}
 	tto_dims :: Array{Int64,1}
-
-	# tto_rks is the array of all ranks of the tensor train matrices
-	# r_i i=1,...,d
 	tto_rks :: Array{Int64,1}
-
-	# tto_ot is a matrix storing information about the orthoganlity properties
-	# tto_ot[i] =  1 if the i-th matrices are rightorthogonal
-	# tto_ot[i] =  0 if there is no information or the i-th matrices aren't orthogonal
-	# tto_ot[i] = -1 if the i-th matrices are leftorthogonal
 	tto_ot :: Array{Int64,1}
 end
 
@@ -68,12 +62,18 @@ function Base.isempty(x_tt::ttvector)
 	return isempty(x_tt.ttv_vec)
 end
 
-function ttv_decomp(tensor::Array{Float64}, index;tol=1e-12)
+"""
+TT decomposition by the Hierarchical SVD algorithm 
+	* Oseledets, I. V. (2011). Tensor-train decomposition. *SIAM Journal on Scientific Computing*, 33(5), 2295-2317.
+	* Schollwöck, U. (2011). The density-matrix renormalization group in the age of matrix product states. *Annals of physics*, 326(1), 96-192.
+The *root* of the TT decomposition is at index *i.e.* ``A_i`` for ``i < index`` are left-orthogonal and ``A_i`` for ``i > index`` are right-orthogonal. Singular values lower than tol are discarded.
+"""
+function ttv_decomp(tensor::Array{T};index=1,tol=1e-12) where T<:Number
 	# Decomposes a tensor into its tensor train with core matrices at i=index
 	dims = collect(size(tensor)) #dims = [n_1,...,n_d]
 	n_max = maximum(dims)
 	d = length(dims)
-	ttv_vec = Array{Array{Float64}}(undef,d)
+	ttv_vec = Array{Array{eltype(tensor)}}(undef,d)
 	# ttv_ot[i]= -1 if i < index
 	# ttv_ot[i] = 0 if i = index
 	# ttv_ot[i] = 1 if i > index
@@ -82,7 +82,7 @@ function ttv_decomp(tensor::Array{Float64}, index;tol=1e-12)
 	if index < d
 		ttv_ot[index+1:d] = ones(d-index)
 	end
-	rks = ones(Int, d+2) # ttv_rks will be rks[2:d+1]
+	rks = ones(Int, d+1) 
 	tensor_curr = tensor
 	# Calculate ttv_vec[i] for i < index
 	for i = 1 : (index - 1)
@@ -93,13 +93,13 @@ function ttv_decomp(tensor::Array{Float64}, index;tol=1e-12)
 		# Define the i-th rank
 		rks[i+1] = length(s[s .>= tol])
 		# Initialize ttv_vec[i]
-		ttv_vec[i] = zeros(dims[i],rks[i],rks[i+1])
+		ttv_vec[i] = zeros(rks[i],rks[i+1],dims[i])
 		# Fill in the ttv_vec[i]
 		for x = 1 : dims[i]
-			ttv_vec[i][x, :, :] = u[(rks[i]*(x-1) + 1):(rks[i]*x), :]
+			ttv_vec[i][:, :, x] = u[(rks[i]*(x-1) + 1):(rks[i]*x), :]
 		end
 		# Update the currently left tensor
-		tensor_curr = Diagonal(s[1:rks[i+1]])*Transpose(v[:,1:rks[i+1]])
+		tensor_curr = Diagonal(s[1:rks[i+1]])*v[:,1:rks[i+1]]'
 	end
 
 	# Calculate ttv_vec[i] for i > index
@@ -112,12 +112,12 @@ function ttv_decomp(tensor::Array{Float64}, index;tol=1e-12)
 			# Define the (i-1)-th rank
 			rks[i]=length(s[s .>= tol])
 			# Initialize ttv_vec[i]
-			ttv_vec[i] = zeros(dims[i], rks[i], rks[i+1])
+			ttv_vec[i] = zeros(rks[i], rks[i+1], dims[i])
 			# Fill in the ttv_vec[i]
 			i_vec = zeros(Int,rks[i+1])
 			for x = 1 : dims[i]
 				i_vec = dims[i]*((1:rks[i+1])-ones(Int, rks[i+1])) + x*ones(Int,rks[i+1])
-				ttv_vec[i][x, :, :] = Transpose(v[i_vec, 1:rks[i]]) #(rks[i+1]*(x-1)+1):(rks[i+1]*x)
+				ttv_vec[i][:, :, x] = v[i_vec, 1:rks[i]]' #(rks[i+1]*(x-1)+1):(rks[i+1]*x)
 			end
 			# Update the currently left tensor
 			tensor_curr = u[:,1:rks[i]]*Diagonal(s[1:rks[i]])
@@ -127,33 +127,30 @@ function ttv_decomp(tensor::Array{Float64}, index;tol=1e-12)
 	# Reshape the currently left tensor
 	tensor_curr = reshape(tensor_curr, Int(dims[index]*rks[index]),:)
 	# Initialize ttv_vec[i]
-	ttv_vec[index] = zeros(dims[index], rks[index], rks[index+1])
+	ttv_vec[index] = zeros(rks[index], rks[index+1], dims[index])
 	# Fill in the ttv_vec[i]
 	for x = 1 : dims[index]
-		ttv_vec[index][x, :, :] =
+		ttv_vec[index][:, :, x] =
 		tensor_curr[Int(rks[index]*(x-1) + 1):Int(rks[index]*x), 1:rks[index+1]]
 	end
 
 	# Define the return value as a ttvector
-	return ttvector(ttv_vec, dims, rks[2:d+1], ttv_ot)
+	return ttvector{eltype(tensor)}(ttv_vec, dims, rks, ttv_ot)
 end
 
-function ttv_to_tensor(ttv :: ttvector)
-	d = length(ttv.ttv_dims)
-	# Define the array of ranks [r_0=1,r_1,...,r_d]
-	rks = ones(Int,d+1)
-	rks[2:(d+1)] = ttv.ttv_rks
-	r_max = maximum(rks)
+function ttv_to_tensor(x_tt :: ttvector)
+	d = length(x_tt.ttv_dims)
+	r_max = maximum(x_tt.ttv_rks)
 	# Initialize the to be returned tensor
-	tensor = zeros(ttv.ttv_dims...)
+	tensor = zeros(eltype(x_tt), x_tt.ttv_dims...)
 	# Fill in the tensor for every t=(x_1,...,x_d)
 	for t in CartesianIndices(tensor)
-		curr = ones(1,r_max)
+		curr = ones(eltype(x_tt),r_max)
 		a = collect(Tuple(t))
-		for i = 1:d
-			curr[1,1:rks[i+1]]=reshape(curr[1,1:rks[i]],1,:)*ttv.ttv_vec[i][a[i],1:rks[i],1:rks[i+1]]
+		for i = d:-1:1
+			curr[1:x_tt.ttv_rks[i]] = x_tt.ttv_vec[i][:,:,a[i]]*curr[1:x_tt.ttv_rks[i+1]]
 		end
-		tensor[t] = curr[1,1]
+		tensor[t] = curr[1]
 	end
 	return tensor
 end
