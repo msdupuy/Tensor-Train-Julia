@@ -204,98 +204,103 @@ function tt_up_rks(x_tt::ttvector,rk_max::Int;rks=vcat(1,rk_max*ones(Int,length(
 	return ttvector{eltype(x_tt)}(vec_out,x_tt.ttv_dims,rks,x_tt.ttv_ot)
 end
 
-
-#returns the orthogonalized ttvector with root i
-function tt_orthogonalize(x_tt::ttvector,i::Integer)
+"""
+returns the orthogonalized ttvector with root i
+"""
+function orthogonalize(x_tt::ttvector;i=1::Int)
 	d = length(x_tt.ttv_dims)
-	x_rks = vcat(1,x_tt.ttv_rks)
+	x_rks = x_tt.ttv_rks
 	@assert(1≤i≤d, DimensionMismatch("Impossible orthogonalization"))
 	y_vec = deepcopy(x_tt.ttv_vec)
 	y_ot = zeros(Int64,d)
 	for j in 1:i-1
 		y_ot[j]=-1
-		y_vectemp = reshape(y_vec[j],x_tt.ttv_dims[j]*x_rks[j],x_rks[j+1])
+		y_vectemp = reshape(permutedims(y_vec[j],[1,3,2]),x_tt.ttv_dims[j]*x_rks[j],x_rks[j+1])
 		q,r = qr(y_vectemp)
-		y_vec[j] = reshape(q[:,1:x_rks[j+1]],x_tt.ttv_dims[j],x_rks[j],x_rks[j+1])
+		y_vec[j] = permutedims(reshape(q[:,1:x_rks[j+1]],x_rks[j],x_tt.ttv_dims[j],x_rks[j+1]),[1,3,2])
 		@threads for k in 1:x_tt.ttv_dims[j]
-			y_vec[j+1][k,:,:] = r[1:x_rks[j+1],1:x_rks[j+1]]*y_vec[j+1][k,:,:]
+			y_vec[j+1][:,:,k] = r[1:x_rks[j+1],1:x_rks[j+1]]*y_vec[j+1][:,:,k]
 		end
 	end
 	for j in d:-1:i+1
 		y_ot[j]=1
-		y_vectemp = reshape(permutedims(y_vec[j],[2,1,3]),x_rks[j],x_tt.ttv_dims[j]*x_rks[j+1])
+		y_vectemp = reshape(y_vec[j],x_rks[j],x_tt.ttv_dims[j]*x_rks[j+1])
 		l,q = lq(y_vectemp)
-		y_vec[j] = permutedims(reshape(q[1:x_rks[j],:],x_rks[j],x_tt.ttv_dims[j],x_rks[j+1]),[2 1 3])
+		y_vec[j] = reshape(q[1:x_rks[j],:],x_rks[j],x_rks[j+1],x_tt.ttv_dims[j])
 		@threads for k in 1:x_tt.ttv_dims[j]
-			y_vec[j-1][k,:,:] = y_vec[j-1][k,:,:]*l[1:x_rks[j],1:x_rks[j]]
+			y_vec[j-1][:,:,k] = y_vec[j-1][:,:,k]*l[1:x_rks[j],1:x_rks[j]]
 		end
 	end
-	return ttvector(y_vec,x_tt.ttv_dims,x_tt.ttv_rks,y_ot)
+	return ttvector{eltype(x_tt)}(y_vec,x_tt.ttv_dims,x_tt.ttv_rks,y_ot)
 end
 
 #returns the Vidal representation of a TT
 function tt_to_vidal(x_tt::ttvector;tol=1e-14)
 	d = length(x_tt.ttv_dims)
-	core = Array{Array{Float64,3},1}(undef,d)
+	core = Array{Array{eltype(x_tt),3},1}(undef,d)
 	Σ = Array{Array{Float64,1},1}(undef,d-1)
 	y_tt = tt_orthogonalize(x_tt,1)
 	y_rks = vcat(1,y_tt.ttv_rks)
 	for j in 1:d-1
-		A = zeros(y_tt.ttv_dims[j],y_rks[j],y_tt.ttv_dims[j+1],y_rks[j+2])
-		@tensor A[a,b,c,d] = y_tt.ttv_vec[j][a,b,z]*y_tt.ttv_vec[j+1][c,z,d]
+		A = zeros(y_rks[j],y_tt.ttv_dims[j],y_rks[j+2],y_tt.ttv_dims[j+1])
+		@tensor A[a,b,c,d] = y_tt.ttv_vec[j][a,z,b]*y_tt.ttv_vec[j+1][z,c,d]
 		u,s,v = svd(reshape(A,size(A,1)*size(A,2),:))
 		Σ[j] = s[s.>tol]
 		y_rks[j+1] = length(Σ[j])
-		core[j] = reshape(u[:,s.>tol],y_tt.ttv_dims[j],y_rks[j],:)
-		y_tt.ttv_vec[j+1] = permutedims(reshape(v[:,s.>tol],y_tt.ttv_dims[j+1],y_rks[j+2],:),[1 3 2])
+		core[j] = permutedims(reshape(u[:,s.>tol],y_rks[j],y_tt.ttv_dims[j],:),[1 3 2])
+		y_tt.ttv_vec[j+1] = reshape(v[:,s.>tol],:,y_rks[j+2],y_tt.ttv_dims[j+1])
 	end
 	core[d] = y_tt.ttv_vec[d]
 	return tt_vidal(core,Σ,y_tt.ttv_dims,y_rks[2:end])
 end
 
-#returns a TT representation where the Vidal SVD lower than tol are discarded
+"""
+returns a TT representation where the singular values lower than tol are discarded
+"""
 function tt_rounding(x_tt::ttvector;tol=1e-14)
 	d = length(x_tt.ttv_dims)
-	y_rks = vcat(1,x_tt.ttv_rks)
+	y_rks = x_tt.ttv_rks
 	y_vec = deepcopy(x_tt.ttv_vec)
 	for j in 1:d-1
-		A = zeros(x_tt.ttv_dims[j],y_rks[j],x_tt.ttv_dims[j+1],y_rks[j+2])
-		@tensor A[a,b,c,d] = y_vec[j][a,b,z]*y_vec[j+1][c,z,d]
+		A = zeros(y_rks[j],x_tt.ttv_dims[j],y_rks[j+2],x_tt.ttv_dims[j+1])
+		@tensor A[a,b,c,d] = y_vec[j][a,z,b]*y_vec[j+1][z,c,d]
 		u,s,v = svd(reshape(A,size(A,1)*size(A,2),:);alg=LinearAlgebra.QRIteration())
 		Σ = s[s.>tol]
 		y_rks[j+1] = length(Σ)
-		y_vec[j] = reshape(u[:,s.>tol],x_tt.ttv_dims[j],y_rks[j],:)
-		y_vec[j+1] = permutedims(reshape(v[:,s.>tol]*Diagonal(Σ),x_tt.ttv_dims[j+1],y_rks[j+2],:),[1 3 2])
+		y_vec[j] = permutedims(reshape(u[:,s.>tol],y_rks[j],x_tt.ttv_dims[j],:),[1 3 2])
+		y_vec[j+1] = reshape(Diagonal(Σ)*v[:,s.>tol]',:,y_rks[j+2],x_tt.ttv_dims[j+1])
 	end
 	for j in d:-1:2
-		A = zeros(x_tt.ttv_dims[j-1],y_rks[j-1],x_tt.ttv_dims[j],y_rks[j+1])
-		@tensor A[a,b,c,d] = y_vec[j-1][a,b,z]*y_vec[j][c,z,d]
+		A = zeros(y_rks[j-1],x_tt.ttv_dims[j-1],y_rks[j+1],x_tt.ttv_dims[j])
+		@tensor A[a,b,c,d] = y_vec[j-1][a,z,b]*y_vec[j][z,c,d]
 		u,s,v = svd(reshape(A,size(A,1)*size(A,2),:),alg=LinearAlgebra.QRIteration())
 		Σ = s[s.>tol]
 		y_rks[j] = length(Σ)
-		y_vec[j] = permutedims(reshape(v[:,s.>tol],x_tt.ttv_dims[j],y_rks[j+1],:),[1 3 2])
-		y_vec[j-1] = reshape(u[:,s.>tol]*Diagonal(Σ),x_tt.ttv_dims[j-1],y_rks[j-1],:)
+		y_vec[j] = reshape(v[:,s.>tol]',:,y_rks[j+1],x_tt.ttv_dims[j])
+		y_vec[j-1] = permutedims(reshape(u[:,s.>tol]*Diagonal(Σ),y_rks[j-1],x_tt.ttv_dims[j-1],:),[1 3 2])
 	end
-	return ttvector(y_vec,x_tt.ttv_dims,y_rks[2:end],vcat(0,ones(Int64,d-1)))
+	return ttvector{eltype(x_tt)}(y_vec,x_tt.ttv_dims,y_rks[2:end],vcat(0,ones(Int64,d-1)))
 end
 
 function tt_rounding(A_tto::ttoperator;tol=1e-14)
 	return ttv_to_tto(tt_rounding(tto_to_ttv(A_tto);tol=tol))
 end
 
-#returns the singular values of the reshaped tensor x[μ_1⋯μ_k;μ_{k+1}⋯μ_d]
+"""
+returns the singular values of the reshaped tensor x[μ_1⋯μ_k;μ_{k+1}⋯μ_d] for all 1≤ k ≤ d
+"""
 function tt_svdvals(x_tt::ttvector;tol=1e-14)
 	d = length(x_tt.ttv_dims)
 	Σ = Array{Array{Float64,1},1}(undef,d-1)
-	y_tt = tt_orthogonalize(x_tt,1)
-	y_rks = vcat(1,y_tt.ttv_rks)
+	y_tt = orthogonalize(x_tt)
+	y_rks = y_tt.ttv_rks
 	for j in 1:d-1
-		A = zeros(y_tt.ttv_dims[j],y_rks[j],y_tt.ttv_dims[j+1],y_rks[j+2])
-		@tensor A[a,b,c,d] = y_tt.ttv_vec[j][a,b,z]*y_tt.ttv_vec[j+1][c,z,d]
-		u,s,v = svd(reshape(A,size(A,1)*size(A,2),:))
+		A = zeros(y_rks[j],x_tt.ttv_dims[j],y_rks[j+2],x_tt.ttv_dims[j+1])
+		@tensor A[a,b,c,d] = y_tt.ttv_vec[j][a,z,b]*y_tt.ttv_vec[j+1][z,c,d]
+		u,s,v = svd(reshape(A,size(A,1)*size(A,2),:);alg=LinearAlgebra.QRIteration())
 		Σ[j] = s[s.>tol]
 		y_rks[j+1] = length(Σ[j])
-		y_tt.ttv_vec[j+1] = permutedims(reshape(v[:,s.>tol]*Diagonal(Σ[j]),y_tt.ttv_dims[j+1],y_rks[j+2],:),[1 3 2])
+		y_tt.ttv_vec[j+1] = reshape(Diagonal(Σ[j])*v[:,1:y_rks[j+1]]',:,y_rks[j+2],x_tt.ttv_dims[j+1])
 	end
 	return Σ
 end
