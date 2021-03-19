@@ -50,9 +50,9 @@ returns the orthogonalized ttvector with root i
 """
 function orthogonalize(x_tt::ttvector;i=1::Int)
 	d = length(x_tt.ttv_dims)
-	x_rks = x_tt.ttv_rks
+	x_rks = copy(x_tt.ttv_rks)
 	@assert(1≤i≤d, DimensionMismatch("Impossible orthogonalization"))
-	y_vec = deepcopy(x_tt.ttv_vec)
+	y_vec = copy(x_tt.ttv_vec)
 	y_ot = zeros(Int64,d)
 	for j in 1:i-1
 		y_ot[j]=-1
