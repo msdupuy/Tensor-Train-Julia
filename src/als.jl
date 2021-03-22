@@ -60,7 +60,7 @@ end
 function K_full(Gi::Array{T,5},Hi::Array{T,3},K_dims::Array{Int}) where T<:Number
 	K = zeros(T,prod(K_dims),prod(K_dims))
 	Krshp = reshape(K,K_dims...,K_dims...)
-	@tensoropt((b,c,e,f), Krshp[a,b,c,d,e,f] = Gi[a,b,d,e,z]*Hi[z,c,f]) #size (ni,rim,ri,ni,rim,ri)
+	@tensor Krshp[a,b,c,d,e,f] = Gi[a,b,d,e,z]*Hi[z,c,f] #size (ni,rim,ri,ni,rim,ri)
 	return K
 end
 
@@ -75,17 +75,17 @@ function K_eigmin(Gi::Array{T,5},Hi::Array{T,3},ttv_vec::Array{T,3};it_solver=fa
 	K_dims = [size(Gi,1),size(Gi,2),size(Hi,2)]
 	if it_solver || prod(K_dims) > itslv_thresh
 		H = zeros(T,prod(K_dims))
-		function K_matfree(V;Gi=Gi::Array{T,5},Hi=Hi::Array{T,3},K_dims=K_dims,H=H)
+		function K_matfree(V::AbstractArray{T};Gi=Gi::Array{T,5},Hi=Hi::Array{T,3},K_dims=K_dims,H=H)
 			Hrshp = reshape(H,K_dims...)
 			@tensoropt((b,c,e,f), Hrshp[a,b,c] = Gi[a,b,d,e,z]*Hi[z,c,f]*reshape(V,K_dims...)[d,e,f])
-			return H
+			return H::AbstractArray{T}
 		end
 		r = lobpcg(LinearMap(K_matfree,prod(K_dims);ishermitian = true),false,ttv_vec[:],1;maxiter=maxiter,tol=tol)
-		return r.λ[1], reshape(r.X[:,1],K_dims...)
+		return r.λ[1]::Real, reshape(r.X[:,1],K_dims...)::Array{T,3}
 	else
 		K = K_full(Gi,Hi,K_dims)
-		F = eigen(K)
-		return real(F.values[1]),real.(reshape(F.vectors[:,1],K_dims...))
+		F = eigen(Symmetric(K))
+		return real(F.values[1])::Real,reshape(F.vectors[:,1],K_dims...)::Array{T,3}
 	end	
 end
 
@@ -118,7 +118,7 @@ function left_core_move(x_tt::ttvector{T},V::Array{T,3},i::Int,x_rks) where T<:N
 	@tensoropt((b,c,z) , Xim[a,b,c] := x_tt.ttv_vec[i-1][a,b,z]*RV[1:rim,:][c,z]) #size (nim,rim2,rim_new)
 	x_tt.ttv_vec[i-1] = Xim
 	x_tt.ttv_ot[i-1] = 0
-	return x_tt,rim
+	return x_tt
 end
 
 function right_core_move(x_tt::ttvector{T},V::Array{T,3},i::Int,x_rks) where T<:Number
@@ -134,7 +134,7 @@ function right_core_move(x_tt::ttvector{T},V::Array{T,3},i::Int,x_rks) where T<:
 	@tensoropt((b,c,z), Xip[a,b,c] := RV[1:ri,:][b,z]*x_tt.ttv_vec[i+1][a,z,c]) #size (nip,ri,rip)
 	x_tt.ttv_vec[i+1] = Xip
 	x_tt.ttv_ot[i+1] = 0
-	return x_tt,ri
+	return x_tt
 end
 
 
@@ -182,7 +182,7 @@ function als_linsolv(A :: ttoperator{T}, b :: ttvector{T}, tt_start :: ttvector{
 			println("Forward sweep: core optimization $i out of $d")
 			# Define V as solution of K*x=Pb in x
 			V = Ksolve(G[i],G_b[i],H[i],H_b[i])
-			tt_opt, rks[i+1] = right_core_move(tt_opt,V,i,rks)
+			tt_opt = right_core_move(tt_opt,V,i,rks)
 			#update G,G_b
 			update_G!(tt_opt.ttv_vec[i],A.tto_vec[i+1],G[i],G[i+1])
 			update_Gb!(tt_opt.ttv_vec[i],b.ttv_vec[i+1],G_b[i],G_b[i+1])
@@ -197,7 +197,7 @@ function als_linsolv(A :: ttoperator{T}, b :: ttvector{T}, tt_start :: ttvector{
 				println("Backward sweep: core optimization $i out of $d")
 				# Define V as solution of K*x=Pb in x
 				V = Ksolve(G[i],G_b[i],H[i],H_b[i])
-				tt_opt,rks[i] = left_core_move(tt_opt,V,i,rks)
+				tt_opt = left_core_move(tt_opt,V,i,rks)
 				println(norm(tt_opt.ttv_vec[i-1]))
 				update_H!(tt_opt.ttv_vec[i],A.tto_vec[i],H[i],H[i-1])
 				update_Hb!(tt_opt.ttv_vec[i],b.ttv_vec[i],H_b[i],H_b[i-1])
@@ -219,7 +219,7 @@ function als_eigsolv(A :: ttoperator{T},
 	 it_solver=false::Bool, #linear solver for the microstep
 	 itslv_thresh=1024::Int64, #switch from full to iterative
 	 maxiter=200::Int64, #maximum of iterations for the iterative solver
-	 linsolv_tol=1e-8) where T <: Number #tolerance of the iterative linear solver
+	 linsolv_tol=1e-8::Float64) where T <: Number #tolerance of the iterative linear solver
 	@assert(length(rmax_schedule)==length(sweep_schedule)==length(noise_schedule),"Sweep schedule error")	
 
 	# Initialize the to be returned tensor in its tensor train format
@@ -248,7 +248,7 @@ function als_eigsolv(A :: ttoperator{T},
 		if nsweeps == sweep_schedule[i_schedule]
 			i_schedule+=1
 			if i_schedule > length(sweep_schedule)
-				return E[1:i_μit],tt_opt
+				return E[1:i_μit]::Array{Float64,1},tt_opt::ttvector{T}
 			else
 				tt_opt = tt_up_rks(tt_opt,rmax_schedule[i_schedule];ϵ_wn=noise_schedule[i_schedule])
 				tt_opt = orthogonalize(tt_opt)
@@ -267,7 +267,7 @@ function als_eigsolv(A :: ttoperator{T},
 			i_μit += 1
 			E[i_μit],V = K_eigmin(G[i],H[i],tt_opt.ttv_vec[i];it_solver=it_solver,itslv_thresh=itslv_thresh,maxiter=maxiter,tol=linsolv_tol)
 			println("Eigenvalue: $(E[i_μit])")
-			tt_opt, rks[i+1] = right_core_move(tt_opt,V,i,tt_opt.ttv_rks)
+			tt_opt = right_core_move(tt_opt,V,i,tt_opt.ttv_rks)
 			#update G
 			update_G!(tt_opt.ttv_vec[i],A.tto_vec[i+1],G[i],G[i+1])
 		end
@@ -279,11 +279,11 @@ function als_eigsolv(A :: ttoperator{T},
 			i_μit += 1
 			E[i_μit],V = K_eigmin(G[i],H[i],tt_opt.ttv_vec[i];it_solver=it_solver,itslv_thresh=itslv_thresh,maxiter=maxiter,tol=linsolv_tol)
 			println("Eigenvalue: $(E[i_μit])")
-			tt_opt,rks[i] = left_core_move(tt_opt,V,i,tt_opt.ttv_rks)
+			tt_opt = left_core_move(tt_opt,V,i,tt_opt.ttv_rks)
 			update_H!(tt_opt.ttv_vec[i],A.tto_vec[i],H[i],H[i-1])
 		end
 	end
-	return E[1:i_μit],tt_opt
+	return E[1:i_μit]::Array{Float64,1},tt_opt::ttvector{T}
 end
 
 """
@@ -346,7 +346,7 @@ function als_gen_eigsolv(A :: ttoperator{T}, S::ttoperator{T}, tt_start :: ttvec
 				i_μit += 1
 				E[i_μit],V = K_eiggenmin(G[i],H[i],K[i],L[i],tt_opt.ttv_vec[i];it_solver=it_solver,itslv_thresh=itslv_thresh)
 				println("Eigenvalue: $(E[i_μit])")
-				tt_opt, rks[i+1] = right_core_move(tt_opt,V,i,rks)
+				tt_opt = right_core_move(tt_opt,V,i,rks)
 			end
 
 			#update G and K
@@ -361,7 +361,7 @@ function als_gen_eigsolv(A :: ttoperator{T}, S::ttoperator{T}, tt_start :: ttvec
 			i_μit += 1
 			E[i_μit],V = K_eiggenmin(G[i],H[i],K[i],L[i],tt_opt.ttv_vec[i];it_solver=it_solver,itslv_thresh=itslv_thresh)
 			println("Eigenvalue: $(E[i_μit])")
-			tt_opt,rks[i] = left_core_move(tt_opt,V,i,rks)
+			tt_opt = left_core_move(tt_opt,V,i,rks)
 			update_H!(tt_opt.ttv_vec[i],A.tto_vec[i],H[i],H[i-1])
 			update_H!(tt_opt.ttv_vec[i],S.tto_vec[i],L[i],L[i-1])
 		end

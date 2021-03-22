@@ -50,9 +50,9 @@ returns the orthogonalized ttvector with root i
 """
 function orthogonalize(x_tt::ttvector;i=1::Int)
 	d = length(x_tt.ttv_dims)
-	x_rks = copy(x_tt.ttv_rks)
+	x_rks = deepcopy(x_tt.ttv_rks)
 	@assert(1≤i≤d, DimensionMismatch("Impossible orthogonalization"))
-	y_vec = copy(x_tt.ttv_vec)
+	y_vec = deepcopy(x_tt.ttv_vec)
 	y_ot = zeros(Int64,d)
 	for j in 1:i-1
 		y_ot[j]=-1
@@ -72,7 +72,7 @@ function orthogonalize(x_tt::ttvector;i=1::Int)
 			y_vec[j-1][k,:,:] = y_vec[j-1][k,:,:]*l[1:x_rks[j],1:x_rks[j]]
 		end
 	end
-	return ttvector{eltype(x_tt)}(y_vec,x_tt.ttv_dims,x_tt.ttv_rks,y_ot)
+	return ttvector{eltype(x_tt)}(y_vec,x_tt.ttv_dims,x_rks,y_ot)
 end
 
 """
@@ -81,7 +81,7 @@ returns a TT representation where the singular values lower than tol are discard
 function tt_rounding(x_tt::ttvector;tol=1e-12)
 	d = length(x_tt.ttv_dims)
 	y_rks = copy(x_tt.ttv_rks)
-	y_vec = copy(x_tt.ttv_vec)
+	y_vec = deepcopy(x_tt.ttv_vec)
 	for j in 1:d-1
 		A = zeros(x_tt.ttv_dims[j],y_rks[j],x_tt.ttv_dims[j+1],y_rks[j+2])
 		@tensor A[a,b,c,d] = y_vec[j][a,b,z]*y_vec[j+1][c,z,d]

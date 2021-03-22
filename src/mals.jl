@@ -52,8 +52,8 @@ function left_core_move_mals(xtt::ttvector{T},i::Integer,V::Array{T,4},tol::Floa
 	s_trunc = sv_trunc(s_V,tol)
 	# Update the ranks to the truncated one
 	xtt.ttv_rks[i+1] = min(length(s_trunc),rmax)
-	println("Rank: $(xtt.ttv_rks[i]),	Max rank=$rmax")
-	println("Discarded weight: $((norm(s_V)-norm(s_V[1:xtt.ttv_rks[i]]))/norm(s_V))")
+	println("Rank: $(xtt.ttv_rks[i+1]),	Max rank=$rmax")
+	println("Discarded weight: $((norm(s_V)-norm(s_V[1:xtt.ttv_rks[i+1]]))/norm(s_V))")
 
 	# xtt.ttv_vec[i+1] = truncated Transpose(v_V)
 	xtt.ttv_vec[i+1] = permutedims(reshape(conj.(v_V[:, 1:xtt.ttv_rks[i+1]]),size(V,3),size(V,4),xtt.ttv_rks[i+1]),[1,3,2])
@@ -72,8 +72,8 @@ function right_core_move_mals(xtt::ttvector{T},i::Integer,V::Array{T,4},tol::Flo
 	s_trunc = sv_trunc(s_V,tol)
 	# Update the ranks to the truncated one
 	xtt.ttv_rks[i+1] = min(length(s_trunc),rmax)
-	println("Rank: $(xtt.ttv_rks[i]),	Max rank=$rmax")
-	println("Discarded weight: $((norm(s_V)-norm(s_V[1:xtt.ttv_rks[i]]))/norm(s_V))")
+	println("Rank: $(xtt.ttv_rks[i+1]),	Max rank=$rmax")
+	println("Discarded weight: $((norm(s_V)-norm(s_V[1:xtt.ttv_rks[i+1]]))/norm(s_V))")
 
 	# xtt.ttv_vec[i] = truncated u_V
 	xtt.ttv_vec[i] = reshape(u_V[:, 1:xtt.ttv_rks[i+1]], size(V,1), size(V,2), xtt.ttv_rks[i+1])
@@ -105,10 +105,10 @@ function K_eigmin_mals(Gi::Array{T,5},Hi::Array{T,5},ttv_vec_i::Array{T,3},ttv_v
 	Htemp = view(Hi[:,:,1:K_dims[4],:,1:K_dims[4]],:,:,:,:,:)
 	if it_solver || prod(K_dims) > itslv_thresh
 		H = zeros(Float64,prod(K_dims))
-		function K_matfree(V;K_dims=K_dims::Array{Int64,1},H=H)
+		function K_matfree(V::AbstractArray{T};K_dims=K_dims::Array{Int64,1},H=H::AbstractArray{T})
 			Hrshp = reshape(H,K_dims...)
 			@tensoropt((f,h), Hrshp[a,b,c,d] = Gtemp[a,b,e,f,z]*Htemp[z,c,d,g,h]*reshape(V,K_dims...)[e,f,g,h])
-			return H
+			return H::AbstractArray{T}
 		end
 		X0 = zeros(Float64,prod(K_dims))
 		X0_temp = reshape(X0,K_dims...)
@@ -216,9 +216,8 @@ function mals_eigsolv(A :: ttoperator{T}, tt_start :: ttvector{T}; tol=1e-12::Fl
 	dims = tt_start.ttv_dims
 	d = length(dims)
 	# Define the array of ranks of tt_opt [r_0=1,r_1,...,r_d]
-	rks = tt_start.ttv_rks
-	# Define the array of ranks of A [R_0=1,R_1,...,R_d]
-	A_rks = A.tto_rks
+	rks = copy(tt_start.ttv_rks)
+	# Initialize the output objects
 	E = Float64[]
 	r_hist = Int64[]
 	# Initialize the arrays of G
@@ -227,7 +226,7 @@ function mals_eigsolv(A :: ttoperator{T}, tt_start :: ttvector{T}; tol=1e-12::Fl
 	# Initialize G[i]
 	for i in 1:d
 		rmax_i = min(rmax,prod(dims[1:i-1]),prod(dims[i:end]))
-		G[i] = zeros(dims[i],rmax_i,dims[i],rmax_i,A_rks[i+1])
+		G[i] = zeros(dims[i],rmax_i,dims[i],rmax_i,A.tto_rks[i+1])
 	end
 	G[1][:,1:1,:,1:1,:] = reshape(A.tto_vec[1][:,:,1,:], dims[1],1,dims[1], 1, :)
 
