@@ -4,7 +4,7 @@ import .TensorTrains:one_rdm,two_rdm
 @testset "Orbital RDM" begin
     C = randn(2,2,2,2)
     C = 1/norm(C)*C
-    C_tt =ttv_decomp(C,1)
+    C_tt =ttv_decomp(C)
     #one_rdm
     γ1 = one_rdm(C_tt)
     i = rand(1:4)

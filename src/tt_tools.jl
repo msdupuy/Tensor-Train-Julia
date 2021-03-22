@@ -263,12 +263,12 @@ function tto_to_tensor(tto :: ttoperator{T}) where T<:Number
 end
 
 #TTO representation of the identity matrix
-function id_tto(d;n_dim=2,T=Float64 <:Number)
+function id_tto(d;n_dim=2)
 	dims = n_dim*ones(Int64,d)
-	A = Array{Array{T,4},1}(undef,d)
+	A = Array{Array{Float64,4},1}(undef,d)
 	for j in 1:d
 		A[j] = zeros(2,2,1,1)
-		A[j][:,:,1,1] = Matrix{T}(I,2,2)
+		A[j][:,:,1,1] = Matrix{Float64}(I,2,2)
 	end
-	return ttoperator{T}(A,dims,ones(Int64,d),zeros(d))
+	return ttoperator{Float64}(A,dims,ones(Int64,d+1),zeros(d))
 end

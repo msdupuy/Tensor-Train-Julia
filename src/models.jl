@@ -70,7 +70,7 @@ function half_filling(N)
         tt_vec[2i] = zeros(2,1,1)
         tt_vec[2i][2,1,1] = 1.0
     end
-    return ttvector(tt_vec,2*ones(Int,2N),ones(Int,2N),zeros(2N))
+    return ttvector{Float64}(tt_vec,2*ones(Int,2N),ones(Int,2N+1),zeros(2N))
 end
 
 #auxiliary functions for a_p^†a_q
@@ -125,7 +125,7 @@ function one_body_mpo(p,q,L;fermion=true)
             end
         end
     end 
-    return ttoperator(H,2*ones(Int64,L),ones(Int64,L),zeros(Int64,L))
+    return ttoperator{Float64}(H,2*ones(Int64,L),ones(Int64,L+1),zeros(Int64,L))
 end
 
 
@@ -137,11 +137,13 @@ function two_body_mpo(k,l,m,n,L)
         A = one_body_mpo(k,m,L)
         B = one_body_mpo(l,n,L)
         C = one_body_mpo(k,n,L)
-        return tto_add(mult_a_tt(-1.0,mult(A,B)),C)
+        return  (-1.0*A)*B + C 
+#        return tto_add(mult_a_tt(-1.0,mult(A,B)),C)
     else
         A = one_body_mpo(k,m,L)
         B = one_body_mpo(l,n,L)
-        return mult_a_tt(-1.0,mult(A,B))
+        return -1.0*(A*B)
+#        return mult_a_tt(-1.0,mult(A,B))
     end
 end
 
@@ -156,18 +158,21 @@ function hV_to_mpo(h,V;tol=1e-10)
     i_list = findall(!iszero,h)
     if length(i_list)>0
         i = i_list[1]
-        A = mult_a_tt(h[i],tto_add(one_body_mpo(i[1],i[2],L),one_body_mpo(i[2],i[1],L)))
+        A = h[i]*(one_body_mpo(i[1],i[2],L)+one_body_mpo(i[2],i[1],L))
+#        A = mult_a_tt(h[i],tto_add(one_body_mpo(i[1],i[2],L),one_body_mpo(i[2],i[1],L)))
         for i in i_list[2:end]
             H = one_body_mpo(i[1],i[2],L)
             G = one_body_mpo(i[2],i[1],L)
-            A = tto_add(A,mult_a_tt(h[i],tto_add(G,H)))
+            A = A+h[i]*(G+H)
+#            A = tto_add(A,mult_a_tt(h[i],tto_add(G,H)))
         end
         A = tt_rounding(A,tol=tol)
     end
     for i in findall(!iszero,V)
         H = two_body_mpo(i[1],i[2],i[3],i[4],L)
         G = two_body_mpo(i[4],i[3],i[2],i[1],L)
-        A = tto_add(A,mult_a_tt(V[i],tto_add(H,G)))
+        A = A+V[i]*(H+G)
+#        A = tto_add(A,mult_a_tt(V[i],tto_add(H,G)))
     end
     return tt_rounding(A,tol=tol)
 end
@@ -267,12 +272,13 @@ function PPP_C_NH_N(N;β=-2.5/27.2113845,b=1.4*1.8897259886,γ0=10.84/27.2113845
     H_tto = hV_to_mpo(h[order,order],zeros(2N,2N,2N,2N))
     σ = invperm(order)
     for i in 1:N
-        Hi = tto_add(tto_add(one_body_mpo(σ[2i],σ[2i],2N),one_body_mpo(σ[2i-1],σ[2i-1],2N)),mult_a_tt(-1.0,id_tto(2N)))
+        Hi = (one_body_mpo(σ[2i],σ[2i],2N)+one_body_mpo(σ[2i-1],σ[2i-1],2N))+(-1.0*id_tto(2N))
         for j in 1:N
-            Hj = tto_add(tto_add(one_body_mpo(σ[2j],σ[2j],2N),one_body_mpo(σ[2j-1],σ[2j-1],2N)),mult_a_tt(-1.0,id_tto(2N)))
-            Htemp = mult(Hi,Hj)
+            Hj = (one_body_mpo(σ[2j],σ[2j],2N)+one_body_mpo(σ[2j-1],σ[2j-1],2N)) + (-1.0*id_tto(2N))
+#            Hj = tto_add(tto_add(one_body_mpo(σ[2j],σ[2j],2N),one_body_mpo(σ[2j-1],σ[2j-1],2N)),mult_a_tt(-1.0,id_tto(2N)))
+            Htemp = Hi*Hj
             γij = 1/(1/γ0+b*sin(pi/N*mod(i-j,N))/sin(pi/N))
-            H_tto = tto_add(H_tto,mult_a_tt(0.5*γij,Htemp))
+            H_tto = H_tto + 0.5*γij*Htemp
         end
         H_tto = tt_rounding(H_tto,tol=tol)
     end
