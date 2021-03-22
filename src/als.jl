@@ -15,7 +15,7 @@ function init_H(x_tt::ttvector{T},A_tto::ttoperator{T}) where T<:Number
 	H = Array{Array{T}}(undef, d)
 	H[d] = ones(T,1,1,1)
 	for i = d : -1 : 2
-		H[i-1] = zeros(T,x_tt.ttv_rks[i],x_tt.ttv_rks[i],A_tto.tto_rks[i])
+		H[i-1] = zeros(T,A_tto.tto_rks[i],x_tt.ttv_rks[i],x_tt.ttv_rks[i])
 		x_vec = x_tt.ttv_vec[i]
 		A_vec = A_tto.tto_vec[i]
 		update_H!(x_vec,A_vec,H[i],H[i-1])
@@ -24,7 +24,7 @@ function init_H(x_tt::ttvector{T},A_tto::ttoperator{T}) where T<:Number
 end
 
 function update_H!(x_vec::Array{T,3},A_vec::Array{T,4},Hi::Array{T,3},Him::Array{T,3}) where T<:Number
-	@tensoropt((ϕ,χ), Him[α,β,a] = Hi[ϕ,χ,z]*x_vec[k,β,χ]*A_vec[j,k,a,z]*conj.(x_vec)[j,α,ϕ]) #size (rim, rim, rAim)
+	@tensoropt((ϕ,χ), Him[a,α,β] = Hi[z,ϕ,χ]*x_vec[k,β,χ]*A_vec[j,k,a,z]*conj.(x_vec)[j,α,ϕ]) #size (rim, rim, rAim)
 	nothing
 end
 
@@ -60,24 +60,24 @@ end
 function K_full(Gi::Array{T,5},Hi::Array{T,3},K_dims::Array{Int}) where T<:Number
 	K = zeros(T,prod(K_dims),prod(K_dims))
 	Krshp = reshape(K,K_dims...,K_dims...)
-	@tensoropt((b,c,e,f), Krshp[a,b,c,d,e,f] = Gi[a,b,d,e,z]*Hi[c,f,z]) #size (ni,rim,ri,ni,rim,ri)
+	@tensoropt((b,c,e,f), Krshp[a,b,c,d,e,f] = Gi[a,b,d,e,z]*Hi[z,c,f]) #size (ni,rim,ri,ni,rim,ri)
 	return K
 end
 
 function Ksolve(Gi::Array{T,5},G_bi::Array{T,3},Hi::Array{T,3},H_bi::Array{T,2}) where T<:Number
-	K_dims = [size(Gi,1),size(Gi,2),size(Hi,1)]
+	K_dims = [size(Gi,1),size(Gi,2),size(Hi,2)]
 	K = K_full(Gi,Hi,K_dims)
 	@tensor Pb[i,α1,α2] := G_bi[i,α1,β]*H_bi[α2,β] #size (ni,rim,ri)
 	return reshape(K\Pb[:],K_dims...)
 end
 
 function K_eigmin(Gi::Array{T,5},Hi::Array{T,3},ttv_vec::Array{T,3};it_solver=false,itslv_thresh=1024::Int64,maxiter=maxiter::Int64,tol=tol::Float64) where T<:Number
-	K_dims = [size(Gi,1),size(Gi,2),size(Hi,1)]
+	K_dims = [size(Gi,1),size(Gi,2),size(Hi,2)]
 	if it_solver || prod(K_dims) > itslv_thresh
 		H = zeros(T,prod(K_dims))
 		function K_matfree(V;Gi=Gi::Array{T,5},Hi=Hi::Array{T,3},K_dims=K_dims,H=H)
 			Hrshp = reshape(H,K_dims...)
-			@tensoropt((b,c,e,f), Hrshp[a,b,c] = Gi[a,b,d,e,z]*Hi[c,f,z]*reshape(V,K_dims...)[d,e,f])
+			@tensoropt((b,c,e,f), Hrshp[a,b,c] = Gi[a,b,d,e,z]*Hi[z,c,f]*reshape(V,K_dims...)[d,e,f])
 			return H
 		end
 		r = lobpcg(LinearMap(K_matfree,prod(K_dims);ishermitian = true),false,ttv_vec[:],1;maxiter=maxiter,tol=tol)
@@ -91,8 +91,8 @@ end
 
 function K_eiggenmin(Gi,Hi,Ki,Li,ttv_vec;it_solver=false,itslv_thresh=2500)
 	@tensor begin
-		K[a,b,c,d,e,f] := Gi[d,e,a,b,z]*Hi[f,c,z] #size (ni,rim,ri,ni,rim,ri)	
-		S[a,b,c,d,e,f] := Ki[d,e,a,b,z]*Li[f,c,z] #size (ni,rim,ri,ni,rim,ri)	
+		K[a,b,c,d,e,f] := Gi[d,e,a,b,z]*Hi[z,f,c] #size (ni,rim,ri,ni,rim,ri)	
+		S[a,b,c,d,e,f] := Ki[d,e,a,b,z]*Li[z,f,c] #size (ni,rim,ri,ni,rim,ri)	
 	end
 	if it_solver || prod(size(K)[1:3]) > itslv_thresh
 		r = lobpcg(reshape(K,prod(size(K)[1:3]),:),reshape(S,prod(size(S)[1:3]),:),false,ttv_vec[:],1;maxiter=500,tol=1e-8)
