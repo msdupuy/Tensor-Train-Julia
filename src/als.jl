@@ -46,7 +46,7 @@ function update_Hb!(x_vec::Array{T,3},b_vec::Array{T,3},H_bi::Array{T,2},H_bim::
 	nothing
 end
 
-function update_G!(x_vec::Array{T,3},A_vec::Array{T,4},Gi::Array{T,5},Gip::Array{T,5}) where T<:Number
+function update_G!(x_vec::Array{T,3},A_vec::Array{T,4},Gi::AbstractArray{T,5},Gip::AbstractArray{T,5}) where T<:Number
 	@tensoropt((χ,ϕ), Gip[j,α,k,β,J] = Gi[l,ϕ,m,χ,L]*x_vec[m,χ,β]*A_vec[j,k,L,J]*conj.(x_vec)[l,ϕ,α]) 
 	nothing
 end
