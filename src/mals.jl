@@ -6,21 +6,14 @@ Implementation based on the presentation in
 Holtz, Sebastian, Thorsten Rohwedder, and Reinhold Schneider. "The alternating linear scheme for tensor optimization in the tensor train format." SIAM Journal on Scientific Computing 34.2 (2012): A683-A713.
 """
 
-function updateH_mals!(x_vec, A_vec, Hi::AbstractArray{T,5}, Him::AbstractArray{T,5}) where T<:Number
-	@tensor(Him[a,i,α,l,β] = x_vec[j,α,ϕ]*A_vec[i,l,a,z]*Hi[z,j,ϕ,k,χ]*x_vec[k,β,χ]) #size(rAim,ri,ni,ri,ni)
-	nothing
-end
-
-function updateH_bim!(xtt_vec, btt_vec, Hbi, Hbim)
-	Hbtemp = @view(Hbim[1:size(xtt_vec,2),:,:])
-	@tensoropt((a,y),N_b[a,b] := xtt_vec[z,a,y]*view(Hbi[1:size(xtt_vec,3),:,:],:,:,:)[y,z,b]) #size(ri,rbi)
-	@tensor Hbtemp[a,b,c] = N_b[a,z]*btt_vec[b,c,z] #size(ri,ni,rbim)
+function updateH_mals!(x_vec::Array{T,3}, A_vec::Array{T,4}, Hi::AbstractArray{T,5}, Him::AbstractArray{T,5}) where T<:Number
+	@tensoropt((x,y), Him[a,i,α,l,β] = conj.(x_vec)[j,α,x]*A_vec[i,l,a,z]*Hi[z,j,x,k,y]*x_vec[k,β,y]) #size(rAim,ri,ni,ri,ni)
 	nothing
 end
 
 function init_H_mals(x_tt::ttvector{T},A::ttoperator{T},rmax::Int) where T<:Number
 	d = length(x_tt.ttv_dims)
-	H = Array{Array{T}}(undef, d)
+	H = Array{Array{T}}(undef, d-1)
 	H[d-1] = reshape(permutedims(A.tto_vec[d],[3,1,2,4]), :, x_tt.ttv_dims[d], 1, x_tt.ttv_dims[d], 1) #size(R^A_d, n_d, r_{d+1}, n_d, r_{d+1})
 	for i = (d-1) : -1 : 2
 		# Update H[i-1]
@@ -33,21 +26,24 @@ function init_H_mals(x_tt::ttvector{T},A::ttoperator{T},rmax::Int) where T<:Numb
 	return H
 end
 
-#function updateGip!(xtt_vec,Atto_vec,Gi,Gip)
-#	Gtemp = @view(Gip[:,1:size(xtt_vec,3),:,1:size(xtt_vec,3),:])
-#	@tensoropt((a,z,c), M1[a,b,c,d] := xtt_vec[y,z,a]*view(Gi[:,1:size(xtt_vec,2),:,1:size(xtt_vec,2),:],:,:,:,:,:)[y,z,b,c,d]) #size(ri,ni,rim,rAi)
-#	@tensoropt((a,b,z), M2[a,b,c] := xtt_vec[y,z,a]*M1[b,y,z,c]) #size(ri,ri,rAi)
-#	@tensoropt((b,d), Gtemp[a,b,c,d,e] = M2[d,b,z]*Atto_vec[a,c,z,e]) #size(nip,ri,nip,ri,rAip)
-#	nothing
-#end
-#
-#function updateG_bip!(xtt_vec,btt_vec,G_bi,G_bip)
-#	Gbtemp = @view(G_bip[:,:,1:size(xtt_vec,3)])
-#	@tensor begin
-#		M_b[a,b] := view(G_bi[:,:,1:size(xtt_vec,2)],:,:,:)[a,y,z]*xtt_vec[y,z,b] #size(rbi,ri)
-#		Gbtemp[a,b,c] = btt_vec[b,z,a]*M_b[z,c] #size(rbip,nip,ri)
-#	end
-#end
+function updateHb_mals!(xtt_vec::Array{T,3}, btt_vec::Array{T,3}, Hbi::AbstractArray{T,3}, Hbim::AbstractArray{T,3}) where T<:Number
+	@tensor Hbim[β,i,χ] = conj.(xtt_vec)[j,χ,a]*Hbi[γ,j,a]*btt_vec[i,β,γ]
+	nothing
+end
+
+function init_Hb_mals(x_tt::ttvector{T},b::ttvector{T},rmax::Int) where T<:Number
+	d = length(x_tt.ttv_dims)
+	Hb = Array{Array{T}}(undef, d-1)
+	Hb[d-1] = reshape(permutedims(b.ttv_vec[d],[2,1,3]),b.ttv_rks[d],b.ttv_dims[d],1)
+	for i in d-1:-1:2
+		rmax_i = min(rmax,prod(x_tt.ttv_dims[1:i]),prod(x_tt.ttv_dims[i+1:end]))
+		Hb[i-1] = zeros(T,b.ttv_rks[i+1],b.ttv_dims[i+1],rmax_i)
+		Hbi = @view(Hb[i][:,:,1:x_tt.ttv_rks[i+2]])
+		Hbim = @view(Hb[i-1][:,:,1:x_tt.ttv_rks[i+1]])
+		updateHb_mals!(x_tt.ttv_vec[i+1],b.ttv_vec[i],Hbi,Hbim)
+	end
+	return Hb
+end
 
 function left_core_move_mals(xtt::ttvector{T},i::Integer,V::Array{T,4},tol::Float64,rmax::Integer) where T<:Number
 	# Perform the truncated svd
@@ -60,7 +56,7 @@ function left_core_move_mals(xtt::ttvector{T},i::Integer,V::Array{T,4},tol::Floa
 	println("Discarded weight: $((norm(s_V)-norm(s_V[1:xtt.ttv_rks[i]]))/norm(s_V))")
 
 	# xtt.ttv_vec[i+1] = truncated Transpose(v_V)
-	xtt.ttv_vec[i+1] = permutedims(reshape(v_V[:, 1:xtt.ttv_rks[i+1]],size(V,3),size(V,4),xtt.ttv_rks[i+1]),[1,3,2])
+	xtt.ttv_vec[i+1] = permutedims(reshape(conj.(v_V[:, 1:xtt.ttv_rks[i+1]]),size(V,3),size(V,4),xtt.ttv_rks[i+1]),[1,3,2])
 	xtt.ttv_ot[i+1] = 1
 
 	# xtt.ttv_vec[i] = truncated u_V * Diagonal(s_V)
@@ -69,7 +65,7 @@ function left_core_move_mals(xtt::ttvector{T},i::Integer,V::Array{T,4},tol::Floa
 	return xtt
 end
 
-function right_core_move_mals(xtt::ttvector,i::Integer,V::Array{Float64,4},tol::Float64,rmax::Integer)
+function right_core_move_mals(xtt::ttvector{T},i::Integer,V::Array{T,4},tol::Float64,rmax::Integer) where T<:Number
 	# Perform the truncated svd
 	u_V, s_V, v_V, = svd(reshape(V, prod(size(V)[1:2]), :))
 	# Determine the truncated rank
@@ -91,15 +87,14 @@ end
 
 function K_full_mals(Gi::AbstractArray{T,5},Hi::AbstractArray{T,5}) where T<:Number
 	K = zeros(T,size(Gi,1),size(Gi,2),size(Hi,2),size(Hi,3),size(Gi,1),size(Gi,2),size(Hi,2),size(Hi,3))
-	@tensor K[a,b,c,d,e,f,g,h] = Gi[a,b,e,f,z]*Hi[z,c,d,g,h]
+	@tensor K[a,b,c,d,e,f,g,h] = Gi[a,b,e,f,z]*Hi[z,c,d,g,h] #size(K)=(ni,rim,nip,rip)
 	return K
 end
 
-function Ksolve_mals(Gi, Hi, G_bi, H_bi, rim, rip)
-	@tensor begin
-		K[a,b,c,d,e,f,g,h] := Gi[:,1:rim,:,1:rim,:][f,e,b,a,z]*Hi[1:rip,1:rip,:,:,:][d,h,g,c,z] #size(rim,ni,nip,rip,rim,ni,nip,rip)
-		Pb[a,b,c,d] := H_bi[1:rip,:,:][d,c,z]*G_bi[:,:,1:rim][z,b,a] #size(rim,ni,nip,rip)
-	end
+function Ksolve_mals(Gi::AbstractArray{T,5}, Hi::AbstractArray{T,5}, G_bi::AbstractArray{T,3}, H_bi::AbstractArray{T,3}) where T<:Number
+	K = K_full_mals(Gi,Hi)
+	Pb = zeros(T,size(K)[1:4]...)
+	@tensor Pb[a,b,c,d] = G_bi[a,b,z]*H_bi[z,c,d] #size(ni,rim,nip,rip)
 	V = reshape(K,prod(size(K)[1:4]),:) \ Pb[:]
 	return reshape(V,size(K)[1:4]...)
 end
@@ -119,15 +114,15 @@ function K_eigmin_mals(Gi::Array{T,5},Hi::Array{T,5},ttv_vec_i::Array{T,3},ttv_v
 		X0_temp = reshape(X0,K_dims...)
 		@tensor X0_temp[a,b,c,d] = ttv_vec_i[a,b,z]*ttv_vec_ip[c,z,d]
 		r = lobpcg(LinearMap(K_matfree,prod(K_dims);ishermitian = true),false,X0,1;maxiter=maxiter,tol=tol)
-		return r.λ[1]::Float64, reshape(r.X[:,1],K_dims...)::Array{Float64,4}
+		return r.λ[1]::Float64, reshape(r.X[:,1],K_dims...)::Array{T,4}
 	else
 		K = K_full_mals(Gtemp,Htemp)
-		F = eigen(reshape(K,prod(K_dims),:))
-		return real(F.values[1])::Float64,real.(reshape(F.vectors[:,1],K_dims...))::Array{Float64,4}
+		F = eigen(Symmetric(reshape(K,prod(K_dims),:)))
+		return real(F.values[1])::Float64,reshape(F.vectors[:,1],K_dims...)::Array{T,4}
 	end	
 end
 
-function mals_linsolv(A :: ttoperator, b :: ttvector, tt_start :: ttvector; tol=1e-12::Float64,rmax=round(Int,sqrt(prod(tt_start.ttv_dims))))
+function mals_linsolv(A :: ttoperator{T}, b :: ttvector{T}, tt_start :: ttvector{T}; tol=1e-12::Float64,rmax=round(Int,sqrt(prod(tt_start.ttv_dims)))) where T<:Number
 	# mals finds the minimum of the operator J(x)=1/2*<Ax,x> - <x,b>
 	# input:
 	# 	A: the tensor operator in its tensor train format
@@ -151,56 +146,53 @@ function mals_linsolv(A :: ttoperator, b :: ttvector, tt_start :: ttvector; tol=
 	b_rks = b.ttv_rks
 
 	# Initialize the arrays of G and H
-	G = Array{Array{Float64}}(undef, d)
-	H = Array{Array{Float64}}(undef, d-1)
+	G = Array{Array{T}}(undef, d)
 	# Initialize the arrays of G_b and H_b
-	G_b = Array{Array{Float64}}(undef, d)
-	H_b = Array{Array{Float64}}(undef, d-1)
-	# Initialize G[1], G_b[1], H[d] and H_b[d]
+	G_b = Array{Array{T}}(undef, d)
+	# Initialize G[1], G_b[1], H[d] and H_b[d]	
 	for i in 1:d
 		rmax_i = min(rmax,prod(dims[1:i-1]),prod(dims[i:end]))
 		G[i] = zeros(dims[i],rmax_i,dims[i],rmax_i,A_rks[i+1])
-		G_b[i] = zeros(b_rks[i+1],dims[i],rmax_i)
-	end
-	for i in 1:d-1
-		rmax_i = min(rmax,prod(dims[1:i+1]),prod(dims[i+2:end]))
-		H[i] = zeros(rmax_i,rmax_i,dims[i+1],dims[i+1],A_rks[i+1])
-		H_b[i] = zeros(rmax_i,dims[i+1],b_rks[i])
+		G_b[i] = zeros(dims[i],rmax_i,b_rks[i+1])
 	end
 	G[1][:,1:1,:,1:1,:] = reshape(A.tto_vec[1][:,:,1,:], dims[1],1,dims[1], 1, :)
-	G_b[1][:,:,1:1] = permutedims(reshape(b.ttv_vec[1][:,1,1:b_rks[2]], dims[1], 1, :), [3 1 2])
-	H[d-1][1:1,1:1,:,:,:] = reshape(A.tto_vec[d], 1, 1, dims[d], dims[d], :) # k'_d,k_d,x_d,y_d,j_(d-1)
-	H_b[d-1][1:1,:,:] = reshape(b.ttv_vec[d], 1, dims[d], :) # k_d, x_d, j^b_(d-1)
+	G_b[1] = reshape(b.ttv_vec[1], dims[1], 1, :)
+
+	H = init_H_mals(tt_opt,A,rmax)
+	H_b = init_Hb_mals(tt_opt,b,rmax)
 
 	#while 1==1 #TODO make it work for real
-		for i = (d-1) : -1 : 2
-			# Update H[i-1], H_b[i-1]
-			updateHim!(tt_opt.ttv_vec[i+1], A.tto_vec[i], H[i], H[i-1])
-			updateH_bim!(tt_opt.ttv_vec[i+1], b.ttv_vec[i], H_b[i],H_b[i-1])
-		end
-
 		# First half sweep
 		for i = 1:(d-1)
-			# If i is the index of the core matrices do the optimization
-			if tt_opt.ttv_ot[i] == 0
-				# Define V as solution of K*x=P2b in x
-				V = Ksolve_mals(G[i],H[i],G_b[i],H_b[i],size(tt_opt.ttv_vec[i],2),size(tt_opt.ttv_vec[i+1],3))
-				tt_opt = right_core_move_mals(tt_opt,i,V,tol,rmax)
-			end
+			Gi = @view(G[i][:,1:tt_opt.ttv_rks[i],:,1:tt_opt.ttv_rks[i],:])
+			Hi = @view(H[i][:,:,1:tt_opt.ttv_rks[i+2],:,1:tt_opt.ttv_rks[i+2]])
+			G_bi = @view(G_b[i][:,1:tt_opt.ttv_rks[i],:])
+			H_bi = @view(H_b[i][:,:,1:tt_opt.ttv_rks[i+2]])
+			# Define V as solution of K*x=P2b in x
+			V = Ksolve_mals(Gi,Hi,G_bi,H_bi)
+			tt_opt = right_core_move_mals(tt_opt,i,V,tol,rmax)
 			# Update G[i+1],G_b[i+1]
-			updateGip!(tt_opt.ttv_vec[i],A.tto_vec[i+1],G[i],G[i+1])
-			updateG_bip!(tt_opt.ttv_vec[i],b.ttv_vec[i+1],G_b[i],G_b[i+1])
+			Gip = @view(G[i+1][:,1:tt_opt.ttv_rks[i+1],:,1:tt_opt.ttv_rks[i+1],:])
+			G_bip = @view(G_b[i+1][:,1:tt_opt.ttv_rks[i+1],:])
+			update_G!(tt_opt.ttv_vec[i],A.tto_vec[i+1],Gi,Gip)
+			update_Gb!(tt_opt.ttv_vec[i],b.ttv_vec[i+1],G_bi,G_bip)
 		end
 
 		# Second half sweep
 		for i = d-1:(-1):1
+			Gi = @view(G[i][:,1:tt_opt.ttv_rks[i],:,1:tt_opt.ttv_rks[i],:])
+			Hi = @view(H[i][:,:,1:tt_opt.ttv_rks[i+2],:,1:tt_opt.ttv_rks[i+2]])
+			G_bi = @view(G_b[i][:,1:tt_opt.ttv_rks[i],:])
+			H_bi = @view(H_b[i][:,:,1:tt_opt.ttv_rks[i+2]])
 			# Define V as solution of K*x=P2b in x
-			V = Ksolve_mals(G[i],H[i],G_b[i],H_b[i],size(tt_opt.ttv_vec[i],2),size(tt_opt.ttv_vec[i+1],3))
+			V = Ksolve_mals(Gi,Hi,G_bi,H_bi)
 			tt_opt = left_core_move_mals(tt_opt,i,V,tol,rmax)
 			# Update H[i-1], H_b[i-1]
 			if i > 1
-				updateHim!(tt_opt.ttv_vec[i+1], A.tto_vec[i], H[i], H[i-1])
-				updateH_bim!(tt_opt.ttv_vec[i+1], b.ttv_vec[i], H_b[i],H_b[i-1])
+				Him = @view(H[i-1][:,:,1:tt_opt.ttv_rks[i+1],:,1:tt_opt.ttv_rks[i+1]])
+				updateH_mals!(tt_opt.ttv_vec[i+1], A.tto_vec[i], Hi, Him)
+				H_bim = @view(H_b[i-1][:,:,1:tt_opt.ttv_rks[i+1]])
+				updateHb_mals!(tt_opt.ttv_vec[i+1], b.ttv_vec[i], H_bi,H_bim)
 			end
 		end
 	#end
@@ -257,15 +249,12 @@ function mals_eigsolv(A :: ttoperator{T}, tt_start :: ttvector{T}; tol=1e-12::Fl
 		# First half sweep
 		for i = 1:(d-1)
 			println("Forward sweep: core optimization $i out of $(d-1)")
-			# If i is the index of the core matrices do the optimization
-			if tt_opt.ttv_ot[i] == 0
-				# Define V as solution of K*x=P2b in x
-				λ,V = K_eigmin_mals(G[i],H[i],tt_opt.ttv_vec[i],tt_opt.ttv_vec[i+1];it_solver=it_solver,maxiter=linsolv_maxiter,tol=linsolv_tol)
-				println("Eigenvalue: $λ")
-				E = vcat(E,λ)
-				tt_opt = right_core_move_mals(tt_opt,i,V,tol,rmax_schedule[i_schedule])
-				r_hist = vcat(r_hist,maximum(tt_opt.ttv_rks))
-			end
+			# Define V as solution of K V= λ V for smallest λ
+			λ,V = K_eigmin_mals(G[i],H[i],tt_opt.ttv_vec[i],tt_opt.ttv_vec[i+1];it_solver=it_solver,maxiter=linsolv_maxiter,tol=linsolv_tol)
+			println("Eigenvalue: $λ")
+			E = vcat(E,λ)
+			tt_opt = right_core_move_mals(tt_opt,i,V,tol,rmax_schedule[i_schedule])
+			r_hist = vcat(r_hist,maximum(tt_opt.ttv_rks))
 			# Update G[i+1],G_b[i+1]
 			Gi = @view(G[i][:,1:tt_opt.ttv_rks[i],:,1:tt_opt.ttv_rks[i],:])
 			Gip = @view(G[i+1][:,1:tt_opt.ttv_rks[i+1],:,1:tt_opt.ttv_rks[i+1],:])

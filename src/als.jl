@@ -51,7 +51,7 @@ function update_G!(x_vec::Array{T,3},A_vec::Array{T,4},Gi::AbstractArray{T,5},Gi
 	nothing
 end
 
-function update_Gb!(x_vec::Array{T,3},b_vec::Array{T,3},G_bi::Array{T,3},G_bip::Array{T,3}) where T<:Number
+function update_Gb!(x_vec::Array{T,3},b_vec::Array{T,3},G_bi::AbstractArray{T,3},G_bip::AbstractArray{T,3}) where T<:Number
 	@tensoropt((ϕ,χ), G_bip[i,α,β] = b_vec[i,ϕ,β]*G_bi[j,χ,ϕ]*conj.(x_vec)[j,χ,α])
 	nothing	
 end
