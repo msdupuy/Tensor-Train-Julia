@@ -151,8 +151,7 @@ function als_linsolv(A :: ttoperator{T}, b :: ttvector{T}, tt_start :: ttvector{
 	# 			in its tensor train format
 
 	# Initialize the to be returned tensor in its tensor train format
-	tt_opt = deepcopy(tt_start)
-	tt_opt = orthogonalize(tt_opt)
+	tt_opt = orthogonalize(tt_start)
 	dims = tt_start.ttv_dims
 	d = length(dims)
 	# Define the array of ranks of tt_opt [r_0=1,r_1,...,r_d]
@@ -224,8 +223,7 @@ function als_eigsolv(A :: ttoperator{T},
 	@assert(length(rmax_schedule)==length(sweep_schedule)==length(noise_schedule),"Sweep schedule error")	
 
 	# Initialize the to be returned tensor in its tensor train format
-	tt_opt = deepcopy(tt_start)
-	tt_opt = orthogonalize(tt_opt)
+	tt_opt = orthogonalize(tt_start)
 	dims = tt_start.ttv_dims
 	d = length(dims)
 	E = zeros(Float64,2d*(sweep_schedule[end]+1)) #output eigenvalue
@@ -292,32 +290,23 @@ end
 returns the smallest eigenpair Ax = Sx
 """
 
-function als_gen_eigsolv(A :: ttoperator, S::ttoperator, tt_start :: ttvector ; sweep_schedule=[2],rmax_schedule=[maximum(tt_start.ttv_rks)],tol=1e-10,it_solver=false,itslv_thresh=2500)
-	# als finds the minimum of the operator J:1/2*<Ax,Ax> - <x,b>
-	# input:
-	# 	A: the tensor operator in its tensor train format
-	#	tt_start: start value in its tensor train format
-	#	opt_rks: rank vector considered to be optimal enough
-	# output:
-	#	tt_opt: stationary point of J up to tolerated rank opt_rks
-	# 			in its tensor train format
-
+function als_gen_eigsolv(A :: ttoperator{T}, S::ttoperator{T}, tt_start :: ttvector{T} ; sweep_schedule=[2],rmax_schedule=[maximum(tt_start.ttv_rks)],tol=1e-10,it_solver=false,itslv_thresh=2500) where T<:Number
 	# Initialize the to be returned tensor in its tensor train format
-	tt_opt = deepcopy(tt_start)
+	tt_opt = orthogonalize(tt_start)
 	dims = tt_start.ttv_dims
 	d = length(dims)
 	E = zeros(Float64,d*sweep_schedule[end]) #output eigenvalue
 	# Define the array of ranks of tt_opt [r_0=1,r_1,...,r_d]
-	rks = vcat([1], tt_start.ttv_rks)
+	rks = tt_start.ttv_rks
 
 	# Initialize the arrays of G and K
-	G = Array{Array{Float64}}(undef, d)
-	K = Array{Array{Float64}}(undef, d) 
+	G = Array{Array{T}}(undef, d)
+	K = Array{Array{T}}(undef, d) 
 
 	# Initialize G[1]
 	for i in 1:d
-		G[i] = zeros(dims[i],rks[i],dims[i],rks[i],A.tto_rks[i])
-		K[i] = zeros(dims[i],rks[i],dims[i],rks[i],S.tto_rks[i])
+		G[i] = zeros(dims[i],rks[i],dims[i],rks[i],A.tto_rks[i+1])
+		K[i] = zeros(dims[i],rks[i],dims[i],rks[i],S.tto_rks[i+1])
 	end
 	G[1] = reshape(A.tto_vec[1][:,:,1,:], dims[1],1,dims[1], 1, :)
 	K[1] = reshape(S.tto_vec[1][:,:,1,:], dims[1],1,dims[1], 1, :)
@@ -361,8 +350,8 @@ function als_gen_eigsolv(A :: ttoperator, S::ttoperator, tt_start :: ttvector ; 
 			end
 
 			#update G and K
-			update_G!(tt_opt,A,i,G[i],G[i+1])
-			update_G!(tt_opt,S,i,K[i],K[i+1])
+			update_G!(tt_opt.ttv_vec[i],A.tto_vec[i+1],G[i],G[i+1])
+			update_G!(tt_opt.ttv_vec[i],S.tto_vec[i+1],K[i],K[i+1])
 		end
 
 		# Second half sweep
@@ -373,8 +362,8 @@ function als_gen_eigsolv(A :: ttoperator, S::ttoperator, tt_start :: ttvector ; 
 			E[i_μit],V = K_eiggenmin(G[i],H[i],K[i],L[i],tt_opt.ttv_vec[i];it_solver=it_solver,itslv_thresh=itslv_thresh)
 			println("Eigenvalue: $(E[i_μit])")
 			tt_opt,rks[i] = left_core_move(tt_opt,V,i,rks)
-			update_H!(tt_opt,A,i,H[i],H[i-1])
-			update_H!(tt_opt,S,i,L[i],L[i-1])
+			update_H!(tt_opt.ttv_vec[i],A.tto_vec[i],H[i],H[i-1])
+			update_H!(tt_opt.ttv_vec[i],S.tto_vec[i],L[i],L[i-1])
 		end
 	end
 end
