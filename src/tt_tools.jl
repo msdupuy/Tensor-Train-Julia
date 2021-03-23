@@ -64,6 +64,15 @@ function Base.isempty(x_tt::ttvector)
 	return isempty(x_tt.ttv_vec)
 end
 
+function zeros_tt(dims,rks;T=Float64)
+	d = length(dims)
+	tt_vec = Array{Array{T,3}}(undef,d)
+	for i in 1:d
+		tt_vec[i] = zeros(T,dims[i],rks[i],rks[i+1])
+	end
+	return ttvector{T}(tt_vec,dims,rks,ones(d))
+end
+
 """
 TT decomposition by the Hierarchical SVD algorithm 
 	* Oseledets, I. V. (2011). Tensor-train decomposition. *SIAM Journal on Scientific Computing*, 33(5), 2295-2317.
@@ -263,12 +272,12 @@ function tto_to_tensor(tto :: ttoperator{T}) where T<:Number
 end
 
 #TTO representation of the identity matrix
-function id_tto(d;n_dim=2)
+function id_tto(d;n_dim=2,T=Float64)
 	dims = n_dim*ones(Int64,d)
-	A = Array{Array{Float64,4},1}(undef,d)
+	A = Array{Array{T,4},1}(undef,d)
 	for j in 1:d
 		A[j] = zeros(2,2,1,1)
-		A[j][:,:,1,1] = Matrix{Float64}(I,2,2)
+		A[j][:,:,1,1] = Matrix{T}(I,2,2)
 	end
-	return ttoperator{Float64}(A,dims,ones(Int64,d+1),zeros(d))
+	return ttoperator{T}(A,dims,ones(Int64,d+1),zeros(d))
 end
