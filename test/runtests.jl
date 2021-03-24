@@ -1,4 +1,4 @@
-using .TensorTrains
+using TensorTrains
 
 include("test_tt_tools.jl")
 include("test_als.jl")
