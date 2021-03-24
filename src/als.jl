@@ -75,7 +75,7 @@ function K_eigmin(Gi::Array{T,5},Hi::Array{T,3},ttv_vec::Array{T,3};it_solver=fa
 	K_dims = [size(Gi,1),size(Gi,2),size(Hi,2)]
 	if it_solver || prod(K_dims) > itslv_thresh
 		H = zeros(T,prod(K_dims))
-		function K_matfree(V::AbstractArray{T};Gi=Gi::Array{T,5},Hi=Hi::Array{T,3},K_dims=K_dims,H=H)
+		function K_matfree(V::AbstractArray{T};Gi=Gi::Array{T,5},Hi=Hi::Array{T,3},K_dims=K_dims,H=H::AbstractArray{T})
 			Hrshp = reshape(H,K_dims...)
 			@tensoropt((b,c,e,f), Hrshp[a,b,c] = Gi[a,b,d,e,z]*Hi[z,c,f]*reshape(V,K_dims...)[d,e,f])
 			return H::AbstractArray{T}
@@ -84,7 +84,7 @@ function K_eigmin(Gi::Array{T,5},Hi::Array{T,3},ttv_vec::Array{T,3};it_solver=fa
 		return r.λ[1]::Real, reshape(r.X[:,1],K_dims...)::Array{T,3}
 	else
 		K = K_full(Gi,Hi,K_dims)
-		F = eigen(Symmetric(K))
+		F = eigen(Hermitian(K),1:1)
 		return real(F.values[1])::Real,reshape(F.vectors[:,1],K_dims...)::Array{T,3}
 	end	
 end
@@ -111,7 +111,7 @@ function left_core_move(x_tt::ttvector{T},V::Array{T,3},i::Int,x_rks) where T<:N
 	QV, RV = qr(reshape(permutedims(V, [1 3 2]), ni*ri, :)) #QV: ni*ri x ni*ri; RV ni*ri x rim
 
 	# Apply core movement 3.1
-	x_tt.ttv_vec[i] = permutedims(reshape(QV[:, 1:rim], ni, ri, :),[1 3 2])
+	x_tt.ttv_vec[i] = permutedims(reshape(Matrix(QV)[:, 1:rim], ni, ri, :),[1 3 2])
 	x_tt.ttv_ot[i] = 1
 
 	# Apply core movement 3.2
@@ -127,7 +127,7 @@ function right_core_move(x_tt::ttvector{T},V::Array{T,3},i::Int,x_rks) where T<:
 	QV, RV = qr(reshape(V, ni*rim, :)) #QV: ni*rim x ni*rim; RV ni*rim x ri
 
 	# Apply core movement 3.1
-	x_tt.ttv_vec[i] = reshape(QV[:, 1:ri], ni, rim, :)
+	x_tt.ttv_vec[i] = reshape(Matrix(QV)[:, 1:ri], ni, rim, :)
 	x_tt.ttv_ot[i] = -1
 
 	# Apply core movement 3.2

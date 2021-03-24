@@ -5,6 +5,7 @@ using IterativeSolvers
 using TensorOperations
 import Base.isempty
 import Base.eltype
+import Base.copy
 
 """
 TT constructor of a tensor
@@ -56,6 +57,7 @@ end
 
 Base.eltype(::ttoperator{T}) where T<:Number = T 
 
+
 function empty_tt()
 	return ttvector([],[],[],[])
 end
@@ -64,13 +66,21 @@ function Base.isempty(x_tt::ttvector)
 	return isempty(x_tt.ttv_vec)
 end
 
-function zeros_tt(dims,rks;T=Float64)
+function zeros_tt(dims,rks;T=Float64,ot=zeros(Int,length(dims)))
 	d = length(dims)
 	tt_vec = Array{Array{T,3}}(undef,d)
 	for i in 1:d
 		tt_vec[i] = zeros(T,dims[i],rks[i],rks[i+1])
 	end
-	return ttvector{T}(tt_vec,dims,rks,ones(d))
+	return ttvector{T}(tt_vec,dims,rks,ot)
+end
+
+function Base.copy(x_tt::ttvector{T}) where T<:Number
+	y_tt = zeros_tt(x_tt.ttv_dims,x_tt.ttv_rks;T=T,ot=x_tt.ttv_ot)
+	@threads for i in 1:length(x_tt.ttv_dims)
+		y_tt.ttv_vec[i] = copy(x_tt.ttv_vec[i])
+	end
+	return y_tt
 end
 
 """

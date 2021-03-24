@@ -13,14 +13,14 @@ function +(x::ttvector{T},y::ttvector{T}) where T<:Number
     rks[1] = 1
     rks[d+1] = 1
     #initialize ttv_vec
-    for k in 1:d
+    @threads for k in 1:d
         ttv_vec[k] = zeros(T,x.ttv_dims[k],rks[k],rks[k+1])
     end
    #first core 
-    ttv_vec[1][:,1,1:x.ttv_rks[2]] = x.ttv_vec[1]
-    ttv_vec[1][:,1,(x.ttv_rks[2]+1):rks[2]] = y.ttv_vec[1]
+    ttv_vec[1][:,:,1:x.ttv_rks[2]] = x.ttv_vec[1]
+    ttv_vec[1][:,:,(x.ttv_rks[2]+1):rks[2]] = y.ttv_vec[1]
     #2nd to end-1 cores
-    for k in 2:(d-1)
+    @threads for k in 2:(d-1)
         ttv_vec[k][:,1:x.ttv_rks[k],1:x.ttv_rks[k+1]] = x.ttv_vec[k]
         ttv_vec[k][:,(x.ttv_rks[k]+1):rks[k],(x.ttv_rks[k+1]+1):rks[k+1]] = y.ttv_vec[k]
     end
@@ -41,14 +41,14 @@ function +(x::ttoperator{T},y::ttoperator{T}) where T<:Number
     rks[1] = 1
     rks[d+1] = 1
     #initialize tto_vec
-    for k in 1:d
+    @threads for k in 1:d
         tto_vec[k] = zeros(T,x.tto_dims[k],x.tto_dims[k],rks[k],rks[k+1])
     end
     #first core 
-    tto_vec[1][:,:,1,1:x.tto_rks[1+1]] = x.tto_vec[1]
-    tto_vec[1][:,:,1,(x.tto_rks[2]+1):rks[2]] = y.tto_vec[1]
+    tto_vec[1][:,:,:,1:x.tto_rks[1+1]] = x.tto_vec[1]
+    tto_vec[1][:,:,:,(x.tto_rks[2]+1):rks[2]] = y.tto_vec[1]
     #2nd to end-1 cores
-    for k in 2:(d-1)
+    @threads for k in 2:(d-1)
         tto_vec[k][:,:,1:x.tto_rks[k],1:x.tto_rks[k+1]] = x.tto_vec[k]
         tto_vec[k][:,:,(x.tto_rks[k]+1):rks[k],(x.tto_rks[k+1]+1):rks[k+1]] = y.tto_vec[k]
     end

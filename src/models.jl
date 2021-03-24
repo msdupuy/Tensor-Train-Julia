@@ -138,12 +138,10 @@ function two_body_mpo(k,l,m,n,L)
         B = one_body_mpo(l,n,L)
         C = one_body_mpo(k,n,L)
         return  (-1.0*A)*B + C 
-#        return tto_add(mult_a_tt(-1.0,mult(A,B)),C)
     else
         A = one_body_mpo(k,m,L)
         B = one_body_mpo(l,n,L)
         return -1.0*(A*B)
-#        return mult_a_tt(-1.0,mult(A,B))
     end
 end
 
@@ -153,28 +151,25 @@ returns an MPO version of
 H = Σ_{ij} h_ij (a_i† a_j + c.c.) + Σ_{ijkl} V_{ijkl} (a_i†a_j†a_ka_l + c.c.)
 """
 #assuming diagonal terms are divided by 2 in the h and V matrix
-function hV_to_mpo(h,V;tol=1e-10)
+function hV_to_mpo(h,V;tol=1e-8)
     L = size(h,1)
     i_list = findall(!iszero,h)
     if length(i_list)>0
         i = i_list[1]
         A = h[i]*(one_body_mpo(i[1],i[2],L)+one_body_mpo(i[2],i[1],L))
-#        A = mult_a_tt(h[i],tto_add(one_body_mpo(i[1],i[2],L),one_body_mpo(i[2],i[1],L)))
         for i in i_list[2:end]
             H = one_body_mpo(i[1],i[2],L)
             G = one_body_mpo(i[2],i[1],L)
             A = A+h[i]*(G+H)
-#            A = tto_add(A,mult_a_tt(h[i],tto_add(G,H)))
         end
         A = tt_rounding(A,tol=tol)
     end
     for i in findall(!iszero,V)
         H = two_body_mpo(i[1],i[2],i[3],i[4],L)
         G = two_body_mpo(i[4],i[3],i[2],i[1],L)
-        A = A+V[i]*(H+G)
-#        A = tto_add(A,mult_a_tt(V[i],tto_add(H,G)))
+        A = tt_rounding(A+V[i]*(H+G),tol=tol)
     end
-    return tt_rounding(A,tol=tol)
+    return A
 end
 
 """
@@ -259,7 +254,7 @@ d_μν = b sin(π/N*(μ-ν [N]))/sin(π/N), b = 1.4 A
 
 Ground-state energy = -12.72 eV (N=6)
 """
-function PPP_C_NH_N(N;β=-2.5/27.2113845,b=1.4*1.8897259886,γ0=10.84/27.2113845,order=collect(1:2N),tol=1e-10)
+function PPP_C_NH_N(N;β=-2.5/27.2113845,b=1.4*1.8897259886,γ0=10.84/27.2113845,order=collect(1:2N),tol=1e-8)
     @assert(isperm(order),"Ordering given is not a permutation.")
     h = zeros(2N,2N)
     γ = sum(1/(1/γ0+b*sin(k/N*pi)/sin(pi/N)) for k in 1:N)
@@ -271,16 +266,16 @@ function PPP_C_NH_N(N;β=-2.5/27.2113845,b=1.4*1.8897259886,γ0=10.84/27.2113845
     h[2N-1,1] = β
     H_tto = hV_to_mpo(h[order,order],zeros(2N,2N,2N,2N))
     σ = invperm(order)
+    id = -1.0*id_tto(2N)
     for i in 1:N
-        Hi = (one_body_mpo(σ[2i],σ[2i],2N)+one_body_mpo(σ[2i-1],σ[2i-1],2N))+(-1.0*id_tto(2N))
+        Hi = (one_body_mpo(σ[2i],σ[2i],2N)+one_body_mpo(σ[2i-1],σ[2i-1],2N))+id
         for j in 1:N
-            Hj = (one_body_mpo(σ[2j],σ[2j],2N)+one_body_mpo(σ[2j-1],σ[2j-1],2N)) + (-1.0*id_tto(2N))
-#            Hj = tto_add(tto_add(one_body_mpo(σ[2j],σ[2j],2N),one_body_mpo(σ[2j-1],σ[2j-1],2N)),mult_a_tt(-1.0,id_tto(2N)))
+            Hj = (one_body_mpo(σ[2j],σ[2j],2N)+one_body_mpo(σ[2j-1],σ[2j-1],2N)) + id 
             Htemp = Hi*Hj
             γij = 1/(1/γ0+b*sin(pi/N*mod(i-j,N))/sin(pi/N))
             H_tto = H_tto + 0.5*γij*Htemp
+            H_tto = tt_rounding(H_tto,tol=tol)
         end
-        H_tto = tt_rounding(H_tto,tol=tol)
     end
     return H_tto
 end

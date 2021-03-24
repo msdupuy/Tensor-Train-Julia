@@ -56,9 +56,9 @@ function left_core_move_mals(xtt::ttvector{T},i::Integer,V::Array{T,4},tol::Floa
 	println("Discarded weight: $((norm(s_V)-norm(s_V[1:xtt.ttv_rks[i+1]]))/norm(s_V))")
 
 	# xtt.ttv_vec[i+1] = truncated Transpose(v_V)
-	xtt.ttv_vec[i+1] = permutedims(reshape(conj.(@view(v_V[:, 1:xtt.ttv_rks[i+1]])),size(V,3),size(V,4),xtt.ttv_rks[i+1]),[1,3,2])
+	xtt.ttv_vec[i+1] = permutedims(reshape(v_V'[1:xtt.ttv_rks[i+1],:],xtt.ttv_rks[i+1],size(V,3),size(V,4)),[2 1 3])
 	# xtt.ttv_vec[i] = truncated u_V * Diagonal(s_V)
-	xtt.ttv_vec[i] = reshape(@view(u_V[:, 1:xtt.ttv_rks[i+1]]) * Diagonal(s_trunc[1:xtt.ttv_rks[i+1]]),size(V,1),size(V,2),:)
+	xtt.ttv_vec[i] = reshape(u_V[:, 1:xtt.ttv_rks[i+1]] * Diagonal(s_trunc[1:xtt.ttv_rks[i+1]]),size(V,1),size(V,2),:)
 	xtt.ttv_ot[i+1] = 1
 	xtt.ttv_ot[i] = 0
 	return xtt
@@ -75,11 +75,11 @@ function right_core_move_mals(xtt::ttvector{T},i::Integer,V::Array{T,4},tol::Flo
 	println("Discarded weight: $((norm(s_V)-norm(s_V[1:xtt.ttv_rks[i+1]]))/norm(s_V))")
 
 	# xtt.ttv_vec[i] = truncated u_V
-	xtt.ttv_vec[i] = reshape(@view(u_V[:, 1:xtt.ttv_rks[i+1]]), size(V,1), size(V,2), xtt.ttv_rks[i+1])
+	xtt.ttv_vec[i] = reshape(u_V[:, 1:xtt.ttv_rks[i+1]], size(V,1), size(V,2), xtt.ttv_rks[i+1])
 	xtt.ttv_ot[i] = -1
 
 	# xtt.ttv_vec[i+1] = truncated Diagonal(s_V) * Transpose(v_V)
-	xtt.ttv_vec[i+1] = permutedims(reshape(Diagonal(s_trunc[1:xtt.ttv_rks[i+1]]) * @view(v_V'[1:xtt.ttv_rks[i+1],:]),xtt.ttv_rks[i+1],size(V,3),size(V,4)), [2 1 3])
+	xtt.ttv_vec[i+1] = permutedims(reshape(Diagonal(s_trunc[1:xtt.ttv_rks[i+1]]) * v_V'[1:xtt.ttv_rks[i+1],:],xtt.ttv_rks[i+1],size(V,3),size(V,4)), [2 1 3])
 	xtt.ttv_ot[i+1] = 0
 	return xtt
 end
@@ -94,10 +94,10 @@ end
 function Ksolve_mals(Gi::AbstractArray{T,5}, Hi::AbstractArray{T,5}, G_bi::AbstractArray{T,3}, H_bi::AbstractArray{T,3}) where T<:Number
 	K_dims = [size(Gi,1),size(Gi,2),size(Hi,2),size(Hi,3)]
 	K = K_full_mals(Gi,Hi,K_dims)
-	Pb = zeros(T,size(K)[1:4]...)
+	Pb = zeros(T,K_dims...)
 	@tensor Pb[a,b,c,d] = G_bi[a,b,z]*H_bi[z,c,d] #size(ni,rim,nip,rip)
-	V = reshape(K,prod(size(K)[1:4]),:) \ Pb[:]
-	return reshape(V,size(K)[1:4]...)
+	V = reshape(K,prod(K_dims),:) \ Pb[:]
+	return reshape(V,K_dims...)
 end
 
 function K_eigmin_mals(Gi::Array{T,5},Hi::Array{T,5},ttv_vec_i::Array{T,3},ttv_vec_ip::Array{T,3};it_solver=false,itslv_thresh=256::Int64,maxiter=maxiter::Int64,tol=tol::Float64) where T<:Number
@@ -106,10 +106,10 @@ function K_eigmin_mals(Gi::Array{T,5},Hi::Array{T,5},ttv_vec_i::Array{T,3},ttv_v
 	Htemp = @view(Hi[:,:,1:K_dims[4],:,1:K_dims[4]])
 	if it_solver || prod(K_dims) > itslv_thresh
 		H = zeros(T,prod(K_dims))
-		function K_matfree(V::AbstractArray{T};K_dims=K_dims::Array{Int64,1},H=H::AbstractArray{T})
+		function K_matfree(V::AbstractArray{S};K_dims=K_dims::Array{Int64,1},H=H::AbstractArray{S},Gtemp=Gtemp::AbstractArray{S,5},Htemp=Htemp::AbstractArray{S,5}) where S<:Number
 			Hrshp = reshape(H,K_dims...)
 			@tensoropt((f,h), Hrshp[a,b,c,d] = Gtemp[a,b,e,f,z]*Htemp[z,c,d,g,h]*reshape(V,K_dims...)[e,f,g,h])
-			return H::AbstractArray{T}
+			return H::AbstractArray{S}
 		end
 		X0 = zeros(T,prod(K_dims))
 		X0_temp = reshape(X0,K_dims...)
