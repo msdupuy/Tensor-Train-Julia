@@ -123,6 +123,10 @@ function K_eigmin_mals(Gi::Array{T,5},Hi::Array{T,5},ttv_vec_i::Array{T,3},ttv_v
 	end	
 end
 
+"""
+Returns the solution `tt_opt :: ttvector` of Ax=b using the MALS algorithm where A is given as `ttoperator` and `b`, `tt_start` are `ttvector`.
+The ranks are adapted at each microstep by keeping the singular values larger than `tol`.
+"""
 function mals_linsolv(A :: ttoperator{T}, b :: ttvector{T}, tt_start :: ttvector{T}; tol=1e-12::Float64,rmax=round(Int,sqrt(prod(tt_start.ttv_dims)))) where T<:Number
 	# mals finds the minimum of the operator J(x)=1/2*<Ax,x> - <x,b>
 	# input:
@@ -200,16 +204,14 @@ function mals_linsolv(A :: ttoperator{T}, b :: ttvector{T}, tt_start :: ttvector
 	return tt_opt
 end
 
+"""
+Returns the list of the approximate smallest eigenvalue at each microstep, the corresponding eigenvector as a `ttvector` and the list of the maximum rank at each microstep.
+
+`A` is given as `ttoperator` and `tt_start` is a `ttvector`.
+The ranks are adapted at each microstep by keeping the singular values larger than `tol`.
+The number of total sweeps is given by `sweep_schedule[end]`. The maximum rank is prescribed at each sweep `sweep_schedule[k]≤ i <sweep_schedule[k+1]` by `rmax_schedule[k]`.
+"""
 function mals_eigsolv(A :: ttoperator{T}, tt_start :: ttvector{T}; tol=1e-12::Float64,sweep_schedule=[2]::Array{Int64,1},rmax_schedule=[round(Int,sqrt(prod(tt_start.ttv_dims)))]::Array{Int64,1},it_solver=false::Bool,linsolv_maxiter=200::Int64,linsolv_tol=max(sqrt(tol),1e-8)::Float64,itslv_thresh=256::Int) where T<:Number
-	# mals_eig finds the minimum of the operator J(x)=<Ax,x>/<x,x>
-	# input:
-	# 	A: the tensor operator in its tensor train format
-	#	tt_start: start value in its tensor train format
-	#	opt_rks: rank vector considered to be optimal enough
-	#	tol: tolerated inaccuracy
-	# output:
-	#	tt_opt: stationary point of J up to tolerated inaccuracy
-	# 			in its tensor train format
 
 	@assert(length(rmax_schedule)==length(sweep_schedule),"Sweep schedule error")	
 	# Initialize the to be returned tensor in its tensor train format

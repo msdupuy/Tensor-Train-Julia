@@ -138,7 +138,11 @@ function right_core_move(x_tt::ttvector{T},V::Array{T,3},i::Int,x_rks) where T<:
 end
 
 
-#sweep scheduler: Array of Int, Int, Float: sweep, rks, E_change in last sweep 
+"""
+Solve Ax=b using the ALS algorithm where A is given as `ttoperator` and `b`, `tt_start` are `ttvector`.
+The ranks of the solution is the same as `tt_start`.
+`sweep_count` is the number of total sweeps in the ALS.
+"""
 function als_linsolv(A :: ttoperator{T}, b :: ttvector{T}, tt_start :: ttvector{T} ;sweep_count=2,it_solver=false,r_itsolver=5000) where T<:Number
 	# als finds the minimum of the operator J:1/2*<Ax,Ax> - <x,b>
 	# input:
@@ -208,8 +212,9 @@ function als_linsolv(A :: ttoperator{T}, b :: ttvector{T}, tt_start :: ttvector{
 end
 
 """
-Warning probably only works for left-orthogonal starting tensor
-Returns the lowest eigenvalue of A by minimizing the Rayleigh quotient
+Returns the lowest eigenvalue of A by minimizing the Rayleigh quotient in the ALS algorithm.
+
+The ranks can be increased in the course of the ALS: if `sweep_schedule[k] ≤ i <sweep_schedule[k+1]` is the current number of sweeps then the ranks is given by `rmax_schedule[k]`.
 """
 function als_eigsolv(A :: ttoperator{T},
 	 tt_start :: ttvector{T} ; #TT initial guess
@@ -289,7 +294,6 @@ end
 """
 returns the smallest eigenpair Ax = Sx
 """
-
 function als_gen_eigsolv(A :: ttoperator{T}, S::ttoperator{T}, tt_start :: ttvector{T} ; sweep_schedule=[2],rmax_schedule=[maximum(tt_start.ttv_rks)],tol=1e-10,it_solver=false,itslv_thresh=2500) where T<:Number
 	# Initialize the to be returned tensor in its tensor train format
 	tt_opt = orthogonalize(tt_start)
