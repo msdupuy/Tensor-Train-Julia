@@ -1,5 +1,6 @@
 using Test
-import .TensorTrains:one_body_to_matrix, one_body_mpo, two_body_to_matrix, two_body_mpo
+using LinearAlgebra
+import TensorTrains:one_body_to_matrix, one_body_mpo, two_body_to_matrix, two_body_mpo
 
 @testset "MPO constructors" begin
     L=6
@@ -16,4 +17,13 @@ import .TensorTrains:one_body_to_matrix, one_body_mpo, two_body_to_matrix, two_b
 #    Hmpo = two_body_mpo(k,l,m,n,L)
 #    H2 = tto_to_tensor(Hmpo)
 #    @test isapprox(norm(H-reshape(H2,2^L,2^L)),0.0,atol=1e-10)
+end
+
+@testset "PPP_C_NH_N" begin
+    N = 6
+    H_tto = PPP_C_NH_N(N)
+    ψ_0 = tt_up_rks(half_filling(N),32;ϵ_wn=1e-2)
+    ψ_0 = orthogonalize(ψ_0)
+    E_mals, ψ_tt = mals_eigsolv(H_tto,ψ_0)
+    @test isapprox(E_mals[end],-0.46752535023652453,atol=1e-6) #value in Bendazzoli, G. L., & Evangelisti, S. (1991). Full-CI calculations of alternant cyclic polyenes (CH) N, N= 2, 4, 6, ƒ 18, in the PPP approximation. Chemical physics letters, 185(1-2), 125-130.
 end
