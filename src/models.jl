@@ -74,73 +74,73 @@ function half_filling(N)
 end
 
 #auxiliary functions for a_p^†a_q
-function mpo_core_id()
-    out = zeros(2,2,1,1)
+function mpo_core_id(;T=Float64)
+    out = zeros(T,2,2,1,1)
     out[1,1,1,1] = 1.0
     out[2,2,1,1] = 1.0
     return out
 end
 
-function mpo_core_ferm_sign()
-    out = zeros(2,2,1,1)
+function mpo_core_ferm_sign(;T=Float64)
+    out = zeros(T,2,2,1,1)
     out[1,1,1,1] = 1.0
     out[2,2,1,1] = -1.0
     return out
 end
 
-function mpo_core_creation()
-    out = zeros(2,2,1,1)
+function mpo_core_creation(;T=Float64)
+    out = zeros(T,2,2,1,1)
     out[2,1,1,1] = 1.0
     return out
 end
 
-function mpo_core_annihilation()
-    out = zeros(2,2,1,1)
+function mpo_core_annihilation(;T=Float64)
+    out = zeros(T,2,2,1,1)
     out[1,2,1,1] = 1.0
     return out
 end
 
 #returns bosonic or fermionic MPO of a_p^†a_q
-function one_body_mpo(p,q,L;fermion=true)
-    H = Array{Array{Float64,4},1}(undef,L)
+function one_body_mpo(p,q,L;fermion=true,T=Float64)
+    H = Array{Array{T,4},1}(undef,L)
     if p == q
         for i in 1:L
-            H[i] = mpo_core_id()
+            H[i] = mpo_core_id(;T=T)
         end
         H[p][1,1,1,1] = 0.0
     else
-        H[p] = mpo_core_creation()
-        H[q] = mpo_core_annihilation()
+        H[p] = mpo_core_creation(;T=T)
+        H[q] = mpo_core_annihilation(;T=T)
         for i in 1:min(p,q)-1
-            H[i] = mpo_core_id()
+            H[i] = mpo_core_id(;T=T)
         end
         for i in max(p,q)+1:L
-            H[i] = mpo_core_id()
+            H[i] = mpo_core_id(;T=T)
         end
         for i in min(p,q)+1:max(p,q)-1
             if fermion
-                H[i] = mpo_core_ferm_sign()
+                H[i] = mpo_core_ferm_sign(;T=T)
             else
-                H[i] = mpo_core_id()
+                H[i] = mpo_core_id(;T=T)
             end
         end
     end 
-    return ttoperator{Float64}(H,2*ones(Int64,L),ones(Int64,L+1),zeros(Int64,L))
+    return ttoperator{T}(H,2*ones(Int64,L),ones(Int64,L+1),zeros(Int64,L))
 end
 
 
 #returns bosonic or fermionic MPO of a_k^† a^†_l a_m a_n 
 #assume k<l,m<n
-function two_body_mpo(k,l,m,n,L)
-    H = Array{Array{Float64,4},1}(undef,L) 
+function two_body_mpo(k,l,m,n,L;T=Float64)
+    H = Array{Array{T,4},1}(undef,L) 
     if l == m
-        A = one_body_mpo(k,m,L)
-        B = one_body_mpo(l,n,L)
-        C = one_body_mpo(k,n,L)
+        A = one_body_mpo(k,m,L;T=T)
+        B = one_body_mpo(l,n,L;T=T)
+        C = one_body_mpo(k,n,L;T=T)
         return  (-1.0*A)*B + C 
     else
-        A = one_body_mpo(k,m,L)
-        B = one_body_mpo(l,n,L)
+        A = one_body_mpo(k,m,L;T=T)
+        B = one_body_mpo(l,n,L;T=T)
         return -1.0*(A*B)
     end
 end
@@ -255,7 +255,7 @@ d_μν = b sin(π/N*(μ-ν [N]))/sin(π/N), b = 1.4 A
 Ground-state energy = -12.72 eV (N=6)
 """
 function PPP_C_NH_N(N;β=-2.5/27.2113845,b=1.4*1.8897259886,γ0=10.84/27.2113845,order=collect(1:2N),tol=1e-8)
-    @assert(isperm(order),"Ordering given is not a permutation.")
+    @assert isperm(order) "Ordering given is not a permutation."
     h = zeros(2N,2N)
     γ = sum(1/(1/γ0+b*sin(k/N*pi)/sin(pi/N)) for k in 1:N)
     for i in 1:N-1

@@ -57,22 +57,37 @@ end
 
 Base.eltype(::ttoperator{T}) where T<:Number = T 
 
-
-function empty_tt()
-	return ttvector([],[],[],[])
-end
-
-function Base.isempty(x_tt::ttvector)
-	return isempty(x_tt.ttv_vec)
-end
-
+"""
+returns a zero ttvector with dimensions `dims` and ranks `rks`
+"""
 function zeros_tt(dims,rks;T=Float64,ot=zeros(Int,length(dims)))
+	@assert length(dims)+1==length(rks) "Dimensions and ranks are not compatible"
 	d = length(dims)
 	tt_vec = Array{Array{T,3}}(undef,d)
 	for i in 1:d
 		tt_vec[i] = zeros(T,dims[i],rks[i],rks[i+1])
 	end
-	return ttvector{T}(tt_vec,dims,rks,ot)
+	return ttvector{T}(tt_vec,dims,copy(rks),copy(ot))
+end
+
+#returns partial isometry Q ∈ R^{n x m}
+function rand_orthogonal(n,m;T=Float64)
+    N = max(n,m)
+    q,r = qr(rand(T,N,N))
+    return Matrix(q)[1:n,1:m]
+end
+
+"""
+Returns a random TTvector with dimensions `dims` and ranks `rks`
+"""
+function rand_tt(dims,rks;T=Float64)
+	@assert length(dims)+1==length(rks) "Dimensions and ranks are not compatible"
+	d = length(dims)
+	tt_vec = Array{Array{T,3}}(undef,d)
+	for i in 1:d
+		tt_vec[i] = randn(T,dims[i],rks[i],rks[i+1])
+	end
+	return ttvector{T}(tt_vec,dims,copy(rks),zeros(Int,d))
 end
 
 function Base.copy(x_tt::ttvector{T}) where T<:Number
@@ -120,7 +135,7 @@ function ttv_decomp(tensor::Array{T};index=1,tol=1e-12) where T<:Number
 			ttv_vec[i][x, :, :] = u[(rks[i]*(x-1) + 1):(rks[i]*x), :]
 		end
 		# Update the currently left tensor
-		tensor_curr = Diagonal(s[1:rks[i+1]])*v[:,1:rks[i+1]]'
+		tensor_curr = Diagonal(s[1:rks[i+1]])*v'[1:rks[i+1],:]
 	end
 
 	# Calculate ttv_vec[i] for i > index
@@ -138,7 +153,7 @@ function ttv_decomp(tensor::Array{T};index=1,tol=1e-12) where T<:Number
 			i_vec = zeros(Int,rks[i+1])
 			for x = 1 : dims[i]
 				i_vec = dims[i]*((1:rks[i+1])-ones(Int, rks[i+1])) + x*ones(Int,rks[i+1])
-				ttv_vec[i][x, :, :] = v[i_vec, 1:rks[i]]' #(rks[i+1]*(x-1)+1):(rks[i+1]*x)
+				ttv_vec[i][x, :, :] = v'[1:rks[i],i_vec] #(rks[i+1]*(x-1)+1):(rks[i+1]*x)
 			end
 			# Update the currently left tensor
 			tensor_curr = u[:,1:rks[i]]*Diagonal(s[1:rks[i]])
@@ -184,7 +199,7 @@ function tt_to_vidal(x_tt::ttvector{T};tol=1e-14) where T<:Number
 	d = length(x_tt.ttv_dims)
 	core = Array{Array{T,3},1}(undef,d)
 	Σ = Array{Array{Float64,1},1}(undef,d-1)
-	y_tt = orthogonalize(x_tt,1)
+	y_tt = orthogonalize(x_tt)
 	y_rks = vcat(1,y_tt.ttv_rks)
 	for j in 1:d-1
 		A = zeros(y_tt.ttv_dims[j],y_rks[j],y_tt.ttv_dims[j+1],y_rks[j+2])

@@ -57,35 +57,35 @@ function update_Gb!(x_vec::Array{T,3},b_vec::Array{T,3},G_bi::AbstractArray{T,3}
 end
 
 #full assemble of matrix K
-function K_full(Gi::Array{T,5},Hi::Array{T,3},K_dims::Array{Int}) where T<:Number
+function K_full(Gi::Array{T,5},Hi::Array{T,3},K_dims::NTuple{3,Int}) where T<:Number
 	K = zeros(T,prod(K_dims),prod(K_dims))
-	Krshp = reshape(K,K_dims...,K_dims...)
+	Krshp = reshape(K,(K_dims...,K_dims...))
 	@tensor Krshp[a,b,c,d,e,f] = Gi[a,b,d,e,z]*Hi[z,c,f] #size (ni,rim,ri,ni,rim,ri)
 	return K
 end
 
 function Ksolve(Gi::Array{T,5},G_bi::Array{T,3},Hi::Array{T,3},H_bi::Array{T,2}) where T<:Number
-	K_dims = [size(Gi,1),size(Gi,2),size(Hi,2)]
+	K_dims = (size(Gi,1),size(Gi,2),size(Hi,2))
 	K = K_full(Gi,Hi,K_dims)
 	@tensor Pb[i,α1,α2] := G_bi[i,α1,β]*H_bi[α2,β] #size (ni,rim,ri)
-	return reshape(K\Pb[:],K_dims...)
+	return reshape(K\Pb[:],K_dims)
 end
 
-function K_eigmin(Gi::Array{T,5},Hi::Array{T,3},ttv_vec::Array{T,3};it_solver=false,itslv_thresh=1024::Int64,maxiter=maxiter::Int64,tol=tol::Float64) where T<:Number
-	K_dims = [size(Gi,1),size(Gi,2),size(Hi,2)]
+function K_eigmin(Gi::Array{T,5},Hi::Array{T,3},ttv_vec::Array{T,3};it_solver=false,itslv_thresh=256::Int64,maxiter=200::Int64,tol=1e-6::Float64) where T<:Number
+	K_dims = (size(Gi,1),size(Gi,2),size(Hi,2))
 	if it_solver || prod(K_dims) > itslv_thresh
 		H = zeros(T,prod(K_dims))
-		function K_matfree(V::AbstractArray{T};Gi=Gi::Array{T,5},Hi=Hi::Array{T,3},K_dims=K_dims,H=H::AbstractArray{T})
-			Hrshp = reshape(H,K_dims...)
-			@tensoropt((b,c,e,f), Hrshp[a,b,c] = Gi[a,b,d,e,z]*Hi[z,c,f]*reshape(V,K_dims...)[d,e,f])
-			return H::AbstractArray{T}
+		function K_matfree(V::AbstractArray{T,1};Gi=Gi::Array{T,5},Hi=Hi::Array{T,3},K_dims=K_dims,H=H::AbstractArray{T,1})
+			Hrshp = reshape(H,K_dims)
+			@tensoropt((b,c,e,f), Hrshp[a,b,c] = Gi[a,b,d,e,z]*Hi[z,c,f]*reshape(V,K_dims)[d,e,f])
+			return H::AbstractArray{T,1}
 		end
 		r = lobpcg(LinearMap(K_matfree,prod(K_dims);ishermitian = true),false,ttv_vec[:],1;maxiter=maxiter,tol=tol)
-		return r.λ[1]::Real, reshape(r.X[:,1],K_dims...)::Array{T,3}
+		return r.λ[1]::Real, reshape(r.X[:,1],K_dims)::Array{T,3}
 	else
 		K = K_full(Gi,Hi,K_dims)
 		F = eigen(Hermitian(K),1:1)
-		return real(F.values[1])::Real,reshape(F.vectors[:,1],K_dims...)::Array{T,3}
+		return real(F.values[1])::Real,reshape(F.vectors[:,1],K_dims)::Array{T,3}
 	end	
 end
 
@@ -96,10 +96,10 @@ function K_eiggenmin(Gi,Hi,Ki,Li,ttv_vec;it_solver=false,itslv_thresh=2500)
 	end
 	if it_solver || prod(size(K)[1:3]) > itslv_thresh
 		r = lobpcg(reshape(K,prod(size(K)[1:3]),:),reshape(S,prod(size(S)[1:3]),:),false,ttv_vec[:],1;maxiter=500,tol=1e-8)
-		return r.λ[1], reshape(r.X[:,1],size(K)[1:3]...)
+		return r.λ[1], reshape(r.X[:,1],size(K)[1:3])
 	else
 		F = eigen(reshape(K,prod(size(K)[1:3]),:),reshape(S,prod(size(K)[1:3]),:),)
-		return real(F.values[1]),real.(reshape(F.vectors[:,1],size(K)[1:3]...))
+		return real(F.values[1]),reshape(F.vectors[:,1],size(K)[1:3])
 	end
 end
 

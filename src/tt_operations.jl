@@ -1,3 +1,5 @@
+using Base.Threads
+using TensorOperations
 import Base.+
 import Base.*
 import LinearAlgebra.dot
@@ -90,9 +92,26 @@ function *(A::ttoperator{T},B::ttoperator{T}) where T<:Number
 end
 
 
-#tt_dot returns the dot product of two tt
+#dot returns the dot product of two ttvector
 function dot(A::ttvector{T},B::ttvector{T}) where T<:Number
-    @assert(A.ttv_dims == B.ttv_dims, DimensionMismatch)
+    @assert A.ttv_dims==B.ttv_dims "TT dimensions are not compatible"
+    d = length(A.ttv_dims)::Int
+    A_rks = A.ttv_rks
+    B_rks = B.ttv_rks
+	out = zeros(T,maximum(A_rks),maximum(B_rks))
+    out[1,1] = convert(T,1.0)
+    @inbounds for k in 1:d
+        M = @view(out[1:A_rks[k+1],1:B_rks[k+1]])
+		@tensoropt((α,β), M[a,b] = A.ttv_vec[k][z,α,a]*B.ttv_vec[k][z,β,b]*out[1:A_rks[k],1:B_rks[k]][α,β]) #size R^A_{k} × R^B_{k} 
+    end
+    return out[1,1]::T
+end
+
+"""
+`dot_par(x_tt,y_tt)' returns the dot product of `x_tt` and `y_tt` in a parallelized algorithm
+"""
+function dot_par(A::ttvector{T},B::ttvector{T}) where T<:Number
+    @assert A.ttv_dims==B.ttv_dims "TT dimensions are not compatible"
     d = length(A.ttv_dims)
     Y = Array{Array{T,2},1}(undef,d)
     A_rks = A.ttv_rks
@@ -103,9 +122,9 @@ function dot(A::ttvector{T},B::ttvector{T}) where T<:Number
 		@tensor M[a,b,c,d] = A.ttv_vec[k][z,a,c]*B.ttv_vec[k][z,b,d] #size R^A_{k-1} ×  R^B_{k-1} × R^A_{k} × R^B_{k} 
 		Y[k] = reshape(M, A_rks[k]*B_rks[k], A_rks[k+1]*B_rks[k+1])
     end
-    C[1:length(Y[d])] = Y[d][:]
+    @inbounds C[1:length(Y[d])] = Y[d][:]
     for k in d-1:-1:1
-        C[1:size(Y[k],1)] = Y[k]*C[1:size(Y[k],2)]
+        @inbounds C[1:size(Y[k],1)] = Y[k]*C[1:size(Y[k],2)]
     end
     return C[1]::T
 end

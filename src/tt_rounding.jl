@@ -1,9 +1,5 @@
-#returns partial isometry Q ∈ R^{n x m}
-function rand_orthogonal(n,m)
-    N = max(n,m)
-    q,r = qr(rand(N,N))
-    return q[1:n,1:m]
-end
+using Base.Threads
+using LinearAlgebra
 
 #local ttvec rank increase function with noise ϵ_wn
 function tt_up_rks_noise(tt_vec,tt_ot_i,rkm,rk,ϵ_wn)

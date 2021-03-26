@@ -13,7 +13,7 @@ end
 
 function init_H_mals(x_tt::ttvector{T},A::ttoperator{T},rmax::Int) where T<:Number
 	d = length(x_tt.ttv_dims)
-	H = Array{Array{T}}(undef, d-1)
+	H = Array{Array{T,5}}(undef, d-1)
 	H[d-1] = reshape(permutedims(A.tto_vec[d],[3,1,2,4]), :, x_tt.ttv_dims[d], 1, x_tt.ttv_dims[d], 1) #size(R^A_d, n_d, r_{d+1}, n_d, r_{d+1})
 	for i = (d-1) : -1 : 2
 		# Update H[i-1]
@@ -33,7 +33,7 @@ end
 
 function init_Hb_mals(x_tt::ttvector{T},b::ttvector{T},rmax::Int) where T<:Number
 	d = length(x_tt.ttv_dims)
-	Hb = Array{Array{T}}(undef, d-1)
+	Hb = Array{Array{T,3}}(undef, d-1)
 	Hb[d-1] = reshape(permutedims(b.ttv_vec[d],[2,1,3]),b.ttv_rks[d],b.ttv_dims[d],1)
 	for i in d-1:-1:2
 		rmax_i = min(rmax,prod(x_tt.ttv_dims[1:i]),prod(x_tt.ttv_dims[i+1:end]))
@@ -84,42 +84,42 @@ function right_core_move_mals(xtt::ttvector{T},i::Integer,V::Array{T,4},tol::Flo
 	return xtt
 end
 
-function K_full_mals(Gi::AbstractArray{T,5},Hi::AbstractArray{T,5},K_dims::Array{Int,1}) where T<:Number
+function K_full_mals(Gi::AbstractArray{T,5},Hi::AbstractArray{T,5},K_dims::NTuple{4,Int}) where T<:Number
 	K = zeros(T,prod(K_dims),prod(K_dims))
-	Krshp = reshape(K,K_dims...,K_dims...)
+	Krshp = reshape(K,(K_dims...,K_dims...))
 	@tensor Krshp[a,b,c,d,e,f,g,h] = Gi[a,b,e,f,z]*Hi[z,c,d,g,h] #size(K)=(ni,rim,nip,rip)
 	return Hermitian(K)
 end
 
 function Ksolve_mals(Gi::AbstractArray{T,5}, Hi::AbstractArray{T,5}, G_bi::AbstractArray{T,3}, H_bi::AbstractArray{T,3}) where T<:Number
-	K_dims = [size(Gi,1),size(Gi,2),size(Hi,2),size(Hi,3)]
+	K_dims = (size(Gi,1),size(Gi,2),size(Hi,2),size(Hi,3))
 	K = K_full_mals(Gi,Hi,K_dims)
-	Pb = zeros(T,K_dims...)
+	Pb = zeros(T,K_dims)
 	@tensor Pb[a,b,c,d] = G_bi[a,b,z]*H_bi[z,c,d] #size(ni,rim,nip,rip)
 	V = reshape(K,prod(K_dims),:) \ Pb[:]
-	return reshape(V,K_dims...)
+	return reshape(V,K_dims)
 end
 
-function K_eigmin_mals(Gi::Array{T,5},Hi::Array{T,5},ttv_vec_i::Array{T,3},ttv_vec_ip::Array{T,3};it_solver=false,itslv_thresh=256::Int64,maxiter=maxiter::Int64,tol=tol::Float64) where T<:Number
-	K_dims = [size(ttv_vec_i,1),size(ttv_vec_i,2),size(ttv_vec_ip,1),size(ttv_vec_ip,3)]
+function K_eigmin_mals(Gi::Array{T,5},Hi::Array{T,5},ttv_vec_i::Array{T,3},ttv_vec_ip::Array{T,3};it_solver=false,itslv_thresh=256::Int64,maxiter=200::Int64,tol=1e-6::Float64) where T<:Number
+	K_dims = (size(ttv_vec_i,1),size(ttv_vec_i,2),size(ttv_vec_ip,1),size(ttv_vec_ip,3))
 	Gtemp = @view(Gi[:,1:K_dims[2],:,1:K_dims[2],:])
 	Htemp = @view(Hi[:,:,1:K_dims[4],:,1:K_dims[4]])
 	if it_solver || prod(K_dims) > itslv_thresh
 		H = zeros(T,prod(K_dims))
-		function K_matfree(V::AbstractArray{S};K_dims=K_dims::Array{Int64,1},H=H::AbstractArray{S},Gtemp=Gtemp::AbstractArray{S,5},Htemp=Htemp::AbstractArray{S,5}) where S<:Number
-			Hrshp = reshape(H,K_dims...)
-			@tensoropt((f,h), Hrshp[a,b,c,d] = Gtemp[a,b,e,f,z]*Htemp[z,c,d,g,h]*reshape(V,K_dims...)[e,f,g,h])
-			return H::AbstractArray{S}
+		function K_matfree(V::AbstractArray{S,1};K_dims=K_dims::NTuple{4,Int},H=H::AbstractArray{S,1},Gtemp=Gtemp::AbstractArray{S,5},Htemp=Htemp::AbstractArray{S,5}) where S<:Number
+			Hrshp = reshape(H,K_dims)
+			@tensoropt((f,h), Hrshp[a,b,c,d] = Gtemp[a,b,e,f,z]*Htemp[z,c,d,g,h]*reshape(V,K_dims)[e,f,g,h])
+			return H::AbstractArray{S,1}
 		end
 		X0 = zeros(T,prod(K_dims))
-		X0_temp = reshape(X0,K_dims...)
+		X0_temp = reshape(X0,K_dims)
 		@tensor X0_temp[a,b,c,d] = ttv_vec_i[a,b,z]*ttv_vec_ip[c,z,d]
 		r = lobpcg(LinearMap(K_matfree,prod(K_dims);ishermitian = true),false,X0,1;maxiter=maxiter,tol=tol)
-		return r.λ[1]::Float64, reshape(r.X[:,1],K_dims...)::Array{T,4}
+		return r.λ[1]::Float64, reshape(r.X[:,1],K_dims)::Array{T,4}
 	else
 		K = K_full_mals(Gtemp,Htemp,K_dims)
 		F = eigen(K,1:1)
-		return real(F.values[1])::Float64,reshape(F.vectors[:,1],K_dims...)::Array{T,4}
+		return real(F.values[1])::Float64,reshape(F.vectors[:,1],K_dims)::Array{T,4}
 	end	
 end
 
@@ -143,17 +143,15 @@ function mals_linsolv(A :: ttoperator{T}, b :: ttvector{T}, tt_start :: ttvector
 	tt_opt = orthogonalize(tt_start)
 	dims = tt_start.ttv_dims
 	d = length(dims)
-	# Define the array of ranks of tt_opt [r_0=1,r_1,...,r_d]
-	rks = tt_start.ttv_rks
 	# Define the array of ranks of A [R_0=1,R_1,...,R_d]
 	A_rks = A.tto_rks
 	# Define the array of ranks of b [R^b_0=1,R^b_1,...,R^b_d]
 	b_rks = b.ttv_rks
 
 	# Initialize the arrays of G and H
-	G = Array{Array{T}}(undef, d)
+	G = Array{Array{T,5}}(undef, d)
 	# Initialize the arrays of G_b and H_b
-	G_b = Array{Array{T}}(undef, d)
+	G_b = Array{Array{T,3}}(undef, d)
 	# Initialize G[1], G_b[1], H[d] and H_b[d]	
 	for i in 1:d
 		rmax_i = min(rmax,prod(dims[1:i-1]),prod(dims[i:end]))
@@ -218,8 +216,6 @@ function mals_eigsolv(A :: ttoperator{T}, tt_start :: ttvector{T}; tol=1e-12::Fl
 	tt_opt = orthogonalize(tt_start)
 	dims = tt_start.ttv_dims
 	d = length(dims)
-	# Define the array of ranks of tt_opt [r_0=1,r_1,...,r_d]
-	rks = copy(tt_start.ttv_rks)
 	# Initialize the output objects
 	E = Float64[]
 	r_hist = Int64[]
@@ -244,7 +240,7 @@ function mals_eigsolv(A :: ttoperator{T}, tt_start :: ttvector{T}; tol=1e-12::Fl
 		if nsweeps == sweep_schedule[i_schedule]
 			i_schedule+=1
 			if i_schedule > length(sweep_schedule)
-				return E,tt_opt, r_hist
+				return E::Array{Float64,1}, tt_opt::ttvector{T}, r_hist::Array{Int,1}
 			end
 		end
 
@@ -280,6 +276,6 @@ function mals_eigsolv(A :: ttoperator{T}, tt_start :: ttvector{T}; tol=1e-12::Fl
 			end
 		end
 	end
-	return E,tt_opt, r_hist
+	return E::Array{Float64,1}, tt_opt::ttvector{T}, r_hist::Array{Int,1}
 end
 

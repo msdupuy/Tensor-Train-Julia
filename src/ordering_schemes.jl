@@ -7,12 +7,12 @@ ordering schemes for QC-DMRG or 2D statistical models
 """
 
 #returns the list of one-orbital reduced density matrix
-function one_rdm(x_tt::ttvector)
+function one_rdm(x_tt::ttvector{T}) where T<:Number
     d = length(x_tt.ttv_dims)
     @assert(2*ones(Int,d)==x_tt.ttv_dims)
-    γ = zeros(d,2,2)
+    γ = zeros(T,d,2,2)
     for i in 1:d
-        y_tt = one_body_mpo(i,i,d)*x_tt
+        y_tt = one_body_mpo(i,i,d;T=T)*x_tt
         γ[i,2,2] = dot(x_tt,y_tt)
         γ[i,1,1] = 1-γ[i,2,2]
     end
@@ -21,17 +21,17 @@ end
 
 
 #returns the list of two-orbitals reduced density matrix
-function two_rdm(x_tt::ttvector;fermion=true)
+function two_rdm(x_tt::ttvector{S};fermion=true) where S<:Number
     d = length(x_tt.ttv_dims)
     @assert(2*ones(Int,d)==x_tt.ttv_dims)
-    γ = zeros(d,d,2,2,2,2) #(i,j;i,j) occupancy
+    γ = zeros(S,d,d,2,2,2,2) #(i,j;i,j) occupancy
     for i in 1:d-1
         for j in i+1:d
-            γ[i,j,2,2,2,2] = -dot(x_tt,two_body_mpo(i,j,i,j,d)*x_tt)
-            γ[i,j,1,2,1,2] = -γ[i,j,2,2,2,2] + dot(x_tt,one_body_mpo(j,j,d)*x_tt)
-            γ[i,j,2,1,2,1] = -γ[i,j,2,2,2,2] + dot(x_tt,one_body_mpo(i,i,d)*x_tt)
+            γ[i,j,2,2,2,2] = -dot(x_tt,two_body_mpo(i,j,i,j,d,T=S)*x_tt)
+            γ[i,j,1,2,1,2] = -γ[i,j,2,2,2,2] + dot(x_tt,one_body_mpo(j,j,d,T=S)*x_tt)
+            γ[i,j,2,1,2,1] = -γ[i,j,2,2,2,2] + dot(x_tt,one_body_mpo(i,i,d,T=S)*x_tt)
             γ[i,j,1,1,1,1] = 1.0 -γ[i,j,2,2,2,2] -γ[i,j,2,1,2,1] -γ[i,j,1,2,1,2] 
-            γ[i,j,2,1,1,2] = dot(x_tt,one_body_mpo(i,j,d;fermion=fermion)*x_tt)
+            γ[i,j,2,1,1,2] = dot(x_tt,one_body_mpo(i,j,d;fermion=fermion,T=S)*x_tt)
             γ[i,j,1,2,2,1] = γ[i,j,2,1,1,2]
         end
     end
@@ -56,16 +56,16 @@ function entropy(a,M)
 end
 
 #γ_1 = one orbital RDM, γ_2 = two orbital RDM
-function mutual_information(γ1,γ2;a=1) #a=1 von neumann entropy
+function mutual_information(γ1::Array{T,3},γ2::Array{T,6};a=1) where T<:Number #a=1 von neumann entropy
     d = size(γ1,1)
-    IM = zeros(d,d)
+    IM = zeros(T,d,d)
     s1 = [entropy(a,γ1[i,:,:]) for i in 1:d]
     for i in 1:d-1
         for j in i+1:d
             IM[i,j] = s1[i]+s1[j]-entropy(a,reshape(γ2[i,j,:,:,:,:],4,4))
         end
     end
-    return Symmetric(IM)
+    return Hermitian(IM)
 end
 
 #returns the fiedler order of a mutual information matrix IM
@@ -77,6 +77,9 @@ function fiedler(IM)
    return sortperm(F.vectors[:,2]) #to get 2nd eigenvector
 end
 
+"""
+Returns the Fiedler order of the state `x_tt`, assumed to be normalized.
+"""
 function fiedler_order(x_tt::ttvector;a=1) #a=1 : von Neumann entropy
     γ1 = one_rdm(x_tt)
     γ2 = two_rdm(x_tt)
@@ -85,16 +88,16 @@ function fiedler_order(x_tt::ttvector;a=1) #a=1 : von Neumann entropy
 end
 
 #returns the one particle reduced density matrix of a state encoded in the TT x_tt
-function one_prdm(x_tt::ttvector)
+function one_prdm(x_tt::ttvector{T}) where T<:Number
     d = length(x_tt.ttv_dims)
-    γ = zeros(d,d)
+    γ = zeros(T,d,d)
     for i in 1:d
-        γ[i,i] = dot(x_tt,one_body_mpo(i,i,d)*x_tt)
+        γ[i,i] = dot(x_tt,one_body_mpo(i,i,d;T=T)*x_tt)
         for j in i+1:d
-            γ[i,j] = dot(x_tt,one_body_mpo(i,j,d)*x_tt)
+            γ[i,j] = dot(x_tt,one_body_mpo(i,j,d;T=T)*x_tt)
         end
     end
-    return Symmetric(γ)
+    return Hermitian(γ)
 end
 
 function cost(x;tol=1e-10)
@@ -142,7 +145,7 @@ function bwpo_order(V,N,L;
         order_l = bwpo_order(V,N,L; pivot=pivotL, nb_l=round(Int,(nb_l-1)/2)+1, nb_r=nb_l-1-round(Int,(nb_l-1)/2), order=x_N, CAS=CAS,imax=imax-iter,rand_or_full=rand_or_full, tol =tol, temp=temp)
         pivotR = pivot + round(Int,nb_r/2)
         order_r = bwpo_order(V,N,L; pivot=pivotR, nb_l=round(Int,nb_r/2), nb_r=nb_r-round(Int,nb_r/2), order=x_N, CAS=CAS,imax=imax-iter,rand_or_full=rand_or_full, tol =tol, temp=temp)
-        return vcat(order_l,order_r)
+        return vcat(order_l,order_r)::Array{Int,1}
     end
 end
 
