@@ -7,7 +7,7 @@ Holtz, Sebastian, Thorsten Rohwedder, and Reinhold Schneider. "The alternating l
 """
 
 function updateH_mals!(x_vec::Array{T,3}, A_vec::Array{T,4}, Hi::AbstractArray{T,5}, Him::AbstractArray{T,5}) where T<:Number
-	@tensoropt((x,y), Him[a,i,α,l,β] = conj.(x_vec)[j,α,x]*A_vec[i,l,a,z]*Hi[z,j,x,k,y]*x_vec[k,β,y]) #size(rAim,ri,ni,ri,ni)
+	@tensoropt((x,y), Him[a,i,α,l,β] = conj.(x_vec)[j,α,x]*Hi[z,j,x,k,y]*x_vec[k,β,y]*A_vec[i,l,a,z]) #size(rAim,ri,ni,ri,ni)
 	nothing
 end
 
