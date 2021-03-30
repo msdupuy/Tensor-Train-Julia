@@ -7,7 +7,7 @@ Holtz, Sebastian, Thorsten Rohwedder, and Reinhold Schneider. "The alternating l
 """
 
 function updateH_mals!(x_vec::Array{T,3}, A_vec::Array{T,4}, Hi::AbstractArray{T,5}, Him::AbstractArray{T,5}) where T<:Number
-	@tensoropt((x,y), Him[a,i,α,l,β] = conj.(x_vec)[j,α,x]*Hi[z,j,x,k,y]*x_vec[k,β,y]*A_vec[i,l,a,z]) #size(rAim,ri,ni,ri,ni)
+	@tensor(Him[a,i,α,l,β] = conj.(x_vec)[j,α,x]*(Hi[z,j,x,k,y]*x_vec[k,β,y])*A_vec[i,l,a,z]) #size(rAim,ri,ni,ri,ni)
 	nothing
 end
 
@@ -108,7 +108,7 @@ function K_eigmin_mals(Gi::Array{T,5},Hi::Array{T,5},ttv_vec_i::Array{T,3},ttv_v
 		H = zeros(T,prod(K_dims))
 		function K_matfree(V::AbstractArray{S,1};K_dims=K_dims::NTuple{4,Int},H=H::AbstractArray{S,1},Gtemp=Gtemp::AbstractArray{S,5},Htemp=Htemp::AbstractArray{S,5}) where S<:Number
 			Hrshp = reshape(H,K_dims)
-			@tensoropt((f,h), Hrshp[a,b,c,d] = Gtemp[a,b,e,f,z]*Htemp[z,c,d,g,h]*reshape(V,K_dims)[e,f,g,h])
+			@tensoropt((f,h), Hrshp[a,b,c,d] = Gtemp[a,b,e,f,z]*reshape(V,K_dims)[e,f,g,h]*Htemp[z,c,d,g,h])
 			return H::AbstractArray{S,1}
 		end
 		X0 = zeros(T,prod(K_dims))

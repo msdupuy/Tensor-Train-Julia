@@ -47,7 +47,7 @@ function update_Hb!(x_vec::Array{T,3},b_vec::Array{T,3},H_bi::Array{T,2},H_bim::
 end
 
 function update_G!(x_vec::Array{T,3},A_vec::Array{T,4},Gi::AbstractArray{T,5},Gip::AbstractArray{T,5}) where T<:Number
-	@tensoropt((α,β,χ,ϕ), Gip[j,α,k,β,J] = conj.(x_vec)[l,ϕ,α]*Gi[l,ϕ,m,χ,L]*x_vec[m,χ,β]*A_vec[j,k,L,J]) 
+	@tensor Gip[j,α,k,β,J] = (conj.(x_vec)[l,ϕ,α]*(Gi[l,ϕ,m,χ,L]*x_vec[m,χ,β]))*A_vec[j,k,L,J] 
 	nothing
 end
 
@@ -77,7 +77,7 @@ function K_eigmin(Gi::Array{T,5},Hi::Array{T,3},ttv_vec::Array{T,3};it_solver=fa
 		H = zeros(T,prod(K_dims))
 		function K_matfree(V::AbstractArray{T,1};Gi=Gi::Array{T,5},Hi=Hi::Array{T,3},K_dims=K_dims,H=H::AbstractArray{T,1})
 			Hrshp = reshape(H,K_dims)
-			@tensoropt((b,c,e,f), Hrshp[a,b,c] = Gi[a,b,d,e,z]*Hi[z,c,f]*reshape(V,K_dims)[d,e,f])
+			@tensoropt((b,c,e,f), Hrshp[a,b,c] = Gi[a,b,d,e,z]*reshape(V,K_dims)[d,e,f]*Hi[z,c,f])
 			return H::AbstractArray{T,1}
 		end
 		r = lobpcg(LinearMap(K_matfree,prod(K_dims);ishermitian = true),false,ttv_vec[:],1;maxiter=maxiter,tol=tol)
