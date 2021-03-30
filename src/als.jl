@@ -24,7 +24,7 @@ function init_H(x_tt::ttvector{T},A_tto::ttoperator{T}) where T<:Number
 end
 
 function update_H!(x_vec::Array{T,3},A_vec::Array{T,4},Hi::Array{T,3},Him::Array{T,3}) where T<:Number
-	@tensoropt((ϕ,χ), Him[a,α,β] = Hi[z,ϕ,χ]*x_vec[k,β,χ]*A_vec[j,k,a,z]*conj.(x_vec)[j,α,ϕ]) #size (rim, rim, rAim)
+	@tensoropt((ϕ,χ), Him[a,α,β] = conj.(x_vec)[j,α,ϕ]*Hi[z,ϕ,χ]*x_vec[k,β,χ]*A_vec[j,k,a,z]) #size (rim, rim, rAim)
 	nothing
 end
 
@@ -47,7 +47,7 @@ function update_Hb!(x_vec::Array{T,3},b_vec::Array{T,3},H_bi::Array{T,2},H_bim::
 end
 
 function update_G!(x_vec::Array{T,3},A_vec::Array{T,4},Gi::AbstractArray{T,5},Gip::AbstractArray{T,5}) where T<:Number
-	@tensoropt((α,β,χ,ϕ), Gip[j,α,k,β,J] = Gi[l,ϕ,m,χ,L]*x_vec[m,χ,β]*A_vec[j,k,L,J]*conj.(x_vec)[l,ϕ,α]) 
+	@tensoropt((α,β,χ,ϕ), Gip[j,α,k,β,J] = conj.(x_vec)[l,ϕ,α]*Gi[l,ϕ,m,χ,L]*x_vec[m,χ,β]*A_vec[j,k,L,J]) 
 	nothing
 end
 
