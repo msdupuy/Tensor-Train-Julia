@@ -1,7 +1,7 @@
 name = "TensorTrains"
 uuid = "44a9e3dd-26ed-4c57-8915-1f5ca631415f"
 authors = ["Mi-Song Dupuy <dupuy@ma.tum.de>"]
-version = "0.0.1"
+version = "0.1.0"
 
 [deps]
 Combinatorics = "861a8166-3701-5b0c-9a16-15d98fcdc6aa"
