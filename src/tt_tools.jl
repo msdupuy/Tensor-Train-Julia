@@ -200,7 +200,7 @@ function tt_to_vidal(x_tt::ttvector{T};tol=1e-14) where T<:Number
 	core = Array{Array{T,3},1}(undef,d)
 	Σ = Array{Array{Float64,1},1}(undef,d-1)
 	y_tt = orthogonalize(x_tt)
-	y_rks = vcat(1,y_tt.ttv_rks)
+	y_rks = copy(y_tt.ttv_rks)
 	for j in 1:d-1
 		A = zeros(y_tt.ttv_dims[j],y_rks[j],y_tt.ttv_dims[j+1],y_rks[j+2])
 		@tensor A[a,b,c,d] = y_tt.ttv_vec[j][a,z,b]*y_tt.ttv_vec[j+1][z,d,c]
