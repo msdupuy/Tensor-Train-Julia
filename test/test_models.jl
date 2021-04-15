@@ -1,6 +1,7 @@
 using Test
 using LinearAlgebra
 import TensorTrains:one_body_to_matrix, one_body_mpo, two_body_to_matrix, two_body_mpo
+using Random
 
 @testset "MPO constructors" begin
     L=6
@@ -21,7 +22,7 @@ end
 
 @testset "PPP_C_NH_N" begin
     N = 6
-    H_tto = PPP_C_NH_N(N)
+    H_tto = PPP_C_NH_N(N,order=randperm(12))
     ψ_0 = tt_up_rks(half_filling(N),32;ϵ_wn=1e-2)
     ψ_0 = orthogonalize(ψ_0)
     E_mals, ψ_tt = mals_eigsolv(H_tto,ψ_0)
