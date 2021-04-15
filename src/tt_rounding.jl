@@ -48,6 +48,7 @@ function orthogonalize(x_tt::ttvector{T};i=1::Int) where T<:Number
 	d = length(x_tt.ttv_dims)
 	@assert(1≤i≤d, DimensionMismatch("Impossible orthogonalization"))
 	y_tt = copy(x_tt)
+	y_tt.ttv_ot[i]=0
 	for j in 1:i-1
 		y_tt.ttv_ot[j]=1
 		y_vectemp = reshape(y_tt.ttv_vec[j],y_tt.ttv_dims[j]*y_tt.ttv_rks[j],y_tt.ttv_rks[j+1])

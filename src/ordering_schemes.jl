@@ -6,7 +6,9 @@ using Combinatorics
 ordering schemes for QC-DMRG or 2D statistical models
 """
 
-#returns the list of one-orbital reduced density matrix
+"""
+'one_rdm' returns the list of one-orbital reduced density matrices assuming that 'x_tt' is a pure state for some particle number
+"""
 function one_rdm(x_tt::ttvector{T}) where T<:Number
     d = length(x_tt.ttv_dims)
     @assert(2*ones(Int,d)==x_tt.ttv_dims)
@@ -19,8 +21,9 @@ function one_rdm(x_tt::ttvector{T}) where T<:Number
     return γ
 end
 
-
-#returns the list of two-orbitals reduced density matrix
+"""
+'two_rdm' returns the list of two-orbitals reduced density matrices assuming that 'x_tt' is a pure state for some particle number
+"""
 function two_rdm(x_tt::ttvector{S};fermion=true) where S<:Number
     d = length(x_tt.ttv_dims)
     @assert(2*ones(Int,d)==x_tt.ttv_dims)
@@ -38,6 +41,29 @@ function two_rdm(x_tt::ttvector{S};fermion=true) where S<:Number
     return γ
 end
 
+"""
+Returns the orbital reduced density matrix ρ_{i:j}, i<j.
+"""
+function N_rdm(x_tt::ttvector{T},i::Integer,j::Integer) where T<:Number
+    @assert(i<j≤length(x_tt.ttv_dims))
+    y_tt = orthogonalize(x_tt,i=i)
+    ρ = zeros(T,x_tt.ttv_dims[i:j]...,x_tt.ttv_dims[i:j]...)
+    index = CartesianIndices(Tuple([1:k for k in x_tt.ttv_dims[i:j]]))
+    for J in index
+        M = copy(y_tt.ttv_vec[i][J[1],:,:])
+        for k in i+1:j
+            M = M*y_tt.ttv_vec[k][J[k-i+1],:,:]
+        end
+        for K in index
+            N = copy(y_tt.ttv_vec[i][K[1],:,:])
+            for k in i+1:j
+                N = N*y_tt.ttv_vec[k][K[k-i+1],:,:]
+            end
+            ρ[J,K] = tr(M*N')
+        end
+    end
+    return ρ
+end
 
 """
 returns the entropy of a matrix M
