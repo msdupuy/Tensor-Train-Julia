@@ -54,7 +54,7 @@ function N_rdm(x_tt::ttvector{T},i::Integer,j::Integer) where T<:Number
         for k in i+1:j
             M = M*y_tt.ttv_vec[k][J[k-i+1],:,:]
         end
-        for K in index
+        @threads for K in index
             N = copy(y_tt.ttv_vec[i][K[1],:,:])
             for k in i+1:j
                 N = N*y_tt.ttv_vec[k][K[k-i+1],:,:]
