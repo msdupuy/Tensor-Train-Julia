@@ -247,7 +247,7 @@ end
 
 """
 PPP Hamiltonian for cyclic polyene C_NH_N (ref. G. Fano, F. Ortolani † and L. Ziosi, The density matrix renormalization group method. Application to the PPP model of a cyclic polyene chain, J. Chem. Phys. 1998)
-H = β ∑_{<μ,ν>,σ} a^†_μσ a^†_νσ + c.c. + 0.5 ∑_μ,ν (n_μ-1)(n_ν-1)
+H = β ∑_{<μ,ν>,σ} a^†_μσ a^†_νσ + c.c. + 0.5 ∑_μ,ν γ_μν (n_μ-1)(n_ν-1)
 
 β = -2.5eV, γ_μν = 1/(γ0^-1+d_μν), γ0 = 10.84eV
 d_μν = b sin(π/N*(μ-ν [N]))/sin(π/N), b = 1.4 A

@@ -22,7 +22,7 @@ include("models.jl")
 export hubbard_1D, hubbard_2D, PPP_C_NH_N, hV_to_mpo, site_switch, half_filling
 
 include("ordering_schemes.jl")
-export fiedler_order, bwpo_order, one_prdm, CAS_generator
+export entropy, fiedler_order, bwpo_order, bwpo_order_sites, N_rdm, one_prdm, CAS_generator
 
 include("particular_states.jl")
 export random_slater, random_prime_tensor, random_static_correlation_tensor
