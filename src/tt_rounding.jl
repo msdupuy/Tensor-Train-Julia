@@ -118,7 +118,7 @@ function tt_svdvals(x_tt::ttvector;tol=1e-14)
 	for j in 1:d-1
 		A = zeros(y_tt.ttv_dims[j],y_rks[j],y_tt.ttv_dims[j+1],y_rks[j+2])
 		@tensor A[a,b,c,d] = y_tt.ttv_vec[j][a,b,z]*y_tt.ttv_vec[j+1][c,z,d]
-		u,s,v = svd(reshape(A,size(A,1)*size(A,2),:))
+		u,s,v = svd(reshape(A,size(A,1)*size(A,2),:),alg=LinearAlgebra.QRIteration())
 		Σ[j] = s[s.>tol]
 		y_rks[j+1] = length(Σ[j])
 		y_tt.ttv_vec[j+1] = permutedims(reshape(Diagonal(Σ[j])*v'[s.>tol,:],:,y_tt.ttv_dims[j+1],y_rks[j+2]),[2 1 3])
