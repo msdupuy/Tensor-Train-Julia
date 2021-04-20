@@ -29,7 +29,7 @@ function tt_up_rks(x_tt::ttvector{T},rk_max::Int;rks=vcat(1,rk_max*ones(Int,leng
 	d = length(x_tt.ttv_dims)
 	vec_out = Array{Array{T}}(undef,d)
 	out_ot = zeros(Int64,d)
-	@assert(rk_max >= maximum(x_tt.ttv_rks),"New bond dimension too low")
+	@assert(rk_max > maximum(x_tt.ttv_rks),"New bond dimension too low")
 	n_in = 1
 	n_out = prod(x_tt.ttv_dims)
 	for i in 1:d
