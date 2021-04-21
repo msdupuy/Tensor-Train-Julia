@@ -130,9 +130,10 @@ function cost(x;tol=1e-10)
     return -sum(log10.((x.+tol).^2.0 .*((1+tol).-x.^2.0)))
 end
 
-#best weighted prefactor order
-#Warning: V needs to be given in a row-"occupancy" way i.e. V[i,:] represents the coefficients of the natural orbital ψ_i in the basis of the ϕ_j, 1 ≤ j ≤ L
-
+"""
+Returns the best weighted prefactor order
+Warning: V needs to be given in a row-"occupancy" way i.e. V[i,:] represents the coefficients of the natural orbital ψ_i in the basis of the ϕ_j, 1 ≤ j ≤ L
+"""
 function bwpo_order(V,N,L;
     pivot = round(Int,L/2),nb_l = pivot,
     nb_r = L-pivot, order=collect(1:L),
@@ -144,9 +145,9 @@ function bwpo_order(V,N,L;
         cost_max = cost(ones(min(pivot,L-pivot)),tol=tol)*size(CAS,2)
         prefactor = sum([cost(svdvals(V[CAS[:,i],x_N[1:pivot]]),tol=tol) for i in size(CAS,2)]) 
         iter = 0
-        if binomial(nb_r+nb_l,min(nb_l,nb_r)) > rand_or_full
+        if binomial(nb_r+nb_l,min(nb_l,nb_r)) > rand_or_full #check the number of different combinations
             while iter < imax && temp*prefactor/(imax*cost_max) < rand()
-                #nouveau voisin
+                #selection of the new combination
                 x_temp = vcat(order[1:(pivot-nb_l)],shuffle(order[pivot-nb_l+1:pivot+nb_r]),order[pivot+nb_r+1:L])
                 new_prefactor = sum([cost(svdvals(V[CAS[:,i],x_temp[1:pivot]]),tol=tol) for i in size(CAS,2)])
                 if new_prefactor > prefactor
