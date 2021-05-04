@@ -130,16 +130,29 @@ function cost(x;tol=1e-10)
     return -sum(log10.((x.+tol).^2.0 .*((1+tol).-x.^2.0)))
 end
 
+function bwpo_aux(x_N,V,CAS,prefactor,pivot,nb_l,nb_r,tol;σ=randperm(nb_r+nb_l))
+    x_temp = vcat(x_N[1:(pivot-nb_l)],x_N[pivot-nb_l+1:pivot+nb_r][σ])
+    new_prefactor = sum([cost(svdvals(V[CAS[:,i],x_temp[1:pivot]]),tol=tol) for i in size(CAS,2)])
+    if new_prefactor > prefactor
+        x_N = vcat(x_temp,x_N[pivot+nb_r+1:end])
+        prefactor = new_prefactor
+    end
+    return x_N,prefactor
+end
 """
-Returns the best weighted prefactor order
+Returns the best weighted prefactor order σ, which minimizes det(V[:,σ(1:L/2)]*V[:,σ(1:L/2)]')det(V[:,σ(L/2+1:L)]*V[:,σ(L/2+1:L)]')
 Warning: V needs to be given in a row-"occupancy" way i.e. V[i,:] represents the coefficients of the natural orbital ψ_i in the basis of the ϕ_j, 1 ≤ j ≤ L
 """
 function bwpo_order(V,N,L;
     pivot = round(Int,L/2),nb_l = pivot,
     nb_r = L-pivot, order=collect(1:L),
-    CAS=collect(1:N),imax=1000,rand_or_full=500, tol =1e-8, temp=1e-4)
-    if imax <= 0 || min(nb_l,nb_r) == 0
+    CAS=collect(1:N),imax=1000,rand_or_full=500, tol =1e-8, temp=1e-4, k=4)
+    if imax <= 0 
         return order[pivot-nb_l+1:pivot+nb_r]
+    elseif nb_l<=0
+        return order[pivot+1:pivot+k]
+    elseif nb_r<=0
+        return order[pivot-k+1:pivot]
     else
         x_N = order
         cost_max = cost(ones(min(pivot,L-pivot)),tol=tol)*size(CAS,2)
@@ -148,30 +161,20 @@ function bwpo_order(V,N,L;
         if binomial(nb_r+nb_l,min(nb_l,nb_r)) > rand_or_full #check the number of different combinations
             while iter < imax && temp*prefactor/(imax*cost_max) < rand()
                 #selection of the new combination
-                x_temp = vcat(order[1:(pivot-nb_l)],shuffle(order[pivot-nb_l+1:pivot+nb_r]),order[pivot+nb_r+1:L])
-                new_prefactor = sum([cost(svdvals(V[CAS[:,i],x_temp[1:pivot]]),tol=tol) for i in size(CAS,2)])
-                if new_prefactor > prefactor
-                    x_N = x_temp
-                    prefactor = new_prefactor
-                end
+                x_N,prefactor = bwpo_aux(x_N,V,CAS,prefactor,pivot,nb_l,nb_r,tol)
                 iter = iter+1
             end
         else #do exhaustive search in the space of the combinations
-            combs_list = collect(combinations(order[pivot-nb_l+1:pivot+nb_r],nb_l))
+            combs_list = collect(combinations(1:(nb_l+nb_r),nb_l))
             for σ in combs_list
-                σ_c = setdiff(order[pivot-nb_l+1:pivot+nb_r],σ)
-                x_temp = vcat(order[1:(pivot-nb_l)],σ,σ_c,order[pivot+nb_r+1:L])
-                new_prefactor = sum([cost(svdvals(V[CAS[:,i],x_temp[1:pivot]]),tol=tol) for i in size(CAS,2)])
-                if new_prefactor > prefactor
-                    x_N = x_temp
-                    prefactor = new_prefactor
-                end
+                σ_c = vcat(σ,setdiff(collect(1:nb_l+nb_r),σ))
+                x_N,prefactor = bwpo_aux(x_N,V,CAS,prefactor,pivot,nb_l,nb_r,tol;σ=σ_c)
             end
         end
-        pivotL = pivot-nb_l+1+round(Int,(nb_l-1)/2)
-        order_l = bwpo_order(V,N,L; pivot=pivotL, nb_l=round(Int,(nb_l-1)/2)+1, nb_r=nb_l-1-round(Int,(nb_l-1)/2), order=x_N, CAS=CAS,imax=imax-iter,rand_or_full=rand_or_full, tol =tol, temp=temp)
-        pivotR = pivot + round(Int,nb_r/2)
-        order_r = bwpo_order(V,N,L; pivot=pivotR, nb_l=round(Int,nb_r/2), nb_r=nb_r-round(Int,nb_r/2), order=x_N, CAS=CAS,imax=imax-iter,rand_or_full=rand_or_full, tol =tol, temp=temp)
+        pivotL = pivot-k
+        order_l = bwpo_order(V,N,L; pivot=pivotL, nb_l=nb_l-k, nb_r=k, order=x_N, CAS=CAS,imax=imax-iter,rand_or_full=rand_or_full, tol =tol, temp=temp,k=k)
+        pivotR = pivot + k
+        order_r = bwpo_order(V,N,L; pivot=pivotR, nb_l=k, nb_r=nb_r-k, order=x_N, CAS=CAS,imax=imax-iter,rand_or_full=rand_or_full, tol =tol, temp=temp,k=k)
         return vcat(order_l,order_r)::Array{Int,1}
     end
 end
@@ -191,13 +194,32 @@ function bwpo_order(γ::AbstractArray{Float64,2};order = collect(1:size(γ,1)),C
     return bwpo_order(V,N,size(γ,1);order=order,CAS=CAS,tol=tol,imax=imax,rand_or_full=rand_or_full,temp=temp)
 end
 
+function bwpo_aux_sites(x_N,V,CAS,prefactor,pivot,nb_l,nb_r,tol;σ=randperm(nb_r+nb_l))
+    σ_mid = zeros(Int,2length(σ))
+    for i in eachindex(σ)
+        σ_mid[2i-1] = 2(pivot-nb_l)+2σ[i]-1
+        σ_mid[2i] = 2(pivot-nb_l)+2σ[i]
+    end
+    x_temp = vcat(x_N[1:2*(pivot-nb_l)],x_N[σ_mid],x_N[2(pivot+nb_r)+1:end])
+    new_prefactor = sum([cost(svdvals(V[CAS[:,i],x_temp[1:2pivot]]),tol=tol) for i in size(CAS,2)])
+    if new_prefactor > prefactor
+        x_N = x_temp
+        prefactor = new_prefactor
+    end
+    return x_N,prefactor
+end
+
 #L = number of sites
 function bwpo_order_sites(V,N,L;
     pivot = round(Int,L/2), nb_l = pivot,
     nb_r = L-pivot, order=collect(1:2L),
-    CAS=collect(1:N),imax=1000,rand_or_full=500, tol =1e-8, temp=1e-6)
-    if imax <= 0 || min(nb_l,nb_r) == 0
+    CAS=collect(1:N),imax=1000,rand_or_full=500, tol =1e-8, temp=1e-6,k=2)
+    if imax <= 0 
         return order[2(pivot -nb_l)+1:2(pivot+nb_r)]
+    elseif nb_l<=0
+        return order[2pivot+1:2pivot+2k]
+    elseif nb_r<=0
+        return order[2pivot-2k+1:2pivot]    
     else
         x_N = order
         cost_max = cost(ones(min(2pivot,2L-2pivot)),tol=tol)*size(CAS,2)
@@ -206,45 +228,20 @@ function bwpo_order_sites(V,N,L;
         if binomial(nb_r+nb_l,min(nb_l,nb_r)) > rand_or_full
             while iter < imax && temp*prefactor/(imax*cost_max) < rand()
                 #nouveau voisin
-                σ = randperm(nb_l+nb_r)
-                σ_mid = zeros(Int,2length(σ))
-                for i in eachindex(σ)
-                    σ_mid[2i-1] = 2(pivot-nb_l)+2σ[i]-1
-                    σ_mid[2i] = 2(pivot-nb_l)+2σ[i]
-                end
-                x_temp = vcat(order[1:2*(pivot-nb_l)],order[σ_mid],order[2(pivot+nb_r)+1:2L])
-                new_prefactor = sum([cost(svdvals(V[CAS[:,i],x_temp[1:2pivot]]),tol=tol) for i in size(CAS,2)])
-                if new_prefactor > prefactor
-                    x_N = x_temp
-                    prefactor = new_prefactor
-                end
+                x_N, prefactor = bwpo_aux_sites(x_N,V,CAS,prefactor,pivot,nb_l,nb_r,tol)
                 iter = iter+1
             end
         else #do exhaustive search in the space of the combinations
             combs_list = collect(combinations(1:nb_l+nb_r,nb_l))
             for σ in combs_list
-                σ_c = setdiff(1:nb_l+nb_r,σ) 
-                σ_mid = zeros(Int,2*(nb_r+nb_l))
-                for i in eachindex(σ)
-                    σ_mid[2i-1] = 2*(pivot-nb_l)+2σ[i]-1
-                    σ_mid[2i] = 2*(pivot-nb_l)+2σ[i]
-                end
-                for i in eachindex(σ_c)
-                    σ_mid[2nb_l+2i-1] = 2*(pivot-nb_l)+2σ_c[i]-1
-                    σ_mid[2nb_l+2i] = 2*(pivot-nb_l)+2σ_c[i]
-                end
-                x_temp = vcat(order[1:2*(pivot-nb_l)],order[σ_mid],order[2*(pivot+nb_r)+1:2L])
-                new_prefactor = sum([cost(svdvals(V[CAS[:,i],x_temp[1:2pivot]]),tol=tol) for i in size(CAS,2)])
-                if new_prefactor > prefactor
-                    x_N = x_temp
-                    prefactor = new_prefactor
-                end
+                σ_c = vcat(σ, setdiff(1:nb_l+nb_r,σ))
+                x_N, prefactor = bwpo_aux_sites(x_N,V,CAS,prefactor,pivot,nb_l,nb_r,tol;σ=σ_c)
             end
         end
-        pivotL = pivot-nb_l+1+round(Int,(nb_l-1)/2)
-        order_l = bwpo_order_sites(V,N,L; pivot=pivotL, nb_l=round(Int,(nb_l-1)/2)+1, nb_r=nb_l-1-round(Int,(nb_l-1)/2), order=x_N, CAS=CAS,imax=imax-iter,rand_or_full=rand_or_full, tol =tol, temp=temp)
-        pivotR = pivot + round(Int,nb_r/2)
-        order_r = bwpo_order_sites(V,N,L; pivot=pivotR, nb_l=round(Int,nb_r/2), nb_r=nb_r-round(Int,nb_r/2), order=x_N, CAS=CAS,imax=imax-iter,rand_or_full=rand_or_full, tol =tol, temp=temp)
+        pivotL = pivot-k
+        order_l = bwpo_order_sites(V,N,L; pivot=pivotL, nb_l=nb_l-k, nb_r=k, order=x_N, CAS=CAS,imax=imax-iter,rand_or_full=rand_or_full, tol =tol, temp=temp,k=k)
+        pivotR = pivot + k
+        order_r = bwpo_order_sites(V,N,L; pivot=pivotR, nb_l=k, nb_r=nb_r-k, order=x_N, CAS=CAS,imax=imax-iter,rand_or_full=rand_or_full, tol =tol, temp=temp,k=k)
         return vcat(order_l,order_r)::Array{Int,1}
     end
 end
@@ -262,6 +259,28 @@ function bwpo_order_sites(γ::AbstractArray{Float64,2};order = collect(1:size(γ
     F = eigen(γ)
     V = reverse(F.vectors,dims=2)[:,:]'
     return bwpo_order_sites(V,N,round(Int,size(γ,1)/2);order=order,CAS=CAS,tol=tol,imax=imax,rand_or_full=rand_or_full,temp=temp)
+end
+
+"""
+Returns the approximate BWPO order using a greedy algorithm
+Warning : not efficient
+"""
+function greedy_bwpo(V,N,L;k=4,CAS=collect(1:N),tol=1e-8)
+    order = collect(1:L)
+    for i in 1:floor(Int,L/k)
+        for j in (i-1)*k+1:i*k
+            prefactor = sum([cost(svdvals(V[CAS[:,i],order[1:i*k]]),tol=tol) for i in size(CAS,2)])
+            for σ in collect(combinations(order[(i-1)*k+1:L],k))
+                test_order = vcat(order[1:(i-1)*k],σ)
+                test_prefactor = sum([cost(svdvals(V[CAS[:,i],test_order]),tol=tol) for i in size(CAS,2)])
+                if test_prefactor < prefactor
+                    order = vcat(test_order,setdiff(order[(i-1)*k+1:L],σ))
+                    prefactor = test_prefactor
+                end
+            end
+        end
+    end
+    return order
 end
 
 """
