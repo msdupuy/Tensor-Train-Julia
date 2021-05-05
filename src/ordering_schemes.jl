@@ -171,10 +171,10 @@ function bwpo_order(V,N,L;
                 x_N,prefactor = bwpo_aux(x_N,V,CAS,prefactor,pivot,nb_l,nb_r,tol;σ=σ_c)
             end
         end
-        pivotL = pivot-k
-        order_l = bwpo_order(V,N,L; pivot=pivotL, nb_l=nb_l-k, nb_r=k, order=x_N, CAS=CAS,imax=imax-iter,rand_or_full=rand_or_full, tol =tol, temp=temp,k=k)
-        pivotR = pivot + k
-        order_r = bwpo_order(V,N,L; pivot=pivotR, nb_l=k, nb_r=nb_r-k, order=x_N, CAS=CAS,imax=imax-iter,rand_or_full=rand_or_full, tol =tol, temp=temp,k=k)
+        pivotL = max(pivot-k,0)
+        order_l = bwpo_order(V,N,L; pivot=pivotL, nb_l=nb_l-pivot+pivotL, nb_r=pivot-pivotL, order=x_N, CAS=CAS,imax=imax-iter,rand_or_full=rand_or_full, tol =tol, temp=temp,k=pivot-pivotL)
+        pivotR = min(pivot + k,L)
+        order_r = bwpo_order(V,N,L; pivot=pivotR, nb_l=pivotR-pivot, nb_r=nb_r-pivotR+pivot, order=x_N, CAS=CAS,imax=imax-iter,rand_or_full=rand_or_full, tol =tol, temp=temp,k=pivotR-pivot)
         return vcat(order_l,order_r)::Array{Int,1}
     end
 end
@@ -238,10 +238,10 @@ function bwpo_order_sites(V,N,L;
                 x_N, prefactor = bwpo_aux_sites(x_N,V,CAS,prefactor,pivot,nb_l,nb_r,tol;σ=σ_c)
             end
         end
-        pivotL = pivot-k
-        order_l = bwpo_order_sites(V,N,L; pivot=pivotL, nb_l=nb_l-k, nb_r=k, order=x_N, CAS=CAS,imax=imax-iter,rand_or_full=rand_or_full, tol =tol, temp=temp,k=k)
-        pivotR = pivot + k
-        order_r = bwpo_order_sites(V,N,L; pivot=pivotR, nb_l=k, nb_r=nb_r-k, order=x_N, CAS=CAS,imax=imax-iter,rand_or_full=rand_or_full, tol =tol, temp=temp,k=k)
+        pivotL = max(pivot-k,0)
+        order_l = bwpo_order_sites(V,N,L; pivot=pivotL, nb_l=nb_l-pivot+pivotL, nb_r=pivot-pivotL, order=x_N, CAS=CAS,imax=imax-iter,rand_or_full=rand_or_full, tol =tol, temp=temp,k=pivot-pivotL)
+        pivotR = min(pivot + k,L)
+        order_r = bwpo_order_sites(V,N,L; pivot=pivotR, nb_l=pivotR-pivot, nb_r=nb_r-pivotR+pivot, order=x_N, CAS=CAS,imax=imax-iter,rand_or_full=rand_or_full, tol =tol, temp=temp,k=pivotR-pivot)
         return vcat(order_l,order_r)::Array{Int,1}
     end
 end
