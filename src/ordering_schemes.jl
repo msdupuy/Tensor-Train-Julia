@@ -214,9 +214,7 @@ function bwpo_order_sites(V,N,L;
     pivot = round(Int,L/2), nb_l = pivot,
     nb_r = L-pivot, order=collect(1:2L),
     CAS=collect(1:N),imax=1000,rand_or_full=500, tol =1e-8, temp=1e-6,k=2)
-    if imax <= 0 
-        return order[2(pivot -nb_l)+1:2(pivot+nb_r)]
-    elseif nb_l<=0
+    if nb_l<=0
         return order[2pivot+1:2pivot+2k]
     elseif nb_r<=0
         return order[2pivot-2k+1:2pivot]    
