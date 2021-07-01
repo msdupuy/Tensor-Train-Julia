@@ -159,8 +159,8 @@ function ttv_spdecomp(spv :: sparsetensor_vec, index;tol=1e-10)
 		ttv_vec[index][x, :, :] =
 		tensor_curr[Int(rks[index]*(x-1) + 1):Int(rks[index]*x), 1:rks[index+1]]
 	end
-	# Define the return value as a ttvector
-	return ttvector(ttv_vec, dims, rks[2:d+1], ttv_ot)
+	# Define the return value as a TTvector
+	return TTvector(ttv_vec, dims, rks[2:d+1], ttv_ot)
 end
 
 function test_ttv_spdecomp()
@@ -205,8 +205,8 @@ function tto_spdecomp(spm :: sparsetensor_mat, index)
 		reshape(ttv.ttv_vec[i][1:dims_sq[i], 1:rks[i], 1:rks[i+1]],
 		tto_dims[i], tto_dims[i], rks[i], :)
 	end
-	# Define the return value as a ttoperator
-	return ttoperator(tto_vec, tto_dims, rks[2:(d+1)], ttv.ttv_ot)
+	# Define the return value as a TToperator
+	return TToperator(tto_vec, tto_dims, rks[2:(d+1)], ttv.ttv_ot)
 end
 
 function Lap_sp(n::Integer, d::Integer)

@@ -23,9 +23,9 @@ function tt_up_rks_noise(tt_vec,tt_ot_i,rkm,rk,ϵ_wn)
 end
 
 """
-returns the ttvector with ranks rks and noise ϵ_wn for the updated ranks
+returns the TTvector with ranks rks and noise ϵ_wn for the updated ranks
 """
-function tt_up_rks(x_tt::ttvector{T},rk_max::Int;rks=vcat(1,rk_max*ones(Int,length(x_tt.ttv_dims)-1),1),ϵ_wn=0.0) where T<:Number
+function tt_up_rks(x_tt::TTvector{T},rk_max::Int;rks=vcat(1,rk_max*ones(Int,length(x_tt.ttv_dims)-1),1),ϵ_wn=0.0) where T<:Number
 	d = length(x_tt.ttv_dims)
 	vec_out = Array{Array{T}}(undef,d)
 	out_ot = zeros(Int64,d)
@@ -38,13 +38,13 @@ function tt_up_rks(x_tt::ttvector{T},rk_max::Int;rks=vcat(1,rk_max*ones(Int,leng
 		rks[i+1] = min(rks[i+1],n_in,n_out)
 		vec_out[i] = tt_up_rks_noise(x_tt.ttv_vec[i],x_tt.ttv_ot[i],rks[i],rks[i+1],ϵ_wn)
 	end	
-	return ttvector{T}(vec_out,x_tt.ttv_dims,rks,x_tt.ttv_ot)
+	return TTvector{T}(vec_out,x_tt.ttv_dims,rks,x_tt.ttv_ot)
 end
 
 """
-returns the orthogonalized ttvector with root i
+returns the orthogonalized TTvector with root i
 """
-function orthogonalize(x_tt::ttvector{T};i=1::Int) where T<:Number
+function orthogonalize(x_tt::TTvector{T};i=1::Int) where T<:Number
 	d = length(x_tt.ttv_dims)
 	@assert(1≤i≤d, DimensionMismatch("Impossible orthogonalization"))
 	y_tt = copy(x_tt)
@@ -73,7 +73,7 @@ end
 """
 returns a TT representation where the singular values lower than tol are discarded
 """
-function tt_rounding(x_tt::ttvector{T};tol=1e-12) where T<:Number
+function tt_rounding(x_tt::TTvector{T};tol=1e-12) where T<:Number
 	d = length(x_tt.ttv_dims)
 	y_rks = copy(x_tt.ttv_rks)
 	y_vec = copy(x_tt.ttv_vec)
@@ -97,20 +97,20 @@ function tt_rounding(x_tt::ttvector{T};tol=1e-12) where T<:Number
 		y_vec[j] = permutedims(reshape(F.Vt[F.S.>rtol,:],:,x_tt.ttv_dims[j],y_rks[j+1]),[2 1 3])
 		y_vec[j-1] = reshape(F.U[:,F.S.>rtol]*Diagonal(Σ),x_tt.ttv_dims[j-1],y_rks[j-1],:)
 	end
-	return ttvector{T}(y_vec,x_tt.ttv_dims,y_rks,vcat(0,ones(Int64,d-1)))
+	return TTvector{T}(y_vec,x_tt.ttv_dims,y_rks,vcat(0,ones(Int64,d-1)))
 end
 
 """
 returns the rounding of the TT operator
 """
-function tt_rounding(A_tto::ttoperator;tol=1e-12)
+function tt_rounding(A_tto::TToperator;tol=1e-12)
 	return ttv_to_tto(tt_rounding(tto_to_ttv(A_tto);tol=tol))
 end
 
 """
 returns the singular values of the reshaped tensor x[μ_1⋯μ_k;μ_{k+1}⋯μ_d] for all 1≤ k ≤ d
 """
-function tt_svdvals(x_tt::ttvector;tol=1e-14)
+function tt_svdvals(x_tt::TTvector;tol=1e-14)
 	d = length(x_tt.ttv_dims)
 	Σ = Array{Array{Float64,1},1}(undef,d-1)
 	y_tt = orthogonalize(x_tt)
@@ -157,10 +157,10 @@ function left_compression(A,B;tol=1e-12)
 end
 
 """
-parallel compression of the ttvector
+parallel compression of the TTvector
 TODO refactoring
 """
-function tt_compression_par(X::ttvector;tol=1e-14,Imax=2)
+function tt_compression_par(X::TTvector;tol=1e-14,Imax=2)
     Y = deepcopy(X.ttv_vec) :: Array{Array{Float64,3},1}
     rks = deepcopy(X.ttv_rks) :: Array{Int64}
     d = length(X.ttv_dims)
@@ -181,9 +181,9 @@ function tt_compression_par(X::ttvector;tol=1e-14,Imax=2)
             end
         end
     end
-    return ttvector(Y,X.ttv_dims,rks,zeros(Integer,d))
+    return TTvector(Y,X.ttv_dims,rks,zeros(Integer,d))
 end
 
-function tt_compression_par(A::ttoperator;tol=1e-14,Imax=2)
+function tt_compression_par(A::TToperator;tol=1e-14,Imax=2)
 	return ttv_to_tto(tt_compression_par(tto_to_ttv(A);tol=tol,Imax=Imax))
 end

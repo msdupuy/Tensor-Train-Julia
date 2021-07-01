@@ -1,7 +1,7 @@
 module TensorTrains
 
 include("tt_tools.jl")
-export ttvector,ttoperator,ttv_decomp,tto_decomp,ttv_to_tensor,tto_to_tensor,zeros_tt,rand_tt
+export TTvector,TToperator,ttv_decomp,tto_decomp,ttv_to_tensor,tto_to_tensor,zeros_tt,rand_tt
 
 include("tt_operations.jl")
 export *, +, dot

@@ -5,9 +5,9 @@ import Base.*
 import LinearAlgebra.dot
 
 """
-Addition of two ttvector
+Addition of two TTvector
 """
-function +(x::ttvector{T},y::ttvector{T}) where T<:Number
+function +(x::TTvector{T},y::TTvector{T}) where T<:Number
     @assert(x.ttv_dims == y.ttv_dims, "Dimensions mismatch!")
     d = length(x.ttv_dims)
     ttv_vec = Array{Array{T,3},1}(undef,d)
@@ -29,13 +29,13 @@ function +(x::ttvector{T},y::ttvector{T}) where T<:Number
     #last core
     ttv_vec[d][:,1:x.ttv_rks[d],1] = x.ttv_vec[d]
     ttv_vec[d][:,(x.ttv_rks[d]+1):rks[d],1] = y.ttv_vec[d]
-    return ttvector{T}(ttv_vec,x.ttv_dims,rks,zeros(d))
+    return TTvector{T}(ttv_vec,x.ttv_dims,rks,zeros(d))
 end
 
 """
-Addition of two ttoperators
+Addition of two TToperators
 """
-function +(x::ttoperator{T},y::ttoperator{T}) where T<:Number
+function +(x::TToperator{T},y::TToperator{T}) where T<:Number
     @assert(x.tto_dims == y.tto_dims, DimensionMismatch)
     d = length(x.tto_dims)
     tto_vec = Array{Array{T,4},1}(undef,d)
@@ -57,12 +57,12 @@ function +(x::ttoperator{T},y::ttoperator{T}) where T<:Number
     #last core
     tto_vec[d][:,:,1:x.tto_rks[d],1] = x.tto_vec[d]
     tto_vec[d][:,:,(x.tto_rks[d]+1):rks[d],1] = y.tto_vec[d]
-    return ttoperator{T}(tto_vec,x.tto_dims,rks,zeros(d))
+    return TToperator{T}(tto_vec,x.tto_dims,rks,zeros(d))
 end
 
 
 #matrix vector multiplication in TT format
-function *(A::ttoperator{T},v::ttvector{T}) where T<:Number
+function *(A::TToperator{T},v::TTvector{T}) where T<:Number
     @assert(A.tto_dims==v.ttv_dims, DimensionMismatch)
     d = length(A.tto_dims)
     Y = Array{Array{T,3},1}(undef, d)
@@ -73,11 +73,11 @@ function *(A::ttoperator{T},v::ttvector{T}) where T<:Number
 		@tensor M[a,b,c,d,e] = A.tto_vec[k][a,z,b,d]*v.ttv_vec[k][z,c,e]
         Y[k] = reshape(M, A.tto_dims[k], A_rks[k]*v_rks[k], A_rks[k+1]*v_rks[k+1])
     end
-    return ttvector{T}(Y,A.tto_dims,A.tto_rks.*v.ttv_rks,zeros(Integer,d))
+    return TTvector{T}(Y,A.tto_dims,A.tto_rks.*v.ttv_rks,zeros(Integer,d))
 end
 
 #matrix matrix multiplication in TT format
-function *(A::ttoperator{T},B::ttoperator{T}) where T<:Number
+function *(A::TToperator{T},B::TToperator{T}) where T<:Number
     @assert(A.tto_dims==B.tto_dims, DimensionMismatch)
     d = length(A.tto_dims)
     Y = Array{Array{T,4},1}(undef, d)
@@ -88,12 +88,12 @@ function *(A::ttoperator{T},B::ttoperator{T}) where T<:Number
 		@tensor M[a,b,c,d,e,f] = A.tto_vec[k][a,z,c,e]*B.tto_vec[k][z,b,d,f]
         Y[k] = reshape(M, A.tto_dims[k], A.tto_dims[k], A_rks[k]*B_rks[k], A_rks[k+1]*B_rks[k+1])
     end
-    return ttoperator{T}(Y,A.tto_dims,A.tto_rks.*B.tto_rks,zeros(Integer,d))
+    return TToperator{T}(Y,A.tto_dims,A.tto_rks.*B.tto_rks,zeros(Integer,d))
 end
 
 
-#dot returns the dot product of two ttvector
-function dot(A::ttvector{T},B::ttvector{T}) where T<:Number
+#dot returns the dot product of two TTvector
+function dot(A::TTvector{T},B::TTvector{T}) where T<:Number
     @assert A.ttv_dims==B.ttv_dims "TT dimensions are not compatible"
     d = length(A.ttv_dims)::Int
     A_rks = A.ttv_rks
@@ -110,7 +110,7 @@ end
 """
 `dot_par(x_tt,y_tt)' returns the dot product of `x_tt` and `y_tt` in a parallelized algorithm
 """
-function dot_par(A::ttvector{T},B::ttvector{T}) where T<:Number
+function dot_par(A::TTvector{T},B::TTvector{T}) where T<:Number
     @assert A.ttv_dims==B.ttv_dims "TT dimensions are not compatible"
     d = length(A.ttv_dims)
     Y = Array{Array{T,2},1}(undef,d)
@@ -130,18 +130,18 @@ function dot_par(A::ttvector{T},B::ttvector{T}) where T<:Number
 end
 
 
-function *(a::S,A::ttvector) where S<:Number
+function *(a::S,A::TTvector) where S<:Number
     i = findfirst(isequal(0),A.ttv_ot)
     T = typejoin(typeof(a),eltype(A))
     X = copy(A.ttv_vec)
     X[i] = a*X[i]
-    return ttvector{T}(X,A.ttv_dims,A.ttv_rks,A.ttv_ot)
+    return TTvector{T}(X,A.ttv_dims,A.ttv_rks,A.ttv_ot)
 end
 
-function *(a::S,A::ttoperator) where S<:Number
+function *(a::S,A::TToperator) where S<:Number
     i = findfirst(isequal(0),A.tto_ot)
     T = typejoin(typeof(a),eltype(A))
     X = copy(A.tto_vec)
     X[i] = a*X[i]
-    return ttoperator{T}(X,A.tto_dims,A.tto_rks,A.tto_ot)
+    return TToperator{T}(X,A.tto_dims,A.tto_rks,A.tto_ot)
 end

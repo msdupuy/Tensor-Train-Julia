@@ -11,7 +11,7 @@ function updateH_mals!(x_vec::Array{T,3}, A_vec::Array{T,4}, Hi::AbstractArray{T
 	nothing
 end
 
-function init_H_mals(x_tt::ttvector{T},A::ttoperator{T},rmax::Int) where T<:Number
+function init_H_mals(x_tt::TTvector{T},A::TToperator{T},rmax::Int) where T<:Number
 	d = length(x_tt.ttv_dims)
 	H = Array{Array{T,5}}(undef, d-1)
 	H[d-1] = reshape(permutedims(A.tto_vec[d],[3,1,2,4]), :, x_tt.ttv_dims[d], 1, x_tt.ttv_dims[d], 1) #size(R^A_d, n_d, r_{d+1}, n_d, r_{d+1})
@@ -31,7 +31,7 @@ function updateHb_mals!(xtt_vec::Array{T,3}, btt_vec::Array{T,3}, Hbi::AbstractA
 	nothing
 end
 
-function init_Hb_mals(x_tt::ttvector{T},b::ttvector{T},rmax::Int) where T<:Number
+function init_Hb_mals(x_tt::TTvector{T},b::TTvector{T},rmax::Int) where T<:Number
 	d = length(x_tt.ttv_dims)
 	Hb = Array{Array{T,3}}(undef, d-1)
 	Hb[d-1] = reshape(permutedims(b.ttv_vec[d],[2,1,3]),b.ttv_rks[d],b.ttv_dims[d],1)
@@ -45,7 +45,7 @@ function init_Hb_mals(x_tt::ttvector{T},b::ttvector{T},rmax::Int) where T<:Numbe
 	return Hb
 end
 
-function left_core_move_mals(xtt::ttvector{T},i::Integer,V::Array{T,4},tol::Float64,rmax::Integer) where T<:Number
+function left_core_move_mals(xtt::TTvector{T},i::Integer,V::Array{T,4},tol::Float64,rmax::Integer) where T<:Number
 	# Perform the truncated svd
 	u_V, s_V, v_V, = svd(reshape(V, prod(size(V)[1:2]), :))
 	# Determine the truncated rank
@@ -64,7 +64,7 @@ function left_core_move_mals(xtt::ttvector{T},i::Integer,V::Array{T,4},tol::Floa
 	return xtt
 end
 
-function right_core_move_mals(xtt::ttvector{T},i::Integer,V::Array{T,4},tol::Float64,rmax::Integer) where T<:Number
+function right_core_move_mals(xtt::TTvector{T},i::Integer,V::Array{T,4},tol::Float64,rmax::Integer) where T<:Number
 	# Perform the truncated svd
 	u_V, s_V, v_V, = svd(reshape(V, prod(size(V)[1:2]), :))
 	# Determine the truncated rank
@@ -124,10 +124,10 @@ function K_eigmin_mals(Gi::Array{T,5},Hi::Array{T,5},ttv_vec_i::Array{T,3},ttv_v
 end
 
 """
-Returns the solution `tt_opt :: ttvector` of Ax=b using the MALS algorithm where A is given as `ttoperator` and `b`, `tt_start` are `ttvector`.
+Returns the solution `tt_opt :: TTvector` of Ax=b using the MALS algorithm where A is given as `TToperator` and `b`, `tt_start` are `TTvector`.
 The ranks are adapted at each microstep by keeping the singular values larger than `tol`.
 """
-function mals_linsolv(A :: ttoperator{T}, b :: ttvector{T}, tt_start :: ttvector{T}; tol=1e-12::Float64,rmax=round(Int,sqrt(prod(tt_start.ttv_dims)))) where T<:Number
+function mals_linsolv(A :: TToperator{T}, b :: TTvector{T}, tt_start :: TTvector{T}; tol=1e-12::Float64,rmax=round(Int,sqrt(prod(tt_start.ttv_dims)))) where T<:Number
 	# mals finds the minimum of the operator J(x)=1/2*<Ax,x> - <x,b>
 	# input:
 	# 	A: the tensor operator in its tensor train format
@@ -203,13 +203,13 @@ function mals_linsolv(A :: ttoperator{T}, b :: ttvector{T}, tt_start :: ttvector
 end
 
 """
-Returns the list of the approximate smallest eigenvalue at each microstep, the corresponding eigenvector as a `ttvector` and the list of the maximum rank at each microstep.
+Returns the list of the approximate smallest eigenvalue at each microstep, the corresponding eigenvector as a `TTvector` and the list of the maximum rank at each microstep.
 
-`A` is given as `ttoperator` and `tt_start` is a `ttvector`.
+`A` is given as `TToperator` and `tt_start` is a `TTvector`.
 The ranks are adapted at each microstep by keeping the singular values larger than `tol`.
 The number of total sweeps is given by `sweep_schedule[end]`. The maximum rank is prescribed at each sweep `sweep_schedule[k]≤ i <sweep_schedule[k+1]` by `rmax_schedule[k]`.
 """
-function mals_eigsolv(A :: ttoperator{T}, tt_start :: ttvector{T}; tol=1e-12::Float64,sweep_schedule=[2]::Array{Int64,1},rmax_schedule=[round(Int,sqrt(prod(tt_start.ttv_dims)))]::Array{Int64,1},it_solver=false::Bool,linsolv_maxiter=200::Int64,linsolv_tol=max(sqrt(tol),1e-8)::Float64,itslv_thresh=256::Int) where T<:Number
+function mals_eigsolv(A :: TToperator{T}, tt_start :: TTvector{T}; tol=1e-12::Float64,sweep_schedule=[2]::Array{Int64,1},rmax_schedule=[round(Int,sqrt(prod(tt_start.ttv_dims)))]::Array{Int64,1},it_solver=false::Bool,linsolv_maxiter=200::Int64,linsolv_tol=max(sqrt(tol),1e-8)::Float64,itslv_thresh=256::Int) where T<:Number
 
 	@assert(length(rmax_schedule)==length(sweep_schedule),"Sweep schedule error")	
 	# Initialize the to be returned tensor in its tensor train format
@@ -240,7 +240,7 @@ function mals_eigsolv(A :: ttoperator{T}, tt_start :: ttvector{T}; tol=1e-12::Fl
 		if nsweeps == sweep_schedule[i_schedule]
 			i_schedule+=1
 			if i_schedule > length(sweep_schedule)
-				return E::Array{Float64,1}, tt_opt::ttvector{T}, r_hist::Array{Int,1}
+				return E::Array{Float64,1}, tt_opt::TTvector{T}, r_hist::Array{Int,1}
 			end
 		end
 
@@ -276,6 +276,6 @@ function mals_eigsolv(A :: ttoperator{T}, tt_start :: ttvector{T}; tol=1e-12::Fl
 			end
 		end
 	end
-	return E::Array{Float64,1}, tt_opt::ttvector{T}, r_hist::Array{Int,1}
+	return E::Array{Float64,1}, tt_opt::TTvector{T}, r_hist::Array{Int,1}
 end
 

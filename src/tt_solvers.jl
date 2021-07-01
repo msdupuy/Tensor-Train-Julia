@@ -18,9 +18,9 @@ function qr_hessenberg(H)
     return q,T
 end
 
-function tt_gmres(A::ttoperator,b::ttvector,x0::ttvector;Imax=500,tol=1e-8,m=30,hist=false,γ_list=Float64[])
-    V = Array{ttvector}(undef,m)
-    W = Array{ttvector}(undef,m)
+function tt_gmres(A::TToperator,b::TTvector,x0::TTvector;Imax=500,tol=1e-8,m=30,hist=false,γ_list=Float64[])
+    V = Array{TTvector}(undef,m)
+    W = Array{TTvector}(undef,m)
     H = zeros(m+1,m)
     r0 = tt_compression_par(tt_add(b,mult_a_tt(-1.0,tt_compression_par(mult(A,x0))))) 
     β = sqrt(tt_dot(r0,r0))
@@ -68,7 +68,7 @@ function tt_gmres(A::ttoperator,b::ttvector,x0::ttvector;Imax=500,tol=1e-8,m=30,
     end
 end
 
-function tt_cg(A::ttoperator,b::ttvector,x0::ttvector;Imax=500,tol=1e-8)
+function tt_cg(A::TToperator,b::TTvector,x0::TTvector;Imax=500,tol=1e-8)
     p = tt_compression_par(tt_add(b,mult_a_tt(-1.0,tt_compression_par(mult(A,x0)))))
     r = p
     j=1
@@ -136,7 +136,7 @@ function rand_struct_orth(r_A,r_X,r_b)
     return reshape(A,r_A*r_X,r_b)
 end
 
-function init(A::ttoperator,b::ttvector,opt_rks)
+function init(A::TToperator,b::TTvector,opt_rks)
     @assert(A.tto_dims == b.ttv_dims,DimensionMismatch)
     d = length(A.tto_dims)
     opt_rks = vcat([1],opt_rks)
@@ -150,11 +150,11 @@ function init(A::ttoperator,b::ttvector,opt_rks)
     for k in 1:d
         ttvec[k] = init_core(A.tto_vec[k],[A.tto_dims[k],opt_rks[k],opt_rks[k+1]],b.ttv_vec[k],Q_list[k],Q_list[k+1])
     end
-    return ttvector(ttvec,A.tto_dims,opt_rks[2:(d+1)],ones(Int64,d))
+    return TTvector(ttvec,A.tto_dims,opt_rks[2:(d+1)],ones(Int64,d))
 end
 
 #automatically determines the initial tt ranks
-function init_adapt(A::ttoperator,b::ttvector)
+function init_adapt(A::TToperator,b::TTvector)
     d = length(A.tto_dims)
     opt_rks = ones(Int64,d)
     for k in 1:(d-1)

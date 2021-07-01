@@ -70,7 +70,7 @@ function half_filling(N)
         tt_vec[2i] = zeros(2,1,1)
         tt_vec[2i][2,1,1] = 1.0
     end
-    return ttvector{Float64}(tt_vec,2*ones(Int,2N),ones(Int,2N+1),zeros(2N))
+    return TTvector{Float64}(tt_vec,2*ones(Int,2N),ones(Int,2N+1),zeros(2N))
 end
 
 #auxiliary functions for a_p^†a_q
@@ -125,7 +125,7 @@ function one_body_mpo(p,q,L;fermion=true,T=Float64)
             end
         end
     end 
-    return ttoperator{T}(H,2*ones(Int64,L),ones(Int64,L+1),zeros(Int64,L))
+    return TToperator{T}(H,2*ones(Int64,L),ones(Int64,L+1),zeros(Int64,L))
 end
 
 

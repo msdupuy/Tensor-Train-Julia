@@ -9,7 +9,7 @@ ordering schemes for QC-DMRG or 2D statistical models
 """
 'one_rdm' returns the list of one-orbital reduced density matrices assuming that 'x_tt' is a pure state for some particle number
 """
-function one_rdm(x_tt::ttvector{T}) where T<:Number
+function one_rdm(x_tt::TTvector{T}) where T<:Number
     d = length(x_tt.ttv_dims)
     @assert(2*ones(Int,d)==x_tt.ttv_dims)
     γ = zeros(T,d,2,2)
@@ -24,7 +24,7 @@ end
 """
 'two_rdm' returns the list of two-orbitals reduced density matrices assuming that 'x_tt' is a pure state for some particle number
 """
-function two_rdm(x_tt::ttvector{S};fermion=true) where S<:Number
+function two_rdm(x_tt::TTvector{S};fermion=true) where S<:Number
     d = length(x_tt.ttv_dims)
     @assert(2*ones(Int,d)==x_tt.ttv_dims)
     γ = zeros(S,d,d,2,2,2,2) #(i,j;i,j) occupancy
@@ -44,7 +44,7 @@ end
 """
 Returns the orbital reduced density matrix ρ_{i:j}, i<j.
 """
-function N_rdm(x_tt::ttvector{T},i::Integer,j::Integer) where T<:Number
+function N_rdm(x_tt::TTvector{T},i::Integer,j::Integer) where T<:Number
     @assert(i<j≤length(x_tt.ttv_dims))
     y_tt = orthogonalize(x_tt,i=i)
     ρ = zeros(T,x_tt.ttv_dims[i:j]...,x_tt.ttv_dims[i:j]...)
@@ -106,7 +106,7 @@ end
 """
 Returns the Fiedler order of the state `x_tt`, assumed to be normalized.
 """
-function fiedler_order(x_tt::ttvector;a=1) #a=1 : von Neumann entropy
+function fiedler_order(x_tt::TTvector;a=1) #a=1 : von Neumann entropy
     γ1 = one_rdm(x_tt)
     γ2 = two_rdm(x_tt)
     IM = mutual_information(γ1,γ2;a=a)
@@ -114,7 +114,7 @@ function fiedler_order(x_tt::ttvector;a=1) #a=1 : von Neumann entropy
 end
 
 #returns the one particle reduced density matrix of a state encoded in the TT x_tt
-function one_prdm(x_tt::ttvector{T}) where T<:Number
+function one_prdm(x_tt::TTvector{T}) where T<:Number
     d = length(x_tt.ttv_dims)
     γ = zeros(T,d,d)
     for i in 1:d
@@ -179,7 +179,7 @@ function bwpo_order(V,N,L;
     end
 end
 
-function bwpo_order(ψ_tt::ttvector;order = collect(1:length(ψ_tt.ttv_dims)),tol=1e-8,imax=2000,rand_or_full=500,temp=1e-4)
+function bwpo_order(ψ_tt::TTvector;order = collect(1:length(ψ_tt.ttv_dims)),tol=1e-8,imax=2000,rand_or_full=500,temp=1e-4)
     γ = one_prdm(ψ_tt)
 	N = round(Int,tr(γ))
     F = eigen(γ)
@@ -244,7 +244,7 @@ function bwpo_order_sites(V,N,L;
     end
 end
 
-function bwpo_order_sites(ψ_tt::ttvector;order = collect(1:length(ψ_tt.ttv_dims)),tol=1e-8,imax=2000,rand_or_full=500,temp=1e-4)
+function bwpo_order_sites(ψ_tt::TTvector;order = collect(1:length(ψ_tt.ttv_dims)),tol=1e-8,imax=2000,rand_or_full=500,temp=1e-4)
     γ = one_prdm(ψ_tt)
 	N = round(Int,tr(γ))
     F = eigen(γ)
