@@ -2,10 +2,6 @@ using LinearMaps
 using TensorOperations
 
 """
-TODO: 
-  * include IterativeSolvers option for als
-  * refactor als_gen_eigsolv
-
 Implementation based on the presentation in 
 Holtz, Sebastian, Thorsten Rohwedder, and Reinhold Schneider. "The alternating linear scheme for tensor optimization in the tensor train format." SIAM Journal on Scientific Computing 34.2 (2012): A683-A713.
 """
