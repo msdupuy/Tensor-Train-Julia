@@ -1,3 +1,4 @@
+using Base: Integer
 include("tt_tools.jl")
 
 """
