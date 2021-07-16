@@ -1,6 +1,7 @@
 using Base.Threads
 using TensorOperations
 import Base.+
+import Base.-
 import Base.*
 import LinearAlgebra.dot
 
@@ -123,7 +124,6 @@ function dot_par(A::TTvector{T,d},B::TTvector{T,d}) where {T<:Number,d}
     return C[1]::T
 end
 
-
 function *(a::S,A::TTvector{R,d}) where {S<:Number,R<:Number,d}
     i = findfirst(isequal(0),A.ttv_ot)
     T = typejoin(typeof(a),R)
@@ -138,4 +138,12 @@ function *(a::S,A::TToperator{R,d}) where {S<:Number,R<:Number,d}
     X = copy(A.tto_vec)
     X[i] = a*X[i]
     return TToperator{T,d}(X,A.tto_dims,A.tto_rks,A.tto_ot)
+end
+
+function -(A::TTvector{T,d},B::TTvector{T,d}) where {T<:Number,d}
+    return *(-1.0,B)+A
+end
+
+function -(A::TToperator{T,d},B::TToperator{T,d}) where {T<:Number,d}
+    return *(-1.0,B)+A
 end
