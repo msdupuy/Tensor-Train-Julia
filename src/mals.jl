@@ -45,7 +45,7 @@ end
 
 function left_core_move_mals(xtt::TTvector{T,d},i::Integer,V::Array{T,4},tol::Float64,rmax::Integer) where {T<:Number,d}
 	# Perform the truncated svd
-	u_V, s_V, v_V, = svd(reshape(V, prod(size(V)[1:2]), :))
+	u_V, s_V, v_V = svd(reshape(V, prod(size(V)[1:2]), :))
 	# Determine the truncated rank
 	s_trunc = sv_trunc(s_V,tol)
 	# Update the ranks to the truncated one
@@ -64,7 +64,7 @@ end
 
 function right_core_move_mals(xtt::TTvector{T,d},i::Integer,V::Array{T,4},tol::Float64,rmax::Integer) where {T<:Number,d}
 	# Perform the truncated svd
-	u_V, s_V, v_V, = svd(reshape(V, prod(size(V)[1:2]), :))
+	u_V, s_V, v_V = svd(reshape(V, prod(size(V)[1:2]), :))
 	# Determine the truncated rank
 	s_trunc = sv_trunc(s_V,tol)
 	# Update the ranks to the truncated one
