@@ -70,6 +70,19 @@ function zeros_tt(dims,rks;T=Float64,ot=zeros(Int,length(dims)))
 	return TTvector{T,d}(tt_vec,dims,copy(rks),copy(ot))
 end
 
+"""
+returns a zero TToperator with dimensions `dims` and ranks `rks`
+"""
+function zeros_tto(dims,rks;T=Float64,ot=zeros(Int,length(dims)))
+	@assert length(dims)+1==length(rks) "Dimensions and ranks are not compatible"
+	d = length(dims)
+	tt_vec = Array{Array{T,4}}(undef,d)
+	for i in 1:d
+		tt_vec[i] = zeros(T,dims[i],dims[i],rks[i],rks[i+1])
+	end
+	return TToperator{T,d}(tt_vec,dims,copy(rks),copy(ot))
+end
+
 #returns partial isometry Q ∈ R^{n x m}
 function rand_orthogonal(n,m;T=Float64)
     N = max(n,m)
