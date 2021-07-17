@@ -91,11 +91,9 @@ function Ksolve(Gi::AbstractArray{T,3},G_bi::AbstractArray{T,2},Hi::AbstractArra
 	return reshape(K\Pb[:],K_dims)
 end
 
-function right_core_move(x_tt::TTvector{T,d},V::Array{T,3},i::Int,tol::Float64,rmax::Integer,N::Integer) where {T<:Number,d}
+function right_core_move(x_tt::TTvector{T,d},V::Array{T,3},i::Int,tol::Float64,rmax::Integer) where {T<:Number,d}
 	# Perform the truncated svd
-	W = reshape(V, x_tt.ttv_rks[i],x_tt.ttv_dims[i:i+N-1]..., x_tt.ttv_rks[i+N])
-	W = permutedims(W,(2,1,3:(2+N)...))
-	u_V, s_V, v_V = svd(reshape(W,x_tt.ttv_rks[i]*x_tt.ttv_dims[i],prod(x_tt.ttv_dims[i+1:i+N-1])*x_tt.ttv_rks[i+N]))
+	u_V, s_V, v_V = svd(reshape(V,x_tt.ttv_rks[i]*x_tt.ttv_dims[i],:))
 	# Determine the truncated rank
 	s_trunc = sv_trunc(s_V,tol)
 	# Update the ranks to the truncated one
@@ -103,15 +101,15 @@ function right_core_move(x_tt::TTvector{T,d},V::Array{T,3},i::Int,tol::Float64,r
 	println("Rank: $(x_tt.ttv_rks[i+1]),	Max rank=$rmax")
 	println("Discarded weight: $((norm(s_V)-norm(s_V[1:x_tt.ttv_rks[i+1]]))/norm(s_V))")
 
-	x_tt.ttv_vec[i] = reshape(u_V[:,1:x_tt.ttv_rks[i+1]],x_tt.ttv_dims[i],x_tt.ttv_rks[i],:)
+	x_tt.ttv_vec[i] = permutedims(reshape(u_V[:,1:x_tt.ttv_rks[i+1]],x_tt.ttv_rks[i],x_tt.ttv_dims[i],:),(2,1,3))
 	x_tt.ttv_ot[i] = 1
 	x_tt.ttv_ot[i+1]=0
 	return x_tt, reshape(Diagonal(s_V[1:x_tt.ttv_rks[i+1]])*v_V'[1:x_tt.ttv_rks[i+1],:],x_tt.ttv_rks[i+1],:,size(V,3))
 end
 
-function left_core_move(x_tt::TTvector{T,d},V::Array{T,3},j::Int,tol::Float64,rmax::Integer,N::Integer) where {T<:Number,d}
+function left_core_move(x_tt::TTvector{T,d},V::Array{T,3},j::Int,tol::Float64,rmax::Integer) where {T<:Number,d}
 	# Perform the truncated svd
-	W = reshape(V, :, x_tt.ttv_dims[j-N+1:j]..., x_tt.ttv_rks[j+1])
+	W = reshape(V, :, x_tt.ttv_dims[j], x_tt.ttv_rks[j+1])
 	u_V, s_V, v_V = svd(reshape(W,:, x_tt.ttv_dims[j]*x_tt.ttv_rks[j+1]))
 	# Determine the truncated rank
 	s_trunc = sv_trunc(s_V,tol)
@@ -234,7 +232,7 @@ function dmrg_linsolv(A :: TToperator{T,d}, b :: TTvector{T,d}, tt_start :: TTve
 				H_bi = @view(H_b[i][1:tt_opt.ttv_rks[i+N],:])
 				# Define V as solution of K*x=Pb in x
 				V = Ksolve(Gi,G_bi,Hi,H_bi,Amid_list[i],bmid_list[i])
-				tt_opt,V = left_core_move(tt_opt,V,i+N-1,tol,rmax,N)
+				tt_opt,V = left_core_move(tt_opt,V,i+N-1,tol,rmax)
 				Him = @view(H[i-1][:,1:tt_opt.ttv_rks[i+N-1],1:tt_opt.ttv_rks[i+N-1]])
 				H_bim = @view(H_b[i-1][1:tt_opt.ttv_rks[i+N-1],:])
 				update_H!(tt_opt.ttv_vec[i+N-1],A.tto_vec[i+N-1],Hi,Him)
@@ -249,9 +247,9 @@ function dmrg_linsolv(A :: TToperator{T,d}, b :: TTvector{T,d}, tt_start :: TTve
 	H_bi = @view(H_b[1][1:tt_opt.ttv_rks[1+N],:])
 	# Define V as solution of K*x=Pb in x
 	V = Ksolve(Gi,G_bi,Hi,H_bi,Amid_list[1],bmid_list[1])
-	tt_opt,V = left_core_move(tt_opt,V,N,tol,rmax,N)
+	tt_opt,V = left_core_move(tt_opt,V,N,tol,rmax)
 	for i in N-1:-1:2
-		tt_opt, V = left_core_move(tt_opt,V,i,tol,rmax,i)
+		tt_opt, V = left_core_move(tt_opt,V,i,tol,rmax)
 	end
 	tt_opt.ttv_vec[1] = permutedims(reshape(V,1,tt_opt.ttv_dims[1],:),(2,1,3))
 	tt_opt.ttv_ot[1] = 0
@@ -314,19 +312,16 @@ function dmrg_eigsolv(A :: TToperator{T,d},
 				λ,V = K_eigmin(G[1],H[1],V0,Amid_list[1] ;it_solver=it_solver,maxiter=linsolv_maxiter,tol=linsolv_tol,itslv_thresh=itslv_thresh)
 				println("Eigenvalue: $λ")
 				E = vcat(E,λ)
-				tt_opt,V = left_core_move(tt_opt,V,N,tol,rmax_schedule[end],N)
+				tt_opt,V = left_core_move(tt_opt,V,N,tol,rmax_schedule[end])
 				r_hist = vcat(r_hist,maximum(tt_opt.ttv_rks))
 				for i in N-1:-1:2
-					tt_opt, V = left_core_move(tt_opt,V,i,tol,rmax_schedule[end],i)
+					tt_opt, V = left_core_move(tt_opt,V,i,tol,rmax_schedule[end])
 				end
 				tt_opt.ttv_vec[1] = permutedims(reshape(V,1,tt_opt.ttv_dims[1],:),(2,1,3))
 				tt_opt.ttv_ot[1] = 0
 				return E::Array{Float64,1}, tt_opt::TTvector{T,d}, r_hist::Array{Int,1}
 			end
 		end
-#		if maximum(tt_opt.ttv_rks)<rmax_schedule[i_schedule]
-#			tt_opt = orthogonalize(tt_up_rks(tt_opt,rmax_schedule[i_schedule],ϵ_wn=1e-2))
-#		end
 		# First half sweep
 		for i = 1:(d-N)
 			println("Forward sweep: core optimization $i out of $(d-N+1)")
@@ -334,7 +329,7 @@ function dmrg_eigsolv(A :: TToperator{T,d},
 			λ,V = K_eigmin(G[i],H[i],V0, Amid_list[i]; it_solver=it_solver, maxiter=linsolv_maxiter,tol=linsolv_tol,itslv_thresh=itslv_thresh)
 			println("Eigenvalue: $λ")
 			E = vcat(E,λ)
-			tt_opt, V = right_core_move(tt_opt,V,i,tol,rmax_schedule[i_schedule],N)
+			tt_opt, V = right_core_move(tt_opt,V,i,tol,rmax_schedule[i_schedule])
 			r_hist = vcat(r_hist,maximum(tt_opt.ttv_rks))
 			#Update the next initialization
 			@tensor W[αk,J,ik,γk] := V[αk,J,βk]*tt_opt.ttv_vec[i+N][ik,βk,γk]
@@ -352,7 +347,7 @@ function dmrg_eigsolv(A :: TToperator{T,d},
 			λ,V = K_eigmin(G[i],H[i],V0,Amid_list[i] ;it_solver=it_solver,maxiter=linsolv_maxiter,tol=linsolv_tol,itslv_thresh=itslv_thresh)
 			println("Eigenvalue: $λ")
 			E = vcat(E,λ)
-			tt_opt,V = left_core_move(tt_opt,V,i+N-1,tol,rmax_schedule[i_schedule],N)
+			tt_opt,V = left_core_move(tt_opt,V,i+N-1,tol,rmax_schedule[i_schedule])
 			r_hist = vcat(r_hist,maximum(tt_opt.ttv_rks))
 			#update the initialization
 			@tensor W[αk,ik,J,γk] := V[βk,J,γk]*tt_opt.ttv_vec[i-1][ik,αk,βk]
