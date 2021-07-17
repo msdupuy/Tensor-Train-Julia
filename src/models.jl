@@ -137,11 +137,11 @@ function two_body_mpo(k,l,m,n,L;T=Float64)
         A = one_body_mpo(k,m,L;T=T)
         B = one_body_mpo(l,n,L;T=T)
         C = one_body_mpo(k,n,L;T=T)
-        return  (-1.0*A)*B + C 
+        return  (-1.0*A)*B + C ::TToperator{T,L}
     else
         A = one_body_mpo(k,m,L;T=T)
         B = one_body_mpo(l,n,L;T=T)
-        return -1.0*(A*B)
+        return -1.0*(A*B)::TToperator{T,L}
     end
 end
 
@@ -151,17 +151,13 @@ returns an MPO version of
 H = Σ_{ij} h_ij (a_i† a_j + c.c.) + Σ_{ijkl} V_{ijkl} (a_i†a_j†a_ka_l + c.c.)
 """
 #assuming diagonal terms are divided by 2 in the h and V matrix
-function hV_to_mpo(h,V;tol=1e-8)
+function hV_to_mpo(h::AbstractArray{T,2},V::AbstractArray{T,4};tol=1e-8) where T<:Number
     L = size(h,1)
-    i_list = findall(!iszero,h)
-    if length(i_list)>0
-        i = i_list[1]
-        A = h[i]*(one_body_mpo(i[1],i[2],L)+one_body_mpo(i[2],i[1],L))
-        for i in i_list[2:end]
-            H = one_body_mpo(i[1],i[2],L)
-            G = one_body_mpo(i[2],i[1],L)
-            A = A+h[i]*(G+H)
-        end
+    A = zeros_tto(tuple(2*ones(Int64,L)...),ones(Int64,L+1),T=T)
+    for i in findall(!iszero,h)
+        H = one_body_mpo(i[1],i[2],L)
+        G = one_body_mpo(i[2],i[1],L)
+        A = A+h[i]*(G+H)
         A = tt_rounding(A,tol=tol)
     end
     for i in findall(!iszero,V)
@@ -169,7 +165,7 @@ function hV_to_mpo(h,V;tol=1e-8)
         G = two_body_mpo(i[4],i[3],i[2],i[1],L)
         A = tt_rounding(A+V[i]*(H+G),tol=tol)
     end
-    return A
+    return A::TToperator{T,L}
 end
 
 """
