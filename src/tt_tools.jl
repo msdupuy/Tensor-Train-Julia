@@ -210,17 +210,44 @@ function tt_to_vidal(x_tt::TTvector{T,d};tol=1e-14) where {T<:Number,d}
 	Σ = Array{Array{Float64,1},1}(undef,d-1)
 	y_tt = orthogonalize(x_tt)
 	y_rks = copy(y_tt.ttv_rks)
-	for j in 1:d-1
-		A = zeros(y_tt.ttv_dims[j],y_rks[j],y_tt.ttv_dims[j+1],y_rks[j+2])
-		@tensor A[a,b,c,d] = y_tt.ttv_vec[j][a,z,b]*y_tt.ttv_vec[j+1][z,d,c]
-		u,s,v = svd(reshape(A,size(A,1)*size(A,2),:))
+	#Definition of the first core
+	u,s,v = svd(reshape(y_tt.ttv_vec[1],x_tt.ttv_dims[1],y_tt.ttv_rks[2]))
+	Σ[1] = s[s.>tol]
+	y_rks[2] = length(Σ[1])
+	core[1] = reshape(u[:,s.>tol],y_tt.ttv_dims[1],1,:)
+	#Next core to SVD
+	@tensor B[i2,α,β] := (Diagonal(s)*v')[α,z]*y_tt.ttv_vec[2][i2,z,β] 
+	for j in 2:d-1
+		u,s,v = svd(reshape(B,size(B,1)*size(B,2),:))
 		Σ[j] = s[s.>tol]
 		y_rks[j+1] = length(Σ[j])
-		core[j] = permutedims(reshape(u[:,s.>tol],y_rks[j],y_tt.ttv_dims[j],:),[1 3 2])
-		y_tt.ttv_vec[j+1] = reshape(v[:,s.>tol],:,y_rks[j+2],y_tt.ttv_dims[j+1])
+		core[j] = reshape(u[:,s.>tol],x_tt.ttv_dims[j],y_rks[j],:)
+		for i in 1:x_tt.ttv_dims[j]
+			core[j][i,:,:] = inv(Diagonal(Σ[j-1]))*core[j][i,:,:]
+		end
+		@tensor B[i2,α,β] := (Diagonal(s)*v')[α,z]*y_tt.ttv_vec[j+1][i2,z,β] 
 	end
-	core[d] = y_tt.ttv_vec[d]
+	@tensor core[d][i,α,β] := v'[α,z]*y_tt.ttv_vec[d][i,z,β]
 	return TT_vidal{T,d}(core,Σ,y_tt.ttv_dims,y_rks)
+end
+
+"""
+Vidal representation to tensor
+"""
+function vidal_to_tensor(x_v::TT_vidal{T,d};tol=1e-14) where {T<:Number,d}
+	r_max = maximum(x_v.rks)
+	tensor = zeros(T, x_v.dims...)
+	# Fill in the tensor for every t=(x_1,...,x_d)
+	for t in CartesianIndices(tensor)
+		curr = ones(T,r_max)
+		a = collect(Tuple(t))
+		curr[1:x_v.rks[d]] = copy(x_v.core[d][a[d],:,1]) #last core is a column vector
+		for i = d-1:-1:1
+			curr[1:x_v.rks[i]] = x_v.core[i][a[i],:,:]*(x_v.Σ[i].*curr[1:x_v.rks[i+1]])
+		end
+		tensor[t] = curr[1]
+	end
+	return tensor
 end
 
 """
