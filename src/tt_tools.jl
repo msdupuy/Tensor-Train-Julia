@@ -42,9 +42,9 @@ end
 
 """	
 TT constructor of a matrix ``M[i_1,..,i_d;j_1,..,j_d] \\in \\mathbb{K}^{n_1 \\cdots n_d \\times n_1 \\cdots n_d}`` where 
-``MM[i_1,..,i_d;j_1,..,j_d] = A_1[i_1,j_1] ... A_L[i_d,j_d]``
+``M[i_1,..,i_d;j_1,..,j_d] = A_1[i_1,j_1] ... A_L[i_d,j_d]``
 The following properties are stored
-	* tto_vec: the TT cores A_k as a list of 4-order tensors ``(A_1,...,A_d)``
+	* tto_vec: the TT cores A_k as a list of 4-order tensors ``(A_1,...,A_d)`` of dimensions A_k \\in \\mathbb{K}^{n_k × n_k × r_{k-1} × r_k}
 	* ttv_dims: the dimension of the tensor along each mode
 	* ttv_rks: the TT ranks ``(r_0,...,r_d)`` where ``r_0=r_d=1``
 """
@@ -234,7 +234,7 @@ end
 """
 Vidal representation to tensor
 """
-function vidal_to_tensor(x_v::TT_vidal{T,d};tol=1e-14) where {T<:Number,d}
+function vidal_to_tensor(x_v::TT_vidal{T,d}) where {T<:Number,d}
 	r_max = maximum(x_v.rks)
 	tensor = zeros(T, x_v.dims...)
 	# Fill in the tensor for every t=(x_1,...,x_d)
@@ -248,6 +248,20 @@ function vidal_to_tensor(x_v::TT_vidal{T,d};tol=1e-14) where {T<:Number,d}
 		tensor[t] = curr[1]
 	end
 	return tensor
+end
+
+"""
+Returns a left-canonical TT representation
+"""
+function vidal_to_left_canonical(x_v::TT_vidal{T,d}) where {T<:Number,d}
+	x_tt = zeros_tt(x_v.dims,x_v.rks,ot=vcat(ones(length(x_v.dims)), 0))
+	x_tt.ttv_vec[1] = x_v.core[1]
+	for i in 2:length(x_v.dims)
+		for j in 1:x_v.dims[i]
+			x_tt.ttv_vec[i][j,:,:] = Diagonal(x_v.Σ[i-1])*x_v.core[i][j,:,:]
+		end
+	end
+	return x_tt
 end
 
 """

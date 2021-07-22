@@ -76,5 +76,7 @@ end
     x = ttv_to_tensor(x_tt)    
     x_v = tt_to_vidal(x_tt)
     y = vidal_to_tensor(x_v)
+    x_l = vidal_to_left_canonical(x_v)
     @test(isapprox(x,y))
+    @test(isapprox(x,ttv_to_tensor(x_l)))
 end
