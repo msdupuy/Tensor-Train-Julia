@@ -68,3 +68,13 @@ end
     @test(size(y_tt.ttv_vec[i])==(dims[i],rks[i],rks[i+1]))
     @test(isapprox(ttv_to_tensor(x_tt),ttv_to_tensor(y_tt)))
 end
+
+@testset "Vidal" begin
+    dims = tuple(2*ones(Int,8)...)
+    rks = [1,2,4,8,8,8,4,2,1]
+    x_tt = rand_tt(dims,rks)
+    x = ttv_to_tensor(x_tt)    
+    x_v = tt_to_vidal(x_tt)
+    y = vidal_to_tensor(x_v)
+    @test(isapprox(x,y))
+end
