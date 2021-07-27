@@ -363,8 +363,9 @@ end
 
 """
 returns the smallest eigenpair Ax = Sx
+NOT WORKING
 """
-function als_gen_eigsolv(A :: TToperator{T,d}, S::TToperator{T,d}, tt_start :: TTvector{T,d} ; sweep_schedule=[2],rmax_schedule=[maximum(tt_start.ttv_rks)],tol=1e-10,it_solver=false,itslv_thresh=2500) where {T<:Number,d}
+function dmrg_gen_eigsolv(A :: TToperator{T,d}, S::TToperator{T,d}, tt_start :: TTvector{T,d} ; sweep_schedule=[2],rmax_schedule=[maximum(tt_start.ttv_rks)],tol=1e-10,it_solver=false,itslv_thresh=2500) where {T<:Number,d}
 	# Initialize the to be returned tensor in its tensor train format
 	tt_opt = orthogonalize(tt_start)
 	dims = tt_start.ttv_dims
