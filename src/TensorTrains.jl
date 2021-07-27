@@ -1,10 +1,10 @@
 module TensorTrains
 
 include("tt_tools.jl")
-export TTvector,TToperator,ttv_decomp,tto_decomp,ttv_to_tensor,tto_to_tensor,zeros_tt,rand_tt
+export TTvector,TToperator,ttv_decomp,tto_decomp,ttv_to_tensor,tto_to_tensor,zeros_tt,rand_tt,tt_to_vidal,vidal_to_tensor,vidal_to_left_canonical
 
 include("tt_operations.jl")
-export *, +, dot
+export *, +, dot, -
 
 include("tt_rounding.jl")
 export tt_svdvals,tt_rounding,tt_compression_par,orthogonalize,tt_up_rks
@@ -14,6 +14,9 @@ export als_linsolv, als_eigsolv, als_gen_eigsolv
 
 include("mals.jl")
 export mals_eigsolv, mals_linsolv
+
+include("dmrg.jl")
+export dmrg_linsolv, dmrg_eigsolv
 
 include("tt_solvers.jl")
 export tt_cg, tt_gmres
