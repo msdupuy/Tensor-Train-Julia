@@ -101,7 +101,7 @@ function mpo_core_annihilation(;T=Float64)
 end
 
 #returns bosonic or fermionic MPO of a_p^†a_q
-function one_body_mpo(p,q,L;fermion=true,T=Float64)
+function one_body_mpo(p::Integer,q::Integer,L::Integer;fermion=true,T=Float64)
     H = Array{Array{T,4},1}(undef,L)
     if p == q
         for i in 1:L
@@ -125,14 +125,13 @@ function one_body_mpo(p,q,L;fermion=true,T=Float64)
             end
         end
     end 
-    return TToperator{T,L}(H,tuple(2*ones(Int64,L)...),ones(Int64,L+1),zeros(Int64,L))
+    return TToperator{T,L}(H,tuple(2*ones(Int64,L)...),ones(Int64,L+1),zeros(Int64,L))::TToperator{T,L}
 end
 
 
 #returns bosonic or fermionic MPO of a_k^† a^†_l a_m a_n 
 #assume k<l,m<n
 function two_body_mpo(k,l,m,n,L;T=Float64)
-    H = Array{Array{T,4},1}(undef,L) 
     if l == m
         A = one_body_mpo(k,m,L;T=T)
         B = one_body_mpo(l,n,L;T=T)
