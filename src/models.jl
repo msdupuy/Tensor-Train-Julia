@@ -147,24 +147,27 @@ end
 
 """
 returns an MPO version of 
-H = Σ_{ij} h_ij (a_i† a_j + c.c.) + Σ_{ijkl} V_{ijkl} (a_i†a_j†a_ka_l + c.c.)
+H = Σ_{ij} h_ij a_i† a_j + Σ_{ijkl} V_{ijkl} a_i†a_j†a_ka_l 
+h and V have to be Symmetric 
 """
 #assuming diagonal terms are divided by 2 in the h and V matrix
 function hV_to_mpo(h::AbstractArray{T,2},V::AbstractArray{T,4};tol=1e-8) where T<:Number
     L = size(h,1)
+    @assert issymmetric(h)
+    @assert isapprox(V,permutedims(V,(2,1,4,3)))
     A = zeros_tto(tuple(2*ones(Int64,L)...),ones(Int64,L+1),T=T)
+    i_rnd = 1
     for i in findall(!iszero,h)
         H = one_body_mpo(i[1],i[2],L)
-        G = one_body_mpo(i[2],i[1],L)
-        A = A+h[i]*(G+H)
-        A = tt_rounding(A,tol=tol)
+        A = A+h[i]*H
+        i_rnd > 3 ? (A = tt_rounding(A,tol=tol), i_rnd = 1) : i_rnd+=1
     end
     for i in findall(!iszero,V)
         H = two_body_mpo(i[1],i[2],i[3],i[4],L)
-        G = two_body_mpo(i[4],i[3],i[2],i[1],L)
-        A = tt_rounding(A+V[i]*(H+G),tol=tol)
+        A = A+V[i]*H
+        i_rnd > 3 ? (A = tt_rounding(A,tol=tol), i_rnd = 1) : i_rnd+=1
     end
-    return A::TToperator{T,L}
+    return tt_rounding(A,tol=tol)::TToperator{T,L}
 end
 
 """
@@ -179,13 +182,15 @@ function hubbard_1D(L;t=1,U=1, pbc=false)
         h[2i,2i+2]=-t
         h[2i-1,2i+1]=-t
         V[2i-1,2i,2i-1,2i]=-U #because of the anticommutation rules
+        V[2i,2i-1,2i,2i-1]=-U #because of the anticommutation rules
     end
     V[2L-1,2L,2L-1,2L]=-U
+    V[2L,2L-1,2L,2L-1]=-U
     if pbc 
         h[2L-1,1]=-t
         h[2L,2]=-t
     end
-    return h,V
+    return Symmetric(h),V
 end
 
 #switch sites j and k in a one-dimensional spin chain model
@@ -197,6 +202,7 @@ function site_switch(j::Integer,k::Integer,L::Integer)
 end
 
 #2D Hubbard with cylindrical boundary conditions along L
+# TO MODIFY
 function hubbard_2D(w,L;t=1,U=1,w_pbc = false,L_pbc=true)
     h = zeros(2w*L,2w*L)
     V = zeros(2w*L,2w*L,2w*L,2w*L)
@@ -237,7 +243,7 @@ function hubbard_2D(w,L;t=1,U=1,w_pbc = false,L_pbc=true)
         h[2(L*w-1)+1,2(L-1)*w+1] = -t #right connection
         h[2(L*w-1)+2,2(L-1)*w+2] = -t #right connection
     end
-    return h,V
+    return Symmetric(h),V
 end
 
 """
