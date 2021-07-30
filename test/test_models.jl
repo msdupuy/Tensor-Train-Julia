@@ -22,9 +22,9 @@ end
 
 @testset "PPP_C_NH_N" begin
     N = 6
-    H_tto = PPP_C_NH_N(N,order=randperm(12))
-    ψ_0 = tt_up_rks(half_filling(N),32;ϵ_wn=1e-2)
+    H_tto = PPP_C_NH_N(N)
+    ψ_0 = tt_up_rks(half_filling(N),32;ϵ_wn=1e-1)
     ψ_0 = orthogonalize(ψ_0)
-    E_mals, ψ_tt = mals_eigsolv(H_tto,ψ_0)
-    @test isapprox(E_mals[end],-0.46752535023652453,atol=1e-6) #value in Bendazzoli, G. L., & Evangelisti, S. (1991). Full-CI calculations of alternant cyclic polyenes (CH) N, N= 2, 4, 6, ƒ 18, in the PPP approximation. Chemical physics letters, 185(1-2), 125-130.
+    E_dmrg, ψ_tt, r_dmrg = dmrg_eigsolv(H_tto,ψ_0)
+    @test isapprox(E_dmrg[end],-0.46752535023652453,atol=1e-6) #value in Bendazzoli, G. L., & Evangelisti, S. (1991). Full-CI calculations of alternant cyclic polyenes (CH) N, N= 2, 4, 6, ƒ 18, in the PPP approximation. Chemical physics letters, 185(1-2), 125-130.
 end
