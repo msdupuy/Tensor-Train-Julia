@@ -210,7 +210,7 @@ function dmrg_linsolv(A :: TToperator{T,d}, b :: TTvector{T,d}, tt_start :: TTve
 			H_bi = @view(H_b[i][1:tt_opt.ttv_rks[i+N],:])
 			# Define V as solution of K*x=Pb in x
 			V = Ksolve(Gi,G_bi,Hi,H_bi,Amid_list[i],bmid_list[i])
-			tt_opt, V = right_core_move(tt_opt,V,i,tol,rmax,N)
+			tt_opt, V = right_core_move(tt_opt,V,i,tol,rmax)
 			#update G,G_b
 			Gip = @view(G[i+1][:,1:tt_opt.ttv_rks[i+1],1:tt_opt.ttv_rks[i+1]])
 			G_bip = @view(G_b[i+1][1:tt_opt.ttv_rks[i+1],:])
