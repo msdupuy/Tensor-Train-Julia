@@ -22,7 +22,7 @@ include("tt_solvers.jl")
 export tt_cg, tt_gmres
 
 include("models.jl")
-export hubbard_1D, hubbard_2D, PPP_C_NH_N, hV_to_mpo, site_switch, half_filling
+export hubbard_1D, hubbard_2D, PPP_C_NH_N, hV_to_mpo, site_switch, half_filling, part_num, one_e_two_e_integrals_to_hV
 
 include("ordering_schemes.jl")
 export entropy, fiedler_order, bwpo_order, bwpo_order_sites, N_rdm, one_prdm, CAS_generator
