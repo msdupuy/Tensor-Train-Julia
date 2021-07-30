@@ -100,48 +100,49 @@ function mpo_core_annihilation(;T=Float64)
     return out
 end
 
-#returns bosonic or fermionic MPO of a_p^†a_q
-function one_body_mpo(p::Integer,q::Integer,L::Integer;fermion=true,T=Float64)
+"""
+MPO of the creation operator a^†_p (default = fermionic creation)
+"""
+function tto_creation(p,L;fermion=true,T=Float64)
     H = Array{Array{T,4},1}(undef,L)
-    if p == q
-        for i in 1:L
-            H[i] = mpo_core_id(;T=T)
-        end
-        H[p][1,1,1,1] = 0.0
-    else
-        H[p] = mpo_core_creation(;T=T)
-        H[q] = mpo_core_annihilation(;T=T)
-        for i in 1:min(p,q)-1
-            H[i] = mpo_core_id(;T=T)
-        end
-        for i in max(p,q)+1:L
-            H[i] = mpo_core_id(;T=T)
-        end
-        for i in min(p,q)+1:max(p,q)-1
-            if fermion
-                H[i] = mpo_core_ferm_sign(;T=T)
-            else
-                H[i] = mpo_core_id(;T=T)
-            end
-        end
-    end 
+    for i in 1:p-1
+        fermion ? (H[i] = mpo_core_ferm_sign(;T=T)) : (H[i] = mpo_core_id(;T=T))
+    end
+    H[p] = mpo_core_creation(;T=T)
+    for i in p+1:L
+        H[i] = mpo_core_id(;T=T)
+    end
     return TToperator{T,L}(H,tuple(2*ones(Int64,L)...),ones(Int64,L+1),zeros(Int64,L))::TToperator{T,L}
 end
 
-
-#returns bosonic or fermionic MPO of a_k^† a^†_l a_m a_n 
-#assume k<l,m<n
-function two_body_mpo(k,l,m,n,L;T=Float64)
-    if l == m
-        A = one_body_mpo(k,m,L;T=T)
-        B = one_body_mpo(l,n,L;T=T)
-        C = one_body_mpo(k,n,L;T=T)
-        return  (-1.0*A)*B + C ::TToperator{T,L}
-    else
-        A = one_body_mpo(k,m,L;T=T)
-        B = one_body_mpo(l,n,L;T=T)
-        return -1.0*(A*B)::TToperator{T,L}
+"""
+MPO of the annihilation operator a_q (default = fermionic annihilation)
+"""
+function tto_annihilation(q,L;fermion=true,T=Float64)
+    H = Array{Array{T,4},1}(undef,L)
+    H = Array{Array{T,4},1}(undef,L)
+    for i in 1:q-1
+        fermion ? (H[i] = mpo_core_ferm_sign(;T=T)) : (H[i] = mpo_core_id(;T=T))
     end
+    H[q] = mpo_core_annihilation(;T=T)
+    for i in q+1:L
+        H[i] = mpo_core_id(;T=T)
+    end
+    return TToperator{T,L}(H,tuple(2*ones(Int64,L)...),ones(Int64,L+1),zeros(Int64,L))::TToperator{T,L}
+end
+
+"""
+returns bosonic or fermionic MPO of a_p^†a_q
+"""
+function one_body_mpo(p::Integer,q::Integer,L::Integer;fermion=true,T=Float64)
+    return tto_creation(p,L;fermion=fermion,T=T)*tto_annihilation(q,L;fermion=fermion,T=T)
+end
+
+"""
+returns bosonic or fermionic MPO of a_k^† a^†_l a_m a_n 
+"""
+function two_body_mpo(k,l,m,n,L;fermion=true,T=Float64)::TToperator{T,L}
+    return tto_creation(k,L;fermion=fermion,T=T)*tto_creation(l,L;fermion=fermion,T=T)*tto_annihilation(m,L;fermion=fermion,T=T)*tto_annihilation(n,L;fermion=fermion,T=T)
 end
 
 
@@ -209,6 +210,7 @@ function hubbard_2D(w,L;t=1,U=1,w_pbc = false,L_pbc=true)
     for i in 0:w-2
         for j in 0:L-2
             V[2(j*w+i)+1,2(j*w+i)+2,2(j*w+i)+1,2(j*w+i)+2] = -U
+            V[2(j*w+i)+2,2(j*w+i)+1,2(j*w+i)+2,2(j*w+i)+1] = -U
             h[2(j*w+i)+1,2((j+1)*w+i)+1] = -t #right connection
             h[2(j*w+i)+1,2(j*w+i+1)+1] = -t #bottom connection
             h[2(j*w+i)+2,2((j+1)*w+i)+2] = -t #right connection
@@ -216,6 +218,7 @@ function hubbard_2D(w,L;t=1,U=1,w_pbc = false,L_pbc=true)
         end
         #j=L-1
         V[2((L-1)*w+i)+1,2((L-1)*w+i)+2,2((L-1)*w+i)+1,2((L-1)*w+i)+2] = -U
+        V[2((L-1)*w+i)+2,2((L-1)*w+i)+1,2((L-1)*w+i)+2,2((L-1)*w+i)+1] = -U
         h[2((L-1)*w+i)+1,2((L-1)*w+i+1)+1] = -t #bottom connection
         h[2((L-1)*w+i)+2,2((L-1)*w+i+1)+2] = -t #bottom connection
         if L_pbc && L>2
@@ -226,6 +229,7 @@ function hubbard_2D(w,L;t=1,U=1,w_pbc = false,L_pbc=true)
     #i = w-1
     for j in 0:L-2
         V[2(j*w+w-1)+1,2(j*w+w-1)+2,2(j*w+w-1)+1,2(j*w+w-1)+2] = -U
+        V[2(j*w+w-1)+2,2(j*w+w-1)+1,2(j*w+w-1)+2,2(j*w+w-1)+1] = -U
         h[2(j*w+w-1)+1,2((j+1)*w+w-1)+1] = -t #right connection
         h[2(j*w+w-1)+2,2((j+1)*w+w-1)+2] = -t #right connection
         if w_pbc && w>2
@@ -235,6 +239,7 @@ function hubbard_2D(w,L;t=1,U=1,w_pbc = false,L_pbc=true)
     end
     #i = w-1, j=L-1
     V[2L*w-1,2L*w,2L*w-1,2L*w] = -U
+    V[2L*w,2L*w-1,2L*w,2L*w-1] = -U
     if L_pbc && L>2
         h[2(L*w-1)+1,2(w-1)+1] = -t #right connection
         h[2(L*w-1)+2,2(w-1)+2] = -t #right connection
@@ -260,12 +265,12 @@ function PPP_C_NH_N(N;β=-2.5/27.2113845,b=1.4*1.8897259886,γ0=10.84/27.2113845
     h = zeros(2N,2N)
     γ = sum(1/(1/γ0+b*sin(k/N*pi)/sin(pi/N)) for k in 1:N)
     for i in 1:N-1
-        h[2i-1,2i+1] = β
-        h[2i,2i+2] = β
+        h[2i-1,2i+1],h[2i+1,2i-1] = β,β
+        h[2i,2i+2],h[2i+2,2i] = β,β
     end
-    h[2N,2] = β
-    h[2N-1,1] = β
-    H_tto = hV_to_mpo(h[order,order],zeros(2N,2N,2N,2N))
+    h[2N,2],h[2,2N] = β,β
+    h[2N-1,1],h[1,2N-1] = β,β
+    H_tto = hV_to_mpo(Symmetric(h)[order,order],zeros(2N,2N,2N,2N))
     σ = invperm(order)
     id = -1.0*id_tto(2N)
     for i in 1:N
@@ -279,4 +284,39 @@ function PPP_C_NH_N(N;β=-2.5/27.2113845,b=1.4*1.8897259886,γ0=10.84/27.2113845
         end
     end
     return H_tto
+end
+
+"""
+Returns the particle number operator ̂N of L sites
+"""
+function part_num(L)
+    A = zeros_tto(tuple(2*ones(Int64,L)...),ones(Int64,L+1))
+    for i in 1:L
+        A = A + one_body_mpo(i,i,L)
+    end
+    return tt_rounding(A)
+end
+
+"""
+1e and 2e integrals coefficients to h,V coefficients of the second quantized Hamiltonian in the spin orbital basis
+"""
+function one_e_two_e_integrals_to_hV(int1e,int2e)
+    L = size(int1e,1)
+    h = zeros(2L,2L)
+    V = zeros(2L,2L,2L,2L)
+    for i in 1:L
+        for j in 1:L
+            h[2i-1,2j-1] = int1e[i,j] #spin up integrals 
+            h[2i,2j] = int1e[i,j]
+            for k in 1:L
+                for l in 1:L
+                    V[2i-1,2j-1,2l-1,2k-1] = int2e[i,k,j,l]
+                    V[2i,2j-1,2l-1,2k] = int2e[i,k,j,l]
+                    V[2i-1,2j,2l,2k-1] = int2e[i,k,j,l]
+                    V[2i,2j,2l,2k] = int2e[i,k,j,l]
+                end
+            end
+        end
+    end
+    return h,0.5*V
 end
