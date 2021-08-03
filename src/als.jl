@@ -6,7 +6,8 @@ Implementation based on the presentation in
 Holtz, Sebastian, Thorsten Rohwedder, and Reinhold Schneider. "The alternating linear scheme for tensor optimization in the tensor train format." SIAM Journal on Scientific Computing 34.2 (2012): A683-A713.
 """
 
-function init_H(x_tt::TTvector{T,d},A_tto::TToperator{T,d}) where {T<:Number,d}
+function init_H(x_tt::TTvector{T},A_tto::TToperator{T}) where {T<:Number}
+	d = x_tt.N
 	H = Array{Array{T}}(undef, d)
 	H[d] = ones(T,1,1,1)
 	for i = d : -1 : 2
@@ -23,7 +24,8 @@ function update_H!(x_vec::Array{T,3},A_vec::Array{T,4},Hi::Array{T,3},Him::Array
 	nothing
 end
 
-function init_Hb(x_tt::TTvector{T,d},b_tt::TTvector{T,d}) where {T<:Number,d}
+function init_Hb(x_tt::TTvector{T},b_tt::TTvector{T}) where {T<:Number}
+	d = x_tt.N
 	H_b = Array{Array{T}}(undef, d) 
 	H_b[d] = ones(T,1,1)
 	for i = d : -1 : 2
@@ -97,7 +99,7 @@ function K_eiggenmin(Gi,Hi,Ki,Li,ttv_vec;it_solver=false,itslv_thresh=2500)
 	end
 end
 
-function left_core_move(x_tt::TTvector{T,d},V::Array{T,3},i::Int,x_rks) where {T<:Number,d}
+function left_core_move(x_tt::TTvector{T},V::Array{T,3},i::Int,x_rks) where {T<:Number}
 	rim,ri = x_rks[i],x_rks[i+1]
 	ni = x_tt.ttv_dims[i]
 
@@ -115,7 +117,7 @@ function left_core_move(x_tt::TTvector{T,d},V::Array{T,3},i::Int,x_rks) where {T
 	return x_tt
 end
 
-function right_core_move(x_tt::TTvector{T,d},V::Array{T,3},i::Int,x_rks) where {T<:Number,d}
+function right_core_move(x_tt::TTvector{T},V::Array{T,3},i::Int,x_rks) where {T<:Number}
 	rim,ri = x_rks[i],x_rks[i+1]
 	ni = x_tt.ttv_dims[i]
 	QV, RV = qr(reshape(V, ni*rim, :)) #QV: ni*rim x ni*rim; RV ni*rim x ri
@@ -137,7 +139,7 @@ Solve Ax=b using the ALS algorithm where A is given as `TToperator` and `b`, `tt
 The ranks of the solution is the same as `tt_start`.
 `sweep_count` is the number of total sweeps in the ALS.
 """
-function als_linsolv(A :: TToperator{T,d}, b :: TTvector{T,d}, tt_start :: TTvector{T,d} ;sweep_count=2,it_solver=false,r_itsolver=5000) where {T<:Number,d}
+function als_linsolv(A :: TToperator{T}, b :: TTvector{T}, tt_start :: TTvector{T} ;sweep_count=2,it_solver=false,r_itsolver=5000) where {T<:Number}
 	# als finds the minimum of the operator J:1/2*<Ax,Ax> - <x,b>
 	# input:
 	# 	A: the tensor operator in its tensor train format
@@ -148,6 +150,7 @@ function als_linsolv(A :: TToperator{T,d}, b :: TTvector{T,d}, tt_start :: TTvec
 	#	tt_opt: stationary point of J up to tolerated rank opt_rks
 	# 			in its tensor train format
 
+	d = A.N
 	# Initialize the to be returned tensor in its tensor train format
 	tt_opt = orthogonalize(tt_start)
 	dims = tt_start.ttv_dims
@@ -209,17 +212,17 @@ Returns the lowest eigenvalue of A by minimizing the Rayleigh quotient in the AL
 
 The ranks can be increased in the course of the ALS: if `sweep_schedule[k] ≤ i <sweep_schedule[k+1]` is the current number of sweeps then the ranks is given by `rmax_schedule[k]`.
 """
-function als_eigsolv(A :: TToperator{T,d},
-	 tt_start :: TTvector{T,d} ; #TT initial guess
+function als_eigsolv(A :: TToperator{T},
+	 tt_start :: TTvector{T} ; #TT initial guess
 	 sweep_schedule=[2]::Array{Int64,1}, #Number of sweeps for each bond dimension in rmax_schedule
 	 rmax_schedule=[maximum(tt_start.ttv_rks)]::Array{Int64,1}, #bond dimension at each sweep
 	 noise_schedule=zeros(length(rmax_schedule))::Array{Float64,1}, #noise at each bond dimension increase
 	 it_solver=false::Bool, #linear solver for the microstep
 	 itslv_thresh=1024::Int64, #switch from full to iterative
 	 maxiter=200::Int64, #maximum of iterations for the iterative solver
-	 linsolv_tol=1e-8::Float64) where {T<:Number,d} #tolerance of the iterative linear solver
+	 linsolv_tol=1e-8::Float64) where {T<:Number} #tolerance of the iterative linear solver
 	@assert(length(rmax_schedule)==length(sweep_schedule)==length(noise_schedule),"Sweep schedule error")	
-
+	d = A.N
 	# Initialize the to be returned tensor in its tensor train format
 	tt_opt = orthogonalize(tt_start)
 	dims = tt_start.ttv_dims
@@ -245,7 +248,7 @@ function als_eigsolv(A :: TToperator{T,d},
 		if nsweeps == sweep_schedule[i_schedule]
 			i_schedule+=1
 			if i_schedule > length(sweep_schedule)
-				return E[1:i_μit]::Array{Float64,1},tt_opt::TTvector{T,d}
+				return E[1:i_μit]::Array{Float64,1},tt_opt::TTvector{T}
 			else
 				tt_opt = tt_up_rks(tt_opt,rmax_schedule[i_schedule];ϵ_wn=noise_schedule[i_schedule])
 				tt_opt = orthogonalize(tt_opt)
@@ -280,13 +283,14 @@ function als_eigsolv(A :: TToperator{T,d},
 			update_H!(tt_opt.ttv_vec[i],A.tto_vec[i],H[i],H[i-1])
 		end
 	end
-	return E[1:i_μit]::Array{Float64,1},tt_opt::TTvector{T,d}
+	return E[1:i_μit]::Array{Float64,1},tt_opt::TTvector{T}
 end
 
 """
 returns the smallest eigenpair Ax = Sx
 """
-function als_gen_eigsolv(A :: TToperator{T,d}, S::TToperator{T,d}, tt_start :: TTvector{T,d} ; sweep_schedule=[2],rmax_schedule=[maximum(tt_start.ttv_rks)],tol=1e-10,it_solver=false,itslv_thresh=2500) where {T<:Number,d}
+function als_gen_eigsolv(A :: TToperator{T}, S::TToperator{T}, tt_start :: TTvector{T} ; sweep_schedule=[2],rmax_schedule=[maximum(tt_start.ttv_rks)],tol=1e-10,it_solver=false,itslv_thresh=2500) where {T<:Number}
+	d = A.N
 	# Initialize the to be returned tensor in its tensor train format
 	tt_opt = orthogonalize(tt_start)
 	dims = tt_start.ttv_dims
