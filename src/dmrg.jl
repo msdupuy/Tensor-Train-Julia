@@ -6,7 +6,8 @@ Implementation based on the presentation in
 Holtz, Sebastian, Thorsten Rohwedder, and Reinhold Schneider. "The alternating linear scheme for tensor optimization in the tensor train format." SIAM Journal on Scientific Computing 34.2 (2012): A683-A713.
 """
 
-function init_H(x_tt::TTvector{T,d},A_tto::TToperator{T,d},N::Integer,rmax) where {T<:Number,d}
+function init_H(x_tt::TTvector{T},A_tto::TToperator{T},N::Integer,rmax) where {T<:Number}
+	d = x_tt.N
 	H = Array{Array{T,3}}(undef, d+1-N)
 	H[d+1-N] = ones(T,1,1,1)
 	for i = d+1-N:-1:2
@@ -32,7 +33,7 @@ function update_G!(x_vec::Array{T,3},A_vec::Array{T,4},Gi::AbstractArray{T,3},Gi
 end
 
 #returns the contracted tensor A_i[\\mu_i] ⋯ A_j[\\mu_j] ∈ R^{R^A_{i-1} × n_i × n_i × ⋯ × n_j × n_j ×  R^A_j}
-function Amid(A_tto::TToperator{T,d},i::Integer,j::Integer) where {T<:Number,d}
+function Amid(A_tto::TToperator{T},i::Integer,j::Integer) where {T<:Number}
 	A = permutedims(A_tto.tto_vec[i],(3,1,2,4))
 	for k in i+1:j
 		C = reshape(A,A_tto.tto_rks[i],prod(A_tto.tto_dims[i:k-1]),:,A_tto.tto_rks[k])
@@ -50,7 +51,8 @@ function K_full(Gi::AbstractArray{T,3},Hi::AbstractArray{T,3},Amid_tensor::Abstr
 	return Hermitian(reshape(K,prod(K_dims),prod(K_dims)))
 end
 
-function init_Hb(x_tt::TTvector{T,d},b_tt::TTvector{T,d},N::Integer,rmax) where {T<:Number,d}
+function init_Hb(x_tt::TTvector{T},b_tt::TTvector{T},N::Integer,rmax) where {T<:Number}
+	d = x_tt.N
 	H_b = Array{Array{T,2}}(undef, d+1-N) 
 	H_b[d+1-N] = ones(T,1,1)
 	for i = d+1-N:-1:2
@@ -75,7 +77,7 @@ function update_Gb!(x_vec::Array{T,3},b_vec::Array{T,3},G_bi::AbstractArray{T,2}
 	nothing
 end
 
-function b_mid(b_tt::TTvector{T,d},i::Integer,j::Integer) where {T<:Number,d}
+function b_mid(b_tt::TTvector{T},i::Integer,j::Integer) where {T<:Number}
 	b_out = permutedims(b_tt.ttv_vec[i],(2,1,3))
 	for k in i+1:j
 		@tensor btemp[αk,ik,jk,βk] := b_out[αk,ik,ξk]*b_tt.ttv_vec[k][jk,ξk,βk]
@@ -91,7 +93,7 @@ function Ksolve(Gi::AbstractArray{T,3},G_bi::AbstractArray{T,2},Hi::AbstractArra
 	return reshape(K\Pb[:],K_dims)
 end
 
-function right_core_move(x_tt::TTvector{T,d},V::Array{T,3},i::Int,tol::Float64,rmax::Integer) where {T<:Number,d}
+function right_core_move(x_tt::TTvector{T},V::Array{T,3},i::Int,tol::Float64,rmax::Integer) where {T<:Number}
 	# Perform the truncated svd
 	u_V, s_V, v_V = svd(reshape(V,x_tt.ttv_rks[i]*x_tt.ttv_dims[i],:))
 	# Determine the truncated rank
@@ -107,7 +109,7 @@ function right_core_move(x_tt::TTvector{T,d},V::Array{T,3},i::Int,tol::Float64,r
 	return x_tt, reshape(Diagonal(s_V[1:x_tt.ttv_rks[i+1]])*v_V'[1:x_tt.ttv_rks[i+1],:],x_tt.ttv_rks[i+1],:,size(V,3))
 end
 
-function left_core_move(x_tt::TTvector{T,d},V::Array{T,3},j::Int,tol::Float64,rmax::Integer) where {T<:Number,d}
+function left_core_move(x_tt::TTvector{T},V::Array{T,3},j::Int,tol::Float64,rmax::Integer) where {T<:Number}
 	# Perform the truncated svd
 	W = reshape(V, :, x_tt.ttv_dims[j], x_tt.ttv_rks[j+1])
 	u_V, s_V, v_V = svd(reshape(W,:, x_tt.ttv_dims[j]*x_tt.ttv_rks[j+1]))
@@ -164,7 +166,7 @@ Solve Ax=b using the ALS algorithm where A is given as `TToperator` and `b`, `tt
 The ranks of the solution is the same as `tt_start`.
 `sweep_count` is the number of total sweeps in the ALS.
 """
-function dmrg_linsolv(A :: TToperator{T,d}, b :: TTvector{T,d}, tt_start :: TTvector{T,d};sweep_count=2,N=2,tol=1e-12::Float64,rmax=round(Int,sqrt(prod(tt_start.ttv_dims))),it_solver=false,r_itsolver=5000) where {T<:Number,d}
+function dmrg_linsolv(A :: TToperator{T}, b :: TTvector{T}, tt_start :: TTvector{T};sweep_count=2,N=2,tol=1e-12::Float64,rmax=isqrt(prod(tt_start.ttv_dims)),it_solver=false,r_itsolver=5000) where {T<:Number}
 	# als finds the minimum of the operator J:1/2*<Ax,Ax> - <x,b>
 	# input:
 	# 	A: the tensor operator in its tensor train format
@@ -174,6 +176,7 @@ function dmrg_linsolv(A :: TToperator{T,d}, b :: TTvector{T,d}, tt_start :: TTve
 	# 			in its tensor train format
 
 	# Initialize the to be returned tensor in its tensor train format
+	d = b.N
 	tt_opt = orthogonalize(tt_start)
 	dims = tt_start.ttv_dims
 
@@ -261,8 +264,8 @@ Returns the lowest eigenvalue of A by minimizing the Rayleigh quotient in the AL
 
 The ranks can be increased in the course of the ALS: if `sweep_schedule[k] ≤ i <sweep_schedule[k+1]` is the current number of sweeps then the ranks is given by `rmax_schedule[k]`.
 """
-function dmrg_eigsolv(A :: TToperator{T,d},
-	tt_start :: TTvector{T,d} ; #TT initial guess
+function dmrg_eigsolv(A :: TToperator{T},
+	tt_start :: TTvector{T} ; #TT initial guess
 	N=2::Integer, #Number of open sites, N=1 is one-site DMRG, N=2 is two-site DMRG...
 	tol=1e-12::Float64, #truncation in left or right core move (doesn't matter for N=1)
 	sweep_schedule=[2]::Array{Int64,1}, #Number of sweeps for each bond dimension in rmax_schedule
@@ -271,9 +274,10 @@ function dmrg_eigsolv(A :: TToperator{T,d},
 	linsolv_maxiter=200::Int64, #maximum of iterations for the iterative solver
 	linsolv_tol=max(sqrt(tol),1e-8)::Float64, #tolerance of the iterative linear solver
 	itslv_thresh=256::Int #switch from full to iterative
-	)  where {T<:Number,d} 
+	)  where {T<:Number} 
 	@assert(length(rmax_schedule)==length(sweep_schedule),"Sweep schedule error")	
 
+	d = tt_start.N
 	# Initialize the to be returned tensor in its tensor train format
 	tt_opt = orthogonalize(tt_start)
 	dims = tt_start.ttv_dims
@@ -319,7 +323,7 @@ function dmrg_eigsolv(A :: TToperator{T,d},
 				end
 				tt_opt.ttv_vec[1] = permutedims(reshape(V,1,tt_opt.ttv_dims[1],:),(2,1,3))
 				tt_opt.ttv_ot[1] = 0
-				return E::Array{Float64,1}, tt_opt::TTvector{T,d}, r_hist::Array{Int,1}
+				return E::Array{Float64,1}, tt_opt::TTvector{T}, r_hist::Array{Int,1}
 			end
 		end
 		# First half sweep
@@ -358,14 +362,15 @@ function dmrg_eigsolv(A :: TToperator{T,d},
 			update_H!(tt_opt.ttv_vec[i+N-1],A.tto_vec[i+N-1],Hi,Him)
 		end
 	end
-	return E::Array{Float64,1}, tt_opt::TTvector{T,d}, r_hist::Array{Int,1}
+	return E::Array{Float64,1}, tt_opt::TTvector{T}, r_hist::Array{Int,1}
 end
 
 """
 returns the smallest eigenpair Ax = Sx
 NOT WORKING
 """
-function dmrg_gen_eigsolv(A :: TToperator{T,d}, S::TToperator{T,d}, tt_start :: TTvector{T,d} ; sweep_schedule=[2],rmax_schedule=[maximum(tt_start.ttv_rks)],tol=1e-10,it_solver=false,itslv_thresh=2500) where {T<:Number,d}
+function dmrg_gen_eigsolv(A :: TToperator{T}, S::TToperator{T}, tt_start :: TTvector{T} ; sweep_schedule=[2],rmax_schedule=[maximum(tt_start.ttv_rks)],tol=1e-10,it_solver=false,itslv_thresh=2500) where {T<:Number}
+	d = tt_start.N
 	# Initialize the to be returned tensor in its tensor train format
 	tt_opt = orthogonalize(tt_start)
 	dims = tt_start.ttv_dims
