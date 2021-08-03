@@ -301,7 +301,7 @@ function ttv_to_tto(x::TTvector{T}) where {T<:Number}
 		A_dims[i] = isqrt(x.ttv_dims[i])
 		Att_vec[i] = reshape(x.ttv_vec[i],A_dims[i],A_dims[i],x_rks[i],x_rks[i+1])
 	end
-	return TToperator{T}(N,Att_vec,tuple(A_dims...),x.ttv_rks,x.ttv_ot)
+	return TToperator{T}(d,Att_vec,tuple(A_dims...),x.ttv_rks,x.ttv_ot)
 end
 
 """
