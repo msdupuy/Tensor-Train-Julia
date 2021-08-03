@@ -8,8 +8,9 @@ import LinearAlgebra.dot
 """
 Addition of two TTvector
 """
-function +(x::TTvector{T,d},y::TTvector{T,d}) where {T<:Number,d}
-    @assert(x.ttv_dims == y.ttv_dims, "Dimensions mismatch!")
+function +(x::TTvector{T},y::TTvector{T}) where {T<:Number}
+    @assert(x.ttv_dims == y.ttv_dims, DimensionMismatch)
+    d = x.N
     ttv_vec = Array{Array{T,3},1}(undef,d)
     rks = x.ttv_rks + y.ttv_rks
     rks[1] = 1
@@ -29,14 +30,15 @@ function +(x::TTvector{T,d},y::TTvector{T,d}) where {T<:Number,d}
     #last core
     ttv_vec[d][:,1:x.ttv_rks[d],1] = x.ttv_vec[d]
     ttv_vec[d][:,(x.ttv_rks[d]+1):rks[d],1] = y.ttv_vec[d]
-    return TTvector{T,d}(ttv_vec,x.ttv_dims,rks,zeros(d))
+    return TTvector{T}(d,ttv_vec,x.ttv_dims,rks,zeros(d))
 end
 
 """
 Addition of two TToperators
 """
-function +(x::TToperator{T,d},y::TToperator{T,d}) where {T<:Number,d}
+function +(x::TToperator{T},y::TToperator{T}) where {T<:Number}
     @assert(x.tto_dims == y.tto_dims, DimensionMismatch)
+    d = x.N
     tto_vec = Array{Array{T,4},1}(undef,d)
     rks = x.tto_rks + y.tto_rks
     rks[1] = 1
@@ -56,13 +58,14 @@ function +(x::TToperator{T,d},y::TToperator{T,d}) where {T<:Number,d}
     #last core
     tto_vec[d][:,:,1:x.tto_rks[d],1] = x.tto_vec[d]
     tto_vec[d][:,:,(x.tto_rks[d]+1):rks[d],1] = y.tto_vec[d]
-    return TToperator{T,d}(tto_vec,x.tto_dims,rks,zeros(d))
+    return TToperator{T}(d,tto_vec,x.tto_dims,rks,zeros(d))
 end
 
 
 #matrix vector multiplication in TT format
-function *(A::TToperator{T,d},v::TTvector{T,d}) where {T<:Number,d}
+function *(A::TToperator{T},v::TTvector{T}) where {T<:Number}
     @assert(A.tto_dims==v.ttv_dims, DimensionMismatch)
+    d = v.N
     Y = Array{Array{T,3},1}(undef, d)
     A_rks = A.tto_rks #R_0, ..., R_d
     v_rks = v.ttv_rks #r_0, ..., r_d
@@ -71,12 +74,13 @@ function *(A::TToperator{T,d},v::TTvector{T,d}) where {T<:Number,d}
 		@tensor M[a,b,c,d,e] = A.tto_vec[k][a,z,b,d]*v.ttv_vec[k][z,c,e]
         Y[k] = reshape(M, A.tto_dims[k], A_rks[k]*v_rks[k], A_rks[k+1]*v_rks[k+1])
     end
-    return TTvector{T,d}(Y,A.tto_dims,A.tto_rks.*v.ttv_rks,zeros(Integer,d))
+    return TTvector{T}(d,Y,A.tto_dims,A.tto_rks.*v.ttv_rks,zeros(Integer,d))
 end
 
 #matrix matrix multiplication in TT format
-function *(A::TToperator{T,d},B::TToperator{T,d}) where {T<:Number,d}
+function *(A::TToperator{T},B::TToperator{T}) where {T<:Number}
     @assert(A.tto_dims==B.tto_dims, DimensionMismatch)
+    d = A.N
     Y = Array{Array{T,4},1}(undef, d)
     A_rks = A.tto_rks #R_0, ..., R_d
     B_rks = B.tto_rks #r_0, ..., r_d
@@ -85,18 +89,18 @@ function *(A::TToperator{T,d},B::TToperator{T,d}) where {T<:Number,d}
 		@tensor M[a,b,c,d,e,f] = A.tto_vec[k][a,z,c,e]*B.tto_vec[k][z,b,d,f]
         Y[k] = reshape(M, A.tto_dims[k], A.tto_dims[k], A_rks[k]*B_rks[k], A_rks[k+1]*B_rks[k+1])
     end
-    return TToperator{T,d}(Y,A.tto_dims,A.tto_rks.*B.tto_rks,zeros(Integer,d))
+    return TToperator{T}(d,Y,A.tto_dims,A.tto_rks.*B.tto_rks,zeros(Integer,d))
 end
 
 
 #dot returns the dot product of two TTvector
-function dot(A::TTvector{T,d},B::TTvector{T,d}) where {T<:Number,d}
+function dot(A::TTvector{T},B::TTvector{T}) where {T<:Number}
     @assert A.ttv_dims==B.ttv_dims "TT dimensions are not compatible"
     A_rks = A.ttv_rks
     B_rks = B.ttv_rks
 	out = zeros(T,maximum(A_rks),maximum(B_rks))
     out[1,1] = convert(T,1.0)
-    @inbounds for k in 1:d
+    @inbounds for k in eachindex(A.ttv_dims)
         M = @view(out[1:A_rks[k+1],1:B_rks[k+1]])
 		@tensoropt((α,β), M[a,b] = A.ttv_vec[k][z,α,a]*B.ttv_vec[k][z,β,b]*out[1:A_rks[k],1:B_rks[k]][α,β]) #size R^A_{k} × R^B_{k} 
     end
@@ -106,8 +110,9 @@ end
 """
 `dot_par(x_tt,y_tt)' returns the dot product of `x_tt` and `y_tt` in a parallelized algorithm
 """
-function dot_par(A::TTvector{T,d},B::TTvector{T,d}) where {T<:Number,d}
+function dot_par(A::TTvector{T},B::TTvector{T}) where {T<:Number}
     @assert A.ttv_dims==B.ttv_dims "TT dimensions are not compatible"
+    d = length(A.ttv_dims)
     Y = Array{Array{T,2},1}(undef,d)
     A_rks = A.ttv_rks
     B_rks = B.ttv_rks
@@ -124,26 +129,26 @@ function dot_par(A::TTvector{T,d},B::TTvector{T,d}) where {T<:Number,d}
     return C[1]::T
 end
 
-function *(a::S,A::TTvector{R,d}) where {S<:Number,R<:Number,d}
+function *(a::S,A::TTvector{R}) where {S<:Number,R<:Number}
     i = findfirst(isequal(0),A.ttv_ot)
     T = typejoin(typeof(a),R)
     X = copy(A.ttv_vec)
     X[i] = a*X[i]
-    return TTvector{T,d}(X,A.ttv_dims,A.ttv_rks,A.ttv_ot)
+    return TTvector{T}(A.N,X,A.ttv_dims,A.ttv_rks,A.ttv_ot)
 end
 
-function *(a::S,A::TToperator{R,d}) where {S<:Number,R<:Number,d}
+function *(a::S,A::TToperator{R}) where {S<:Number,R<:Number}
     i = findfirst(isequal(0),A.tto_ot)
     T = typejoin(typeof(a),R)
     X = copy(A.tto_vec)
     X[i] = a*X[i]
-    return TToperator{T,d}(X,A.tto_dims,A.tto_rks,A.tto_ot)
+    return TToperator{T}(A.N,X,A.tto_dims,A.tto_rks,A.tto_ot)
 end
 
-function -(A::TTvector{T,d},B::TTvector{T,d}) where {T<:Number,d}
+function -(A::TTvector{T},B::TTvector{T}) where {T<:Number}
     return *(-1.0,B)+A
 end
 
-function -(A::TToperator{T,d},B::TToperator{T,d}) where {T<:Number,d}
+function -(A::TToperator{T},B::TToperator{T}) where {T<:Number}
     return *(-1.0,B)+A
 end

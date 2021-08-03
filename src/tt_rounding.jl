@@ -25,7 +25,8 @@ end
 """
 returns the TTvector with ranks rks and noise ϵ_wn for the updated ranks
 """
-function tt_up_rks(x_tt::TTvector{T,d},rk_max::Int;rks=vcat(1,rk_max*ones(Int,length(x_tt.ttv_dims)-1),1),ϵ_wn=0.0) where {T<:Number,d}
+function tt_up_rks(x_tt::TTvector{T},rk_max::Int;rks=vcat(1,rk_max*ones(Int,length(x_tt.ttv_dims)-1),1),ϵ_wn=0.0) where {T<:Number}
+	d = x_tt.N
 	vec_out = Array{Array{T}}(undef,d)
 	out_ot = zeros(Int64,d)
 	@assert(rk_max > maximum(x_tt.ttv_rks),"New bond dimension too low")
@@ -37,13 +38,14 @@ function tt_up_rks(x_tt::TTvector{T,d},rk_max::Int;rks=vcat(1,rk_max*ones(Int,le
 		rks[i+1] = min(rks[i+1],n_in,n_out)
 		vec_out[i] = tt_up_rks_noise(x_tt.ttv_vec[i],x_tt.ttv_ot[i],rks[i],rks[i+1],ϵ_wn)
 	end	
-	return TTvector{T,d}(vec_out,x_tt.ttv_dims,rks,x_tt.ttv_ot)
+	return TTvector{T}(d,vec_out,x_tt.ttv_dims,rks,x_tt.ttv_ot)
 end
 
 """
 returns the orthogonalized TTvector with root i
 """
-function orthogonalize(x_tt::TTvector{T,d};i=1::Int) where {T<:Number,d}
+function orthogonalize(x_tt::TTvector{T};i=1::Int) where {T<:Number}
+	d = x_tt.N
 	@assert(1≤i≤d, DimensionMismatch("Impossible orthogonalization"))
 	y_tt = copy(x_tt)
 	y_tt.ttv_ot[i]=0
@@ -71,13 +73,14 @@ end
 """
 returns a TT representation where the singular values lower than tol are discarded
 """
-function tt_rounding(x_tt::TTvector{T,d};tol=1e-12) where {T<:Number,d}
+function tt_rounding(x_tt::TTvector{T};tol=1e-12) where {T<:Number}
+	d = x_tt.N
 	y_rks = copy(x_tt.ttv_rks)
 	y_vec = copy(x_tt.ttv_vec)
 	for j in 1:d-1
 		A = zeros(T,x_tt.ttv_dims[j],y_rks[j],x_tt.ttv_dims[j+1],y_rks[j+2])
 		@tensor A[a,b,c,d] = y_vec[j][a,b,z]*y_vec[j+1][c,z,d]
-		u,s,v = svd(reshape(A,size(A,1)*size(A,2),:);alg=LinearAlgebra.QRIteration())
+		u,s,v = svd(reshape(A,size(A,1)*size(A,2),:))
 		rtol = norm(s)*tol
 		Σ = s[s.>rtol]
 		y_rks[j+1] = length(Σ)
@@ -87,14 +90,14 @@ function tt_rounding(x_tt::TTvector{T,d};tol=1e-12) where {T<:Number,d}
 	for j in d:-1:2
 		A = zeros(T,x_tt.ttv_dims[j-1],y_rks[j-1],x_tt.ttv_dims[j],y_rks[j+1])
 		@tensor A[a,b,c,d] = y_vec[j-1][a,b,z]*y_vec[j][c,z,d]
-		F = svd(reshape(A,size(A,1)*size(A,2),:),alg=LinearAlgebra.QRIteration())
+		F = svd(reshape(A,size(A,1)*size(A,2),:))
 		rtol = norm(F.S)*tol
 		Σ = F.S[F.S .>rtol]
 		y_rks[j] = length(Σ)
 		y_vec[j] = permutedims(reshape(F.Vt[F.S.>rtol,:],:,x_tt.ttv_dims[j],y_rks[j+1]),[2 1 3])
 		y_vec[j-1] = reshape(F.U[:,F.S.>rtol]*Diagonal(Σ),x_tt.ttv_dims[j-1],y_rks[j-1],:)
 	end
-	return TTvector{T,d}(y_vec,x_tt.ttv_dims,y_rks,vcat(0,ones(Int64,d-1)))
+	return TTvector{T}(d,y_vec,x_tt.ttv_dims,y_rks,vcat(0,ones(Int64,d-1)))
 end
 
 """
@@ -107,7 +110,8 @@ end
 """
 returns the singular values of the reshaped tensor x[μ_1⋯μ_k;μ_{k+1}⋯μ_d] for all 1≤ k ≤ d
 """
-function tt_svdvals(x_tt::TTvector{T,d};tol=1e-14) where {T<:Number,d}
+function tt_svdvals(x_tt::TTvector{T};tol=1e-14) where {T<:Number}
+	d = x_tt.N
 	Σ = Array{Array{Float64,1},1}(undef,d-1)
 	y_tt = orthogonalize(x_tt)
 	y_rks = y_tt.ttv_rks
@@ -159,7 +163,7 @@ TODO refactoring
 function tt_compression_par(X::TTvector;tol=1e-14,Imax=2)
     Y = deepcopy(X.ttv_vec) :: Array{Array{Float64,3},1}
     rks = deepcopy(X.ttv_rks) :: Array{Int64}
-    d = length(X.ttv_dims)
+	d = x_tt.N
     rks_prev = zeros(Integer,d)
     i=0
     while norm(rks-rks_prev)>0.1 && i<Imax
@@ -177,7 +181,7 @@ function tt_compression_par(X::TTvector;tol=1e-14,Imax=2)
             end
         end
     end
-    return TTvector(Y,X.ttv_dims,rks,zeros(Integer,d))
+    return TTvector(d,Y,X.ttv_dims,rks,zeros(Integer,d))
 end
 
 function tt_compression_par(A::TToperator;tol=1e-14,Imax=2)

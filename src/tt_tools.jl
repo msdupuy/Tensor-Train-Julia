@@ -19,24 +19,26 @@ The following properties are stored
 		* ttv_ot[i] = -1 iff ``A_i`` is right-orthogonal *i.e.* ``\\sum_{\\mu_i} A_i[\\mu_i] A_i[\\mu_i]^T = I_{r_{i-1}}``
 		* ttv_ot[i] = 0 if nothing is known
 """
-struct TTvector{T<:Number,N}
+struct TTvector{T<:Number}
+	N :: Integer
 	ttv_vec :: Array{Array{T,3},1}
-	ttv_dims :: NTuple{N,Int64}
+	ttv_dims :: NTuple
 	ttv_rks :: Array{Int64,1}
 	ttv_ot :: Array{Int64,1}
 end
 
-Base.eltype(::TTvector{T,N}) where {T<:Number,N} = T 
+Base.eltype(::TTvector{T}) where {T<:Number} = T 
 """
 Vidal representation of TT vector
 """
-struct TT_vidal{T<:Number,N}
+struct TT_vidal{T<:Number}
 	#Vidal representation of a higher-order tensor 
 	#C[μ_1,…,μ_L] = core[μ_1] * Diagonal(Σ_1) * … * Diagonal(Σ_{L-1}) * core[μ_L]
 	#Cores are orthogonal and Σ are the higher-order singular values
+	N :: Integer
 	core :: Array{Array{T,3},1}
 	Σ :: Array{Array{Float64,1},1}
-	dims :: NTuple{N,Int64}
+	dims :: NTuple
 	rks :: Array{Int64,1}
 end
 
@@ -48,14 +50,16 @@ The following properties are stored
 	* ttv_dims: the dimension of the tensor along each mode
 	* ttv_rks: the TT ranks ``(r_0,...,r_d)`` where ``r_0=r_d=1``
 """
-struct TToperator{T<:Number,N}
+
+struct TToperator{T<:Number}
+	N :: Integer
 	tto_vec :: Array{Array{T,4},1}
-	tto_dims :: NTuple{N,Int64}
+	tto_dims :: NTuple
 	tto_rks :: Array{Int64,1}
 	tto_ot :: Array{Int64,1}
 end
 
-Base.eltype(::TToperator{T,N}) where {T,N} = T 
+Base.eltype(::TToperator{T}) where {T} = T 
 
 """
 returns a zero TTvector with dimensions `dims` and ranks `rks`
@@ -67,20 +71,24 @@ function zeros_tt(dims,rks;T=Float64,ot=zeros(Int,length(dims)))
 	for i in 1:d
 		tt_vec[i] = zeros(T,dims[i],rks[i],rks[i+1])
 	end
-	return TTvector{T,d}(tt_vec,dims,copy(rks),copy(ot))
+	return TTvector{T}(d,tt_vec,dims,copy(rks),copy(ot))
 end
 
 """
 returns a zero TToperator with dimensions `dims` and ranks `rks`
 """
-function zeros_tto(dims,rks;T=Float64,ot=zeros(Int,length(dims)))
+function fill_TTo!(vec,dims,rks)
+	for i in eachindex(vec)
+		vec[i] = zeros(dims[i],dims[i],rks[i],rks[i+1])
+	end
+end
+
+function zeros_tto(dims,rks;T=Float64) 
 	@assert length(dims)+1==length(rks) "Dimensions and ranks are not compatible"
 	d = length(dims)
-	tt_vec = Array{Array{T,4}}(undef,d)
-	for i in 1:d
-		tt_vec[i] = zeros(T,dims[i],dims[i],rks[i],rks[i+1])
-	end
-	return TToperator{T,d}(tt_vec,dims,copy(rks),copy(ot))
+	H = Array{Array{T,4}}(undef,d)
+	fill_TTo!(H,dims,rks)
+	return TToperator{T}(d,H,dims,rks,zeros(Int,d))
 end
 
 #returns partial isometry Q ∈ R^{n x m}
@@ -97,15 +105,15 @@ function rand_tt(dims,rks;T=Float64)
 	@assert length(dims)+1==length(rks) "Dimensions and ranks are not compatible"
 	d = length(dims)
 	tt_vec = Array{Array{T,3}}(undef,d)
-	for i in 1:d
+	for i in eachindex(tt_vec) 
 		tt_vec[i] = randn(T,dims[i],rks[i],rks[i+1])
 	end
-	return TTvector{T,d}(tt_vec,dims,copy(rks),zeros(Int,d))
+	return TTvector{T}(d,tt_vec,dims,copy(rks),zeros(Int,d))
 end
 
-function Base.copy(x_tt::TTvector{T,N}) where {T<:Number,N}
+function Base.copy(x_tt::TTvector{T}) where {T<:Number}
 	y_tt = zeros_tt(x_tt.ttv_dims,x_tt.ttv_rks;T=T,ot=x_tt.ttv_ot)
-	@threads for i in 1:length(x_tt.ttv_dims)
+	@threads for i in eachindex(x_tt.ttv_dims)
 		y_tt.ttv_vec[i] = copy(x_tt.ttv_vec[i])
 	end
 	return y_tt
@@ -182,13 +190,14 @@ function ttv_decomp(tensor::Array{T,d};index=1,tol=1e-12) where {T<:Number,d}
 	end
 
 	# Define the return value as a TTvector
-	return TTvector{T,d}(ttv_vec, dims, rks, ttv_ot)
+	return TTvector{T}(d,ttv_vec, dims, rks, ttv_ot)
 end
 
 """
 Returns the tensor corresponding to x_tt
 """
-function ttv_to_tensor(x_tt :: TTvector{T,d}) where {T<:Number,d}
+function ttv_to_tensor(x_tt :: TTvector{T}) where {T<:Number}
+	d = length(x_tt.ttv_dims)
 	r_max = maximum(x_tt.ttv_rks)
 	# Initialize the to be returned tensor
 	tensor = zeros(T, x_tt.ttv_dims...)
@@ -205,7 +214,8 @@ function ttv_to_tensor(x_tt :: TTvector{T,d}) where {T<:Number,d}
 end
 
 #returns the Vidal representation of a TT
-function tt_to_vidal(x_tt::TTvector{T,d};tol=1e-14) where {T<:Number,d}
+function tt_to_vidal(x_tt::TTvector{T};tol=1e-14) where {T<:Number}
+	d = x_tt.N
 	core = Array{Array{T,3},1}(undef,d)
 	Σ = Array{Array{Float64,1},1}(undef,d-1)
 	y_tt = orthogonalize(x_tt)
@@ -228,13 +238,14 @@ function tt_to_vidal(x_tt::TTvector{T,d};tol=1e-14) where {T<:Number,d}
 		@tensor B[i2,α,β] := (Diagonal(s)*v')[α,z]*y_tt.ttv_vec[j+1][i2,z,β] 
 	end
 	@tensor core[d][i,α,β] := v'[α,z]*y_tt.ttv_vec[d][i,z,β]
-	return TT_vidal{T,d}(core,Σ,y_tt.ttv_dims,y_rks)
+	return TT_vidal{T}(d,core,Σ,y_tt.ttv_dims,y_rks)
 end
 
 """
 Vidal representation to tensor
 """
-function vidal_to_tensor(x_v::TT_vidal{T,d}) where {T<:Number,d}
+function vidal_to_tensor(x_v::TT_vidal{T}) where {T<:Number}
+	d = x_v.N
 	r_max = maximum(x_v.rks)
 	tensor = zeros(T, x_v.dims...)
 	# Fill in the tensor for every t=(x_1,...,x_d)
@@ -253,7 +264,7 @@ end
 """
 Returns a left-canonical TT representation
 """
-function vidal_to_left_canonical(x_v::TT_vidal{T,d}) where {T<:Number,d}
+function vidal_to_left_canonical(x_v::TT_vidal{T}) where {T<:Number}
 	x_tt = zeros_tt(x_v.dims,x_v.rks,ot=vcat(ones(length(x_v.dims)), 0))
 	x_tt.ttv_vec[1] = x_v.core[1]
 	for i in 2:length(x_v.dims)
@@ -267,28 +278,30 @@ end
 """
 Transforms a TToperator into a TTvector
 """
-function tto_to_ttv(A::TToperator{T,d}) where {T<:Number,d}
+function tto_to_ttv(A::TToperator{T}) where {T<:Number}
+	d = A.N
 	xtt_vec = Array{Array{T,3},1}(undef,d)
 	A_rks = A.tto_rks
-	for i in 1:d
+	for i in eachindex(xtt_vec)
 		xtt_vec[i] = reshape(A.tto_vec[i],A.tto_dims[i]^2,A_rks[i],A_rks[i+1])
 	end
-	return TTvector{T,d}(xtt_vec,A.tto_dims.^2,A.tto_rks,A.tto_ot)
+	return TTvector{T}(d,xtt_vec,A.tto_dims.^2,A.tto_rks,A.tto_ot)
 end
 
 """
 Transforms a TTvector (coming from a TToperator) into a TToperator
 """
-function ttv_to_tto(x::TTvector{T,d}) where {T<:Number,d}
+function ttv_to_tto(x::TTvector{T}) where {T<:Number}
 	@assert(isqrt.(x.ttv_dims).^2 == x.ttv_dims, DimensionMismatch)
+	d = x.N
 	Att_vec = Array{Array{T,4},1}(undef,d)
 	x_rks = x.ttv_rks
 	A_dims = zeros(Int64,d)
-	for i in 1:d
+	for i in eachindex(A_dims)
 		A_dims[i] = isqrt(x.ttv_dims[i])
 		Att_vec[i] = reshape(x.ttv_vec[i],A_dims[i],A_dims[i],x_rks[i],x_rks[i+1])
 	end
-	return TToperator{T,d}(Att_vec,tuple(A_dims...),x.ttv_rks,x.ttv_ot)
+	return TToperator{T}(N,Att_vec,tuple(A_dims...),x.ttv_rks,x.ttv_ot)
 end
 
 """
@@ -317,10 +330,11 @@ function tto_decomp(tensor::Array{T,N}; index=1) where {T<:Number,N}
 		# Fill in tto_vec[i]
 		tto_vec[i] = reshape(ttv.ttv_vec[i], tto_dims[i], tto_dims[i], :, rks[i+1])
 	end
-	return TToperator{T,d}(tto_vec, tto_dims, rks, ttv.ttv_ot)
+	return TToperator{T}(d,tto_vec, tto_dims, rks, ttv.ttv_ot)
 end
 
-function tto_to_tensor(tto :: TToperator{T,d}) where {T<:Number,d}
+function tto_to_tensor(tto :: TToperator{T}) where {T<:Number}
+	d = tto.N
 	# Define the array of ranks [r_0=1,r_1,...,r_d]
 	rks = tto.tto_rks
 	r_max = maximum(rks)
@@ -346,5 +360,5 @@ function id_tto(d;n_dim=2,T=Float64)
 		A[j] = zeros(2,2,1,1)
 		A[j][:,:,1,1] = Matrix{T}(I,2,2)
 	end
-	return TToperator{T,d}(A,dims,ones(Int64,d+1),zeros(d))
+	return TToperator{T}(d,A,dims,ones(Int64,d+1),zeros(d))
 end
