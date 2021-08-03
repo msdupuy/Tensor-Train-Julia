@@ -140,7 +140,7 @@ end
 """
 returns bosonic or fermionic MPO of a_k^† a^†_l a_m a_n 
 """
-function two_body_mpo(k,l,m,n,L;fermion=true,T=Float64)::TToperator{T,L}
+function two_body_mpo(k,l,m,n,L;fermion=true,T=Float64)::TToperator{T}
     return tto_creation(k,L;fermion=fermion,T=T)*tto_creation(l,L;fermion=fermion,T=T)*tto_annihilation(m,L;fermion=fermion,T=T)*tto_annihilation(n,L;fermion=fermion,T=T)
 end
 

@@ -9,8 +9,9 @@ ordering schemes for QC-DMRG or 2D statistical models
 """
 'one_rdm' returns the list of one-orbital reduced density matrices assuming that 'x_tt' is a pure state for some particle number
 """
-function one_rdm(x_tt::TTvector{T,d}) where {T<:Number,d}
-    @assert(2*ones(Int,d)==x_tt.ttv_dims)
+function one_rdm(x_tt::TTvector{T}) where {T<:Number}
+    d = x_tt.N
+    @assert(tuple(2*ones(Int,d)...)==x_tt.ttv_dims)
     γ = zeros(T,d,2,2)
     for i in 1:d
         y_tt = one_body_mpo(i,i,d;T=T)*x_tt
@@ -23,8 +24,9 @@ end
 """
 'two_rdm' returns the list of two-orbitals reduced density matrices assuming that 'x_tt' is a pure state for some particle number
 """
-function two_rdm(x_tt::TTvector{S,d};fermion=true) where {S<:Number,d}
-    @assert(2*ones(Int,d)==x_tt.ttv_dims)
+function two_rdm(x_tt::TTvector{S};fermion=true) where {S<:Number}
+    d = x_tt.N
+    @assert(tuple(2*ones(Int,d)...)==x_tt.ttv_dims)
     γ = zeros(S,d,d,2,2,2,2) #(i,j;i,j) occupancy
     for i in 1:d-1
         for j in i+1:d
@@ -42,8 +44,8 @@ end
 """
 Returns the orbital reduced density matrix ρ_{i:j}, i<j.
 """
-function N_rdm(x_tt::TTvector{T,d},i::Integer,j::Integer) where {T<:Number,d}
-    @assert(i<j≤length(x_tt.ttv_dims))
+function N_rdm(x_tt::TTvector{T},i::Integer,j::Integer) where {T<:Number}
+    @assert(i<j≤x_tt.N)
     y_tt = orthogonalize(x_tt,i=i)
     ρ = zeros(T,x_tt.ttv_dims[i:j]...,x_tt.ttv_dims[i:j]...)
     index = CartesianIndices(Tuple([1:k for k in x_tt.ttv_dims[i:j]]))
@@ -112,7 +114,8 @@ function fiedler_order(x_tt::TTvector;a=1) #a=1 : von Neumann entropy
 end
 
 #returns the one particle reduced density matrix of a state encoded in the TT x_tt
-function one_prdm(x_tt::TTvector{T,d}) where {T<:Number,d}
+function one_prdm(x_tt::TTvector{T}) where {T<:Number}
+    d = x_tt.N
     γ = zeros(T,d,d)
     for i in 1:d
         γ[i,i] = dot(x_tt,one_body_mpo(i,i,d;T=T)*x_tt)
