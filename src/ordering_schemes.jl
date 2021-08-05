@@ -11,7 +11,7 @@ ordering schemes for QC-DMRG or 2D statistical models
 """
 function one_rdm(x_tt::TTvector{T}) where {T<:Number}
     d = x_tt.N
-    @assert(tuple(2*ones(Int,d)...)==x_tt.ttv_dims)
+    @assert(2*ones(Int,d)==x_tt.ttv_dims)
     γ = zeros(T,d,2,2)
     for i in 1:d
         y_tt = one_body_mpo(i,i,d;T=T)*x_tt
@@ -26,7 +26,7 @@ end
 """
 function two_rdm(x_tt::TTvector{S};fermion=true) where {S<:Number}
     d = x_tt.N
-    @assert(tuple(2*ones(Int,d)...)==x_tt.ttv_dims)
+    @assert(2*ones(Int,d)==x_tt.ttv_dims)
     γ = zeros(S,d,d,2,2,2,2) #(i,j;i,j) occupancy
     for i in 1:d-1
         for j in i+1:d

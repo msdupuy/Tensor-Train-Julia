@@ -316,9 +316,8 @@ function dmrg_eigsolv(A :: TToperator{T},
 				λ,V = K_eigmin(G[1],H[1],V0,Amid_list[1] ;it_solver=it_solver,maxiter=linsolv_maxiter,tol=linsolv_tol,itslv_thresh=itslv_thresh)
 				println("Eigenvalue: $λ")
 				E = vcat(E,λ)
-				tt_opt,V = left_core_move(tt_opt,V,N,tol,rmax_schedule[end])
 				r_hist = vcat(r_hist,maximum(tt_opt.ttv_rks))
-				for i in N-1:-1:2
+				for i in N:-1:2
 					tt_opt, V = left_core_move(tt_opt,V,i,tol,rmax_schedule[end])
 				end
 				tt_opt.ttv_vec[1] = permutedims(reshape(V,1,tt_opt.ttv_dims[1],:),(2,1,3))

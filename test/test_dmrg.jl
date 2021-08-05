@@ -1,6 +1,5 @@
 include("discrete_laplacian.jl")
 
-using TensorTrains
 using Test
 
 @testset "DMRG linsolv" begin
