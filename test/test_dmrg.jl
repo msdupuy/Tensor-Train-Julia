@@ -10,7 +10,7 @@ using Test
     ytt = dmrg_linsolv(Atto,btt,btt,sweep_count=2,N=3)
     ysol = A\(ttv_to_tensor(btt)[:])
     ydmrg = ttv_to_tensor(ytt)[:]
-    @test isapprox(ysol,ydmrg)
+    @test isapprox(ysol,ydmrg,rtol=1e-5)
 end
 
 #@testset "DMRG eigsolv" begin

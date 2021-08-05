@@ -6,9 +6,9 @@ Implementation based on the presentation in
 Holtz, Sebastian, Thorsten Rohwedder, and Reinhold Schneider. "The alternating linear scheme for tensor optimization in the tensor train format." SIAM Journal on Scientific Computing 34.2 (2012): A683-A713.
 """
 
-function init_H(x_tt::TTvector{T},A_tto::TToperator{T},N::Integer,rmax) where {T<:Number}
+function init_H(x_tt::TTvector{T},A_tto::TToperator{T},N::Int,rmax) where {T<:Number}
 	d = x_tt.N
-	H = Array{Array{T,3}}(undef, d+1-N)
+	H = Array{Array{T,3},1}(undef, d+1-N)
 	H[d+1-N] = ones(T,1,1,1)
 	for i = d+1-N:-1:2
 		rmax_i = min(rmax,prod(x_tt.ttv_dims[1:i+N-2]),prod(x_tt.ttv_dims[i+N-1:end]))
@@ -33,7 +33,7 @@ function update_G!(x_vec::Array{T,3},A_vec::Array{T,4},Gi::AbstractArray{T,3},Gi
 end
 
 #returns the contracted tensor A_i[\\mu_i] ⋯ A_j[\\mu_j] ∈ R^{R^A_{i-1} × n_i × n_i × ⋯ × n_j × n_j ×  R^A_j}
-function Amid(A_tto::TToperator{T},i::Integer,j::Integer) where {T<:Number}
+function Amid(A_tto::TToperator{T},i::Int,j::Int) where {T<:Number}
 	A = permutedims(A_tto.tto_vec[i],(3,1,2,4))
 	for k in i+1:j
 		C = reshape(A,A_tto.tto_rks[i],prod(A_tto.tto_dims[i:k-1]),:,A_tto.tto_rks[k])
@@ -53,7 +53,7 @@ end
 
 function init_Hb(x_tt::TTvector{T},b_tt::TTvector{T},N::Integer,rmax) where {T<:Number}
 	d = x_tt.N
-	H_b = Array{Array{T,2}}(undef, d+1-N) 
+	H_b = Array{Array{T,2},1}(undef, d+1-N) 
 	H_b[d+1-N] = ones(T,1,1)
 	for i = d+1-N:-1:2
 		rmax_i = min(rmax,prod(x_tt.ttv_dims[1:i+N-2]),prod(x_tt.ttv_dims[i+N-1:end]))
@@ -127,7 +127,7 @@ function left_core_move(x_tt::TTvector{T},V::Array{T,3},j::Int,tol::Float64,rmax
 end
 
 
-function K_eigmin(Gi::AbstractArray{T,3},Hi::AbstractArray{T,3},V0::AbstractArray{T,3},Amid_tensor::AbstractArray{T,4};it_solver=false,itslv_thresh=256::Int64,maxiter=200::Int64,tol=1e-6::Float64) where T<:Number
+function K_eigmin(Gi::AbstractArray{T,3},Hi::AbstractArray{T,3},V0::AbstractArray{T,3},Amid_tensor::AbstractArray{T,4};it_solver=false::Bool,itslv_thresh=256::Int64,maxiter=200::Int64,tol=1e-6::Float64) where T<:Number
 	K_dims = size(V0)
 	Gtemp = @view(Gi[:,1:K_dims[1],1:K_dims[1]])
 	Htemp = @view(Hi[:,1:K_dims[3],1:K_dims[3]])
@@ -136,30 +136,30 @@ function K_eigmin(Gi::AbstractArray{T,3},Hi::AbstractArray{T,3},V0::AbstractArra
 		function K_matfree(V::AbstractArray{S,1};Gi=Gtemp::AbstractArray{S,3},Hi=Htemp::AbstractArray{S,3},K_dims=K_dims::NTuple{3,Int},Amid_tensor=Amid_tensor::AbstractArray{S,4},Vout=Vout::AbstractArray{S,1}) where S<:Number
 			Hrshp = reshape(Vout,K_dims)
 			@tensoropt((d,f), Hrshp[a,b,c] = Gi[y,a,d]*Hi[z,c,f]*Amid_tensor[y,b,e,z]*reshape(V,K_dims)[d,e,f])
-			return Vout::AbstractArray{T,1}
+			return Vout::AbstractArray{S,1}
 		end
 		r = lobpcg(LinearMap(K_matfree,prod(K_dims);ishermitian = true),false,copy(V0[:]),1;maxiter=maxiter,tol=tol)
-		return r.λ[1]::Real, reshape(r.X[:,1],K_dims)::Array{T,3}
+		return r.λ[1]::Float64, reshape(r.X[:,1],K_dims)::Array{T,3}
 	else
 		K = K_full(Gtemp,Htemp,Amid_tensor)
 		F = eigen(K,1:1)
-		return real(F.values[1])::Real,reshape(F.vectors[:,1],K_dims)::Array{T,3}
+		return F.values[1]::Float64,reshape(F.vectors[:,1],K_dims)::Array{T,3}
 	end	
 end
 
-function K_eiggenmin(Gi,Hi,Ki,Li,ttv_vec;it_solver=false,itslv_thresh=2500)
-	@tensor begin
-		K[a,b,c,d,e,f] := Gi[d,e,a,b,z]*Hi[z,f,c] #size (ni,rim,ri,ni,rim,ri)	
-		S[a,b,c,d,e,f] := Ki[d,e,a,b,z]*Li[z,f,c] #size (ni,rim,ri,ni,rim,ri)	
-	end
-	if it_solver || prod(size(K)[1:3]) > itslv_thresh
-		r = lobpcg(reshape(K,prod(size(K)[1:3]),:),reshape(S,prod(size(S)[1:3]),:),false,ttv_vec[:],1;maxiter=500,tol=1e-8)
-		return r.λ[1], reshape(r.X[:,1],size(K)[1:3])
-	else
-		F = eigen(reshape(K,prod(size(K)[1:3]),:),reshape(S,prod(size(K)[1:3]),:),)
-		return real(F.values[1]),reshape(F.vectors[:,1],size(K)[1:3])
-	end
-end
+#function K_eiggenmin(Gi,Hi,Ki,Li,ttv_vec;it_solver=false,itslv_thresh=2500)
+#	@tensor begin
+#		K[a,b,c,d,e,f] := Gi[d,e,a,b,z]*Hi[z,f,c] #size (ni,rim,ri,ni,rim,ri)	
+#		S[a,b,c,d,e,f] := Ki[d,e,a,b,z]*Li[z,f,c] #size (ni,rim,ri,ni,rim,ri)	
+#	end
+#	if it_solver || prod(size(K)[1:3]) > itslv_thresh
+#		r = lobpcg(reshape(K,prod(size(K)[1:3]),:),reshape(S,prod(size(S)[1:3]),:),false,ttv_vec[:],1;maxiter=500,tol=1e-8)
+#		return r.λ[1], reshape(r.X[:,1],size(K)[1:3])
+#	else
+#		F = eigen(reshape(K,prod(size(K)[1:3]),:),reshape(S,prod(size(K)[1:3]),:),)
+#		return real(F.values[1]),reshape(F.vectors[:,1],size(K)[1:3])
+#	end
+#end
 
 """
 Solve Ax=b using the ALS algorithm where A is given as `TToperator` and `b`, `tt_start` are `TTvector`.
@@ -181,10 +181,10 @@ function dmrg_linsolv(A :: TToperator{T}, b :: TTvector{T}, tt_start :: TTvector
 	dims = tt_start.ttv_dims
 
 	# Initialize the arrays of G and G_b
-	G = Array{Array{T,3}}(undef, d+1-N)
-	G_b = Array{Array{T,2}}(undef, d+1-N)
-	Amid_list = Array{Array{T,4}}(undef, d+1-N)
-	bmid_list = Array{Array{T,3}}(undef, d+1-N)
+	G = Array{Array{T,3},1}(undef, d+1-N)
+	G_b = Array{Array{T,2},1}(undef, d+1-N)
+	Amid_list = Array{Array{T,4},1}(undef, d+1-N)
+	bmid_list = Array{Array{T,3},1}(undef, d+1-N)
 
 	# Initialize G[1], G_b[1], H[d] and H_b[d]
 	for i in 1:d+1-N
@@ -287,8 +287,8 @@ function dmrg_eigsolv(A :: TToperator{T},
 	r_hist = Int64[]
 
 	# Initialize the arrays of G
-	G = Array{Array{T,3}}(undef, d+1-N)
-	Amid_list = Array{Array{T,4}}(undef, d+1-N)
+	G = Array{Array{T,3},1}(undef, d+1-N)
+	Amid_list = Array{Array{T,4},1}(undef, d+1-N)
 
 	# Initialize G
 	for i in 1:d+1-N

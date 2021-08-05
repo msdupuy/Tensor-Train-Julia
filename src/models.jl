@@ -70,7 +70,7 @@ function half_filling(N)
         tt_vec[2i] = zeros(2,1,1)
         tt_vec[2i][2,1,1] = 1.0
     end
-    return TTvector{Float64}(2N,tt_vec,tuple(2*ones(Int,2N)...),ones(Int,2N+1),zeros(2N))
+    return TTvector{Float64}(2N,tt_vec,2*ones(Int,2N),ones(Int,2N+1),zeros(2N))
 end
 
 #auxiliary functions for a_p^†a_q
@@ -104,7 +104,7 @@ end
 MPO of the creation operator a^†_p (default = fermionic creation)
 """
 function tto_creation(p,L::Int;fermion=true,T=Float64)
-    A = zeros_tto(tuple(2*ones(Int,L)...),ones(Int,L+1))
+    A = zeros_tto(2*ones(Int,L),ones(Int,L+1))
     for i in 1:p-1
         fermion ? (A.tto_vec[i] = mpo_core_ferm_sign(;T=T)) : (A.tto_vec[i] = mpo_core_id(;T=T))
     end
@@ -119,7 +119,7 @@ end
 MPO of the annihilation operator a_q (default = fermionic annihilation)
 """
 function tto_annihilation(q,L::Int;fermion=true,T=Float64)
-    A = zeros_tto(tuple(2*ones(Int,L)...),ones(Int,L+1))
+    A = zeros_tto(2*ones(Int,L),ones(Int,L+1))
     for i in 1:q-1
         fermion ? (A.tto_vec[i] = mpo_core_ferm_sign(;T=T)) : (A.tto_vec[i] = mpo_core_id(;T=T))
     end
@@ -151,21 +151,31 @@ H = Σ_{ij} h_ij a_i† a_j + Σ_{ijkl} V_{ijkl} a_i†a_j†a_ka_l
 h and V have to be Symmetric 
 """
 #assuming diagonal terms are divided by 2 in the h and V matrix
-function hV_to_mpo(h::AbstractArray{T,2},V::AbstractArray{T,4};tol=1e-8,n_rnd=20) where T<:Number
+function hV_to_mpo(h::AbstractArray{T,2},V::Array{T,4};tol=1e-8::Float64,n_rnd=20::Int) where T<:Number
     L = size(h,1)
     @assert issymmetric(h)
     @assert isapprox(V,permutedims(V,(2,1,4,3)))
-    A = zeros_tto(tuple(2*ones(Int64,L)...),ones(Int64,L+1),T=T)
+    A = zeros_tto(2*ones(Int64,L),ones(Int64,L+1),T=T)
     i_rnd = 1
     for i in findall(!iszero,h)
         H = one_body_mpo(i[1],i[2],L)
         A = A+h[i]*H
-        i_rnd > n_rnd ? (A = tt_rounding(A,tol=tol), i_rnd = 1) : i_rnd+=1
+        if i_rnd > n_rnd 
+            A = tt_rounding(A,tol=tol)
+            i_rnd = 1
+        else
+            i_rnd+=1
+        end
     end
     for i in findall(!iszero,V)
         H = two_body_mpo(i[1],i[2],i[3],i[4],L)
         A = A+V[i]*H
-        i_rnd > n_rnd ? (A = tt_rounding(A,tol=tol), i_rnd = 1) : i_rnd+=1
+        if i_rnd > n_rnd 
+            A = tt_rounding(A,tol=tol)
+            i_rnd = 1
+        else
+            i_rnd+=1
+        end
     end
     return tt_rounding(A,tol=tol)::TToperator{T}
 end
@@ -289,7 +299,7 @@ end
 Returns the particle number operator ̂N of L sites
 """
 function part_num(L)
-    A = zeros_tto(tuple(2*ones(Int64,L)...),ones(Int64,L+1))
+    A = zeros_tto(2*ones(Int64,L),ones(Int64,L+1))
     for i in 1:L
         A = A + one_body_mpo(i,i,L)
     end

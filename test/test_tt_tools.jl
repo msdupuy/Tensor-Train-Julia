@@ -59,7 +59,7 @@ end
 end
 
 @testset "TT orthogonalize" begin
-    dims = tuple(2*ones(Int,8)...)
+    dims = 2*ones(Int,8)
     rks = [1,2,4,8,8,8,4,2,1]
     x_tt = rand_tt(dims,rks)
     y_tt = orthogonalize(x_tt)
@@ -70,7 +70,7 @@ end
 end
 
 @testset "Vidal" begin
-    dims = tuple(2*ones(Int,8)...)
+    dims = 2*ones(Int,8)
     rks = [1,2,4,8,8,8,4,2,1]
     x_tt = rand_tt(dims,rks)
     x = ttv_to_tensor(x_tt)    

@@ -20,9 +20,9 @@ The following properties are stored
 		* ttv_ot[i] = 0 if nothing is known
 """
 struct TTvector{T<:Number}
-	N :: Integer
+	N :: Int
 	ttv_vec :: Array{Array{T,3},1}
-	ttv_dims :: NTuple
+	ttv_dims :: Array{Int64,1}
 	ttv_rks :: Array{Int64,1}
 	ttv_ot :: Array{Int64,1}
 end
@@ -35,10 +35,10 @@ struct TT_vidal{T<:Number}
 	#Vidal representation of a higher-order tensor 
 	#C[μ_1,…,μ_L] = core[μ_1] * Diagonal(Σ_1) * … * Diagonal(Σ_{L-1}) * core[μ_L]
 	#Cores are orthogonal and Σ are the higher-order singular values
-	N :: Integer
+	N :: Int
 	core :: Array{Array{T,3},1}
 	Σ :: Array{Array{Float64,1},1}
-	dims :: NTuple
+	dims :: Array{Int64,1}
 	rks :: Array{Int64,1}
 end
 
@@ -52,9 +52,9 @@ The following properties are stored
 """
 
 struct TToperator{T<:Number}
-	N :: Integer
+	N :: Int
 	tto_vec :: Array{Array{T,4},1}
-	tto_dims :: NTuple
+	tto_dims :: Array{Int64,1}
 	tto_rks :: Array{Int64,1}
 	tto_ot :: Array{Int64,1}
 end
@@ -127,7 +127,7 @@ The *root* of the TT decomposition is at index *i.e.* ``A_i`` for ``i < index`` 
 """
 function ttv_decomp(tensor::Array{T,d};index=1,tol=1e-12) where {T<:Number,d}
 	# Decomposes a tensor into its tensor train with core matrices at i=index
-	dims = size(tensor) #dims = [n_1,...,n_d]
+	dims = [size(tensor)...] #dims = [n_1,...,n_d]
 	ttv_vec = Array{Array{T}}(undef,d)
 	# ttv_ot[i]= -1 if i < index
 	# ttv_ot[i] = 0 if i = index
@@ -301,7 +301,7 @@ function ttv_to_tto(x::TTvector{T}) where {T<:Number}
 		A_dims[i] = isqrt(x.ttv_dims[i])
 		Att_vec[i] = reshape(x.ttv_vec[i],A_dims[i],A_dims[i],x_rks[i],x_rks[i+1])
 	end
-	return TToperator{T}(d,Att_vec,tuple(A_dims...),x.ttv_rks,x.ttv_ot)
+	return TToperator{T}(d,Att_vec,A_dims,x.ttv_rks,x.ttv_ot)
 end
 
 """
@@ -312,7 +312,7 @@ function tto_decomp(tensor::Array{T,N}; index=1) where {T<:Number,N}
 	# with core matrices at i=index
 	# The tensor is given as tensor[x_1,...,x_d,y_1,...,y_d]
 	d = Int(ndims(tensor)/2)
-	tto_dims = size(tensor)[1:d]
+	tto_dims = [size(tensor)[1:d]...]
 	dims_sq = tto_dims.^2
 	# The tensor is reorder  into tensor[x_1,y_1,...,x_d,y_d],
 	# reshaped into tensor[(x_1,y_1),...,(x_d,y_d)]
@@ -354,7 +354,7 @@ end
 
 #TTO representation of the identity matrix
 function id_tto(d;n_dim=2,T=Float64)
-	dims = tuple(n_dim*ones(Int64,d)...)
+	dims = n_dim*ones(Int64,d)
 	A = Array{Array{T,4},1}(undef,d)
 	for j in 1:d
 		A[j] = zeros(2,2,1,1)
