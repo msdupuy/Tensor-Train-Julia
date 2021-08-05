@@ -87,7 +87,6 @@ function tt_rounding(x_tt::TTvector{T};tol=1e-12) where {T<:Number}
 		y_vec[j] = reshape(u[:,s.>rtol],x_tt.ttv_dims[j],y_rks[j],:)
 		y_vec[j+1] = permutedims(reshape(Diagonal(Σ)*v'[s.>rtol,:],:,x_tt.ttv_dims[j+1],y_rks[j+2]),[2 1 3])
 	end
-	println(maximum(y_rks))
 	for j in d:-1:2
 		A = zeros(T,x_tt.ttv_dims[j-1],y_rks[j-1],x_tt.ttv_dims[j],y_rks[j+1])
 		@tensor A[a,b,c,d] = y_vec[j-1][a,b,z]*y_vec[j][c,z,d]
@@ -98,7 +97,6 @@ function tt_rounding(x_tt::TTvector{T};tol=1e-12) where {T<:Number}
 		y_vec[j] = permutedims(reshape(F.Vt[F.S.>rtol,:],:,x_tt.ttv_dims[j],y_rks[j+1]),[2 1 3])
 		y_vec[j-1] = reshape(F.U[:,F.S.>rtol]*Diagonal(Σ),x_tt.ttv_dims[j-1],y_rks[j-1],:)
 	end
-	println(maximum(y_rks))
 	return TTvector{T}(d,y_vec,x_tt.ttv_dims,y_rks,vcat(0,ones(Int64,d-1)))
 end
 
