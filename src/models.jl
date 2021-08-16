@@ -157,8 +157,11 @@ function hV_to_mpo(h::AbstractArray{T,2},V::Array{T,4};tol=1e-8::Float64,n_rnd=2
     @assert isapprox(V,permutedims(V,(2,1,4,3)))
     A = zeros_tto(2*ones(Int64,L),ones(Int64,L+1),T=T)
     i_rnd = 1
+    #Precomputation of creation and annihilation operators
+    tto_crea = [tto_creation(i,L) for i in 1:L]
+    tto_anni = [tto_annihilation(i,L) for i in 1:L]
     for i in findall(!iszero,h)
-        H = one_body_mpo(i[1],i[2],L)
+        H = tto_crea[i[1]]*tto_anni[i[2]]
         A = A+h[i]*H
         if i_rnd > n_rnd 
             A = tt_rounding(A,tol=tol)
@@ -168,7 +171,7 @@ function hV_to_mpo(h::AbstractArray{T,2},V::Array{T,4};tol=1e-8::Float64,n_rnd=2
         end
     end
     for i in findall(!iszero,V)
-        H = two_body_mpo(i[1],i[2],i[3],i[4],L)
+        H = tto_crea[i[1]]*tto_crea[i[2]]*tto_anni[i[3]]*tto_anni[i[4]]
         A = A+V[i]*H
         if i_rnd > n_rnd 
             A = tt_rounding(A,tol=tol)
@@ -177,7 +180,8 @@ function hV_to_mpo(h::AbstractArray{T,2},V::Array{T,4};tol=1e-8::Float64,n_rnd=2
             i_rnd+=1
         end
     end
-    return tt_rounding(A,tol=tol)::TToperator{T}
+    A = tt_rounding(A,tol=tol)
+    return A::TToperator{T}
 end
 
 """

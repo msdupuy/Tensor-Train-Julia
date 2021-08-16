@@ -9,7 +9,7 @@ import LinearAlgebra.dot
 Addition of two TTvector
 """
 function +(x::TTvector{T},y::TTvector{T}) where {T<:Number}
-    @assert(x.ttv_dims == y.ttv_dims, DimensionMismatch)
+    @assert x.ttv_dims == y.ttv_dims "Incompatible dimensions"
     d = x.N
     ttv_vec = Array{Array{T,3},1}(undef,d)
     rks = x.ttv_rks + y.ttv_rks
@@ -37,7 +37,7 @@ end
 Addition of two TToperators
 """
 function +(x::TToperator{T},y::TToperator{T}) where {T<:Number}
-    @assert(x.tto_dims == y.tto_dims, DimensionMismatch)
+    @assert x.tto_dims == y.tto_dims "Incompatible dimensions"
     d = x.N
     tto_vec = Array{Array{T,4},1}(undef,d)
     rks = x.tto_rks + y.tto_rks
@@ -64,7 +64,7 @@ end
 
 #matrix vector multiplication in TT format
 function *(A::TToperator{T},v::TTvector{T}) where {T<:Number}
-    @assert(A.tto_dims==v.ttv_dims, DimensionMismatch)
+    @assert A.tto_dims==v.ttv_dims "Incompatible dimensions"
     d = v.N
     Y = Array{Array{T,3},1}(undef, d)
     A_rks = A.tto_rks #R_0, ..., R_d
@@ -79,7 +79,7 @@ end
 
 #matrix matrix multiplication in TT format
 function *(A::TToperator{T},B::TToperator{T}) where {T<:Number}
-    @assert(A.tto_dims==B.tto_dims, DimensionMismatch)
+    @assert A.tto_dims==B.tto_dims "Incompatible dimensions"
     d = A.N
     Y = Array{Array{T,4},1}(undef, d)
     A_rks = A.tto_rks #R_0, ..., R_d
