@@ -111,6 +111,22 @@ function rand_tt(dims,rks;T=Float64)
 	return TTvector{T}(d,tt_vec,dims,copy(rks),zeros(Int,d))
 end
 
+"""
+Returns a random TTvector with dimensions `dims` and maximal rank `rmax`
+"""
+function rand_tt(dims,rmax::Int;T=Float64)
+	d = length(dims)
+	tt_vec = Array{Array{T,3}}(undef,d)
+	rks = ones(Int,d+1)
+	for i in eachindex(tt_vec) 
+		ri = min(prod(dims[1:i-1]),prod(dims[i:d]),rmax)
+		rip = min(prod(dims[1:i]),prod(dims[i+1:d]),rmax)
+		rks[i+1] = rip
+		tt_vec[i] = randn(T,dims[i],ri,rip)
+	end
+	return TTvector{T}(d,tt_vec,dims,rks,zeros(Int,d))
+end
+
 function Base.copy(x_tt::TTvector{T}) where {T<:Number}
 	y_tt = zeros_tt(x_tt.ttv_dims,x_tt.ttv_rks;T=T,ot=x_tt.ttv_ot)
 	@threads for i in eachindex(x_tt.ttv_dims)
