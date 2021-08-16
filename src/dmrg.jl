@@ -47,7 +47,7 @@ end
 function K_full(Gi::AbstractArray{T,3},Hi::AbstractArray{T,3},Amid_tensor::AbstractArray{T,4}) where {T<:Number,d}
 	K_dims = (size(Gi,2),size(Amid_tensor,2),size(Hi,2))
 	K = zeros(T,K_dims...,K_dims...)
-	@tensor K[a,b,c,d,e,f] = Gi[y,a,d]*Hi[z,c,f]*Amid_tensor[y,b,e,z] #size (r^X_{i-1},n_i⋯n_j,r^X_j)
+	@tensoropt((a,c,d,f), K[a,b,c,d,e,f] = Gi[y,a,d]*Hi[z,c,f]*Amid_tensor[y,b,e,z]) #size (r^X_{i-1},n_i⋯n_j,r^X_j)
 	return Hermitian(reshape(K,prod(K_dims),prod(K_dims)))
 end
 
@@ -135,7 +135,7 @@ function K_eigmin(Gi::AbstractArray{T,3},Hi::AbstractArray{T,3},V0::AbstractArra
 		Vout = zeros(T,prod(K_dims))
 		function K_matfree(V::AbstractArray{S,1};Gi=Gtemp::AbstractArray{S,3},Hi=Htemp::AbstractArray{S,3},K_dims=K_dims::NTuple{3,Int},Amid_tensor=Amid_tensor::AbstractArray{S,4},Vout=Vout::AbstractArray{S,1}) where S<:Number
 			Hrshp = reshape(Vout,K_dims)
-			@tensoropt((d,f), Hrshp[a,b,c] = Gi[y,a,d]*Hi[z,c,f]*Amid_tensor[y,b,e,z]*reshape(V,K_dims)[d,e,f] + Gi[y,d,a]*Hi[z,f,c]*Amid_tensor[y,e,b,z]*reshape(V,K_dims)[d,e,f])
+			@tensoropt((a,c,d,f), Hrshp[a,b,c] = Gi[y,a,d]*Hi[z,c,f]*Amid_tensor[y,b,e,z]*reshape(V,K_dims)[d,e,f] + Gi[y,d,a]*Hi[z,f,c]*Amid_tensor[y,e,b,z]*reshape(V,K_dims)[d,e,f])
 			return 0.5*Vout::AbstractArray{S,1}
 		end
 		r = lobpcg(LinearMap(K_matfree,prod(K_dims);ishermitian = true),false,copy(V0[:]),3;maxiter=maxiter,tol=tol)
