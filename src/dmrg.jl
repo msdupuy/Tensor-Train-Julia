@@ -139,7 +139,7 @@ function K_eigmin(Gi::AbstractArray{T,3},Hi::AbstractArray{T,3},V0::AbstractArra
 			@tensoropt((a,c,d,f), Hrshp[a,b,c] = Gi[y,a,d]*Hi[z,c,f]*Amid_tensor[y,b,e,z]*reshape(V,K_dims)[d,e,f] + Gi[y,d,a]*Hi[z,f,c]*Amid_tensor[y,e,b,z]*reshape(V,K_dims)[d,e,f])
 			return 0.5*Vout::AbstractArray{S,1}
 		end
-		r = eigsolve(LinearMap{T}(K_matfree,prod(K_dims);issymmetric = true),copy(V0[:]),1,:SR,issymmetric=true,tol=tol,maxiter=maxiter)
+		r = eigsolve(LinearMap{Complex{T}}(K_matfree,prod(K_dims);ishermitian = true),copy(V0[:]),1,:SR,ishermitian=true,tol=tol,maxiter=maxiter)
 #		r = lobpcg(LinearMap(K_matfree,prod(K_dims);ishermitian = true),false,copy(V0[:]),3;maxiter=maxiter,tol=tol)
 #		return r.λ[1]::Float64, reshape(r.X[:,1],K_dims)::Array{T,3}
 		@assert abs(imag(r[1])) <1e-12
