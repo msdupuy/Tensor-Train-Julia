@@ -1,5 +1,6 @@
 using LinearMaps
 using TensorOperations
+using KrylovKit
 
 """
 Implementation based on the presentation in 
@@ -132,14 +133,18 @@ function K_eigmin(Gi::AbstractArray{T,3},Hi::AbstractArray{T,3},V0::AbstractArra
 	Gtemp = @view(Gi[:,1:K_dims[1],1:K_dims[1]])
 	Htemp = @view(Hi[:,1:K_dims[3],1:K_dims[3]])
 	if it_solver || prod(K_dims) > itslv_thresh
-		Vout = zeros(T,prod(K_dims))
+		Vout = zeros(Complex{T},prod(K_dims))
 		function K_matfree(V::AbstractArray{S,1};Gi=Gtemp::AbstractArray{S,3},Hi=Htemp::AbstractArray{S,3},K_dims=K_dims::NTuple{3,Int},Amid_tensor=Amid_tensor::AbstractArray{S,4},Vout=Vout::AbstractArray{S,1}) where S<:Number
 			Hrshp = reshape(Vout,K_dims)
 			@tensoropt((a,c,d,f), Hrshp[a,b,c] = Gi[y,a,d]*Hi[z,c,f]*Amid_tensor[y,b,e,z]*reshape(V,K_dims)[d,e,f] + Gi[y,d,a]*Hi[z,f,c]*Amid_tensor[y,e,b,z]*reshape(V,K_dims)[d,e,f])
 			return 0.5*Vout::AbstractArray{S,1}
 		end
-		r = lobpcg(LinearMap(K_matfree,prod(K_dims);ishermitian = true),false,copy(V0[:]),3;maxiter=maxiter,tol=tol)
-		return r.λ[1]::Float64, reshape(r.X[:,1],K_dims)::Array{T,3}
+		r = eigsolve(LinearMap{T}(K_matfree,prod(K_dims);issymmetric = true),copy(V0[:]),1,:SR,issymmetric=true,tol=tol,maxiter=maxiter)
+#		r = lobpcg(LinearMap(K_matfree,prod(K_dims);ishermitian = true),false,copy(V0[:]),3;maxiter=maxiter,tol=tol)
+#		return r.λ[1]::Float64, reshape(r.X[:,1],K_dims)::Array{T,3}
+		@assert abs(imag(r[1])) <1e-12
+		@assert norm(imag.(r[2])) <1e-12
+		return real(r[1])::Float64, reshape(real.(r[2]),K_dims)::Array{T,3}
 	else
 		K = K_full(Gtemp,Htemp,Amid_tensor)
 		F = eigen(K,1:1)
