@@ -160,7 +160,7 @@ function hV_to_mpo(h::AbstractArray{T,2},V::Array{T,4};tol=1e-8::Float64,n_rnd=2
     #Precomputation of creation and annihilation operators
     tto_crea = [tto_creation(i,L) for i in 1:L]
     tto_anni = [tto_annihilation(i,L) for i in 1:L]
-    for i in findall(!iszero,h)
+    for i in findall(x->!isapprox(x,0.0,atol=1e-12),h)
         H = tto_crea[i[1]]*tto_anni[i[2]]
         A = A+h[i]*H
         if i_rnd > n_rnd 
@@ -170,7 +170,7 @@ function hV_to_mpo(h::AbstractArray{T,2},V::Array{T,4};tol=1e-8::Float64,n_rnd=2
             i_rnd+=1
         end
     end
-    for i in findall(!iszero,V)
+    for i in findall(x->!isapprox(x,0.0,atol=1e-12),V)
         H = tto_crea[i[1]]*tto_crea[i[2]]*tto_anni[i[3]]*tto_anni[i[4]]
         A = A+V[i]*H
         if i_rnd > n_rnd 

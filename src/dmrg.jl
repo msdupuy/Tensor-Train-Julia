@@ -332,7 +332,7 @@ function dmrg_eigsolv(A :: TToperator{T},
 		end
 		# First half sweep
 		for i = 1:(d-N)
-			println("Forward sweep: core optimization $i out of $(d-N+1)")
+			println("Forward sweep: core optimization $i out of $(d-N)")
 			# Define V as solution of K V= λ V for smallest λ
 			λ,V = K_eigmin(G[i],H[i],V0, Amid_list[i]; it_solver=it_solver, maxiter=linsolv_maxiter,tol=linsolv_tol,itslv_thresh=itslv_thresh)
 			println("Eigenvalue: $λ")
@@ -350,7 +350,7 @@ function dmrg_eigsolv(A :: TToperator{T},
 
 		# Second half sweep
 		for i = d-N+1:(-1):2
-			println("Backward sweep: core optimization $(i) out of $(d-N+1)")
+			println("Backward sweep: core optimization $(i-1) out of $(d-N)")
 			# Define V as solution of K*x=P2b in x
 			λ,V = K_eigmin(G[i],H[i],V0,Amid_list[i] ;it_solver=it_solver,maxiter=linsolv_maxiter,tol=linsolv_tol,itslv_thresh=itslv_thresh)
 			println("Eigenvalue: $λ")
