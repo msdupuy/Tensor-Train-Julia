@@ -50,7 +50,7 @@ function init_X(rks;random=false)
 end
 
 #N = number of sweeps to optimize the matrices
-function ttcore_norm_minimization(x_tt::TTvector{T};N=6,X=init_X(x_tr.ttv_rks)) where {T<:Number}
+function ttcore_norm_minimization(x_tt::TTvector{T};N=6,X=init_X(x_tt.ttv_rks)) where {T<:Number}
     d = x_tt.N
     cost = zeros(N+1)
     cost[1] = norm_tt(x_tt)
@@ -88,7 +88,7 @@ function ttcore_norm_minimization(x_tt::TTvector{T};N=6,X=init_X(x_tr.ttv_rks)) 
     return y_tt, cost
 end
 
-function trcore_norm_minimization(x_tt::TRvector{T};N=6,X=init_X(x_tr.ttv_rks)) where {T<:Number}
+function trcore_norm_minimization(x_tt::TRvector{T};N=6,X=init_X(x_tt.ttv_rks)) where {T<:Number}
     d = x_tt.N
     cost = zeros(N+1)
     cost[1] = norm_tt(x_tt)
@@ -133,7 +133,6 @@ end
 function invariant(x_tt::Union{TRvector{T},TTvector{T}}) where {T<:Number}
     d = x_tt.N
     for i in 1:d-1
-        println(i)
         @assert isapprox(conv_criterion(x_tt,i),0.0,atol=1e-10)
     end
     D = Array{Array{Float64,1},1}(undef,d-1)
