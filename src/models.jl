@@ -154,15 +154,20 @@ h and V have to be Symmetric
 function hV_to_mpo(h::AbstractArray{T,2},V::Array{T,4};tol=1e-8::Float64,n_rnd=20::Int) where T<:Number
     L = size(h,1)
     @assert issymmetric(h)
-    @assert isapprox(V,permutedims(V,(2,1,4,3)))
+#    @assert isapprox(V,permutedims(V,(2,1,4,3)))
     A = zeros_tto(2*ones(Int64,L),ones(Int64,L+1),T=T)
     i_rnd = 1
     #Precomputation of creation and annihilation operators
     tto_crea = [tto_creation(i,L) for i in 1:L]
     tto_anni = [tto_annihilation(i,L) for i in 1:L]
     for i in findall(x->!isapprox(x,0.0,atol=1e-12),h)
-        H = tto_crea[i[1]]*tto_anni[i[2]]
-        A = A+h[i]*H
+        if i[1]<i[2]
+            H = tto_crea[i[1]]*tto_anni[i[2]] + tto_crea[i[2]]*tto_anni[i[1]]
+            A = A+h[i]*H
+        elseif i[1]==i[2]
+            H = tto_crea[i[1]]*tto_anni[i[2]]
+            A = A+h[i]*H
+        end
         if i_rnd > n_rnd 
             A = tt_rounding(A,tol=tol)
             i_rnd = 1
@@ -171,8 +176,13 @@ function hV_to_mpo(h::AbstractArray{T,2},V::Array{T,4};tol=1e-8::Float64,n_rnd=2
         end
     end
     for i in findall(x->!isapprox(x,0.0,atol=1e-12),V)
-        H = tto_crea[i[1]]*tto_crea[i[2]]*tto_anni[i[3]]*tto_anni[i[4]]
-        A = A+V[i]*H
+        if (i[1],i[2])<(i[4],i[3]) 
+            H = tto_crea[i[1]]*tto_crea[i[2]]*tto_anni[i[3]]*tto_anni[i[4]]+tto_crea[i[4]]*tto_crea[i[3]]*tto_anni[i[2]]*tto_anni[i[1]]
+            A = A+V[i]*H
+        elseif (i[1],i[2])==(i[4],i[3])
+            H = tto_crea[i[1]]*tto_crea[i[2]]*tto_anni[i[3]]*tto_anni[i[4]]
+            A = A+V[i]*H
+        end
         if i_rnd > n_rnd 
             A = tt_rounding(A,tol=tol)
             i_rnd = 1
@@ -293,8 +303,8 @@ function PPP_C_NH_N(N;β=-2.5/27.2113845,b=1.4*1.8897259886,γ0=10.84/27.2113845
             Htemp = Hi*Hj
             γij = 1/(1/γ0+b*sin(pi/N*mod(i-j,N))/sin(pi/N))
             H_tto = H_tto + 0.5*γij*Htemp
-            H_tto = tt_rounding(H_tto,tol=tol)
         end
+        H_tto = tt_rounding(H_tto,tol=tol)
     end
     return H_tto
 end

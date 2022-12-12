@@ -130,10 +130,10 @@ function conv_criterion(x_tt::Union{TRvector{T},TTvector{T}},i::Integer) where {
     return norm(A'*A-B'*B)
 end
 
-function invariant(x_tt::Union{TRvector{T},TTvector{T}}) where {T<:Number}
+function invariant(x_tt::Union{TRvector{T},TTvector{T}};ε=1e-6) where {T<:Number}
     d = x_tt.N
     for i in 1:d-1
-        @assert isapprox(conv_criterion(x_tt,i),0.0,atol=1e-10)
+        @assert isapprox(conv_criterion(x_tt,i),0.0,atol=ε)
     end
     D = Array{Array{Float64,1},1}(undef,d-1)
     for i in 1:d-1
@@ -143,11 +143,12 @@ function invariant(x_tt::Union{TRvector{T},TTvector{T}}) where {T<:Number}
     return D
 end
 
-d = 6
-dims = 2*ones(Int64,d)
+d = 10
+n = 3
+dims = n*ones(Int64,d)
 rks = ones(Int64,d+1)
 for i in 2:d
-    rks[i] = min(2^(i-1),2^(d+1-i))
+    rks[i] = min(n^(i-1),n^(d+1-i),1024)
 end
 
 #TT tests
@@ -157,7 +158,7 @@ x = ttv_to_tensor(x_tt)
 hsv = tt_svdvals(x_tt)
 x_v = tt_to_vidal(x_tt)
 
-ytt, cost_list = ttcore_norm_minimization(x_tt,N=100)
+ytt, cost_list = ttcore_norm_minimization(x_tt,N=200)
 y = ttv_to_tensor(ytt)
 
 #TR tests
