@@ -62,17 +62,20 @@ function orthogonalize(x_tt::TTvector{T};i=1::Int) where {T<:Number}
 		y_tt.ttv_ot[j]=-1
 		y_vectemp = reshape(permutedims(y_tt.ttv_vec[j],[2,1,3]),y_tt.ttv_rks[j],y_tt.ttv_dims[j]*y_tt.ttv_rks[j+1])
 		F = lq(y_vectemp)
+		y_tt.ttv_rks[j] = size(Matrix(F.Q),1)
 		y_tt.ttv_vec[j] = permutedims(reshape(Matrix(F.Q)[1:y_tt.ttv_rks[j],:],y_tt.ttv_rks[j],x_tt.ttv_dims[j],y_tt.ttv_rks[j+1]),[2 1 3])
+		y_tt_temp = copy(y_tt.ttv_vec[j-1])
+		y_tt.ttv_vec[j-1] = zeros(T,x_tt.ttv_dims[j],y_tt.ttv_rks[j-1],y_tt.ttv_rks[j])
 		@threads for k in 1:x_tt.ttv_dims[j]
-			y_tt.ttv_vec[j-1][k,:,:] = y_tt.ttv_vec[j-1][k,:,:]*F.L[1:y_tt.ttv_rks[j],1:y_tt.ttv_rks[j]]
+			y_tt.ttv_vec[j-1][k,:,:] = y_tt_temp[k,:,:]*F.L[:,1:y_tt.ttv_rks[j]]
 		end
 	end
 	return y_tt
 end
 
 function cut_off_index(s::Array{T}, tol::Float64; degen_tol=1e-10) where {T<:Number}
-	k = length(s.>norm(s)*tol)
-	while k<length(s) && isapprox(s[k],s[k+1];rtol=degen_tol)
+	k = sum(s.>norm(s)*tol)
+	while k<length(s) && isapprox(s[k],s[k+1];rtol=degen_tol, atol=degen_tol)
 		k = k+1
 	end
 	return k
