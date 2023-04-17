@@ -38,12 +38,12 @@ function init_X(rks;random=false)
     d = length(rks)
     X = Array{Array{Float64,2}}(undef,d)
     if random
-        for i in eachindex(rks)
+        for i in eachindex(X)
            X[i] = rand_inv(rks[i])
         end
     else
-        for i in eachindex(rks)
-           X[i] = Matrix{Float64}(I,x_tt.ttv_rks[i],x_tt.ttv_rks[i])
+        for i in eachindex(X)
+           X[i] = Matrix{Float64}(I,rks[i],rks[i])
         end
     end
     return X
@@ -143,12 +143,12 @@ function invariant(x_tt::Union{TRvector{T},TTvector{T}};ε=1e-6) where {T<:Numbe
     return D
 end
 
-d = 10
+L = 10
 n = 3
-dims = n*ones(Int64,d)
-rks = ones(Int64,d+1)
-for i in 2:d
-    rks[i] = min(n^(i-1),n^(d+1-i),1024)
+dims = n*ones(Int64,L)
+rks = ones(Int64,L+1)
+for i in 2:L
+    rks[i] = min(n^(i-1),n^(L+1-i),1024)
 end
 
 #TT tests
@@ -158,7 +158,7 @@ x = ttv_to_tensor(x_tt)
 hsv = tt_svdvals(x_tt)
 x_v = tt_to_vidal(x_tt)
 
-ytt, cost_list = ttcore_norm_minimization(x_tt,N=200)
+ytt, cost_list = ttcore_norm_minimization(x_tt,N=150)
 y = ttv_to_tensor(ytt)
 
 #TR tests
