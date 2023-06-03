@@ -21,15 +21,15 @@ function +(x::TTvector{T},y::TTvector{T}) where {T<:Number}
     end
    #first core 
     ttv_vec[1][:,:,1:x.ttv_rks[2]] = x.ttv_vec[1]
-    ttv_vec[1][:,:,(x.ttv_rks[2]+1):rks[2]] = y.ttv_vec[1]
+    ttv_vec[1][:,:,(y.ttv_rks[2]+1):rks[2]] = y.ttv_vec[1]
     #2nd to end-1 cores
     @threads for k in 2:(d-1)
         ttv_vec[k][:,1:x.ttv_rks[k],1:x.ttv_rks[k+1]] = x.ttv_vec[k]
-        ttv_vec[k][:,(x.ttv_rks[k]+1):rks[k],(x.ttv_rks[k+1]+1):rks[k+1]] = y.ttv_vec[k]
+        ttv_vec[k][:,(y.ttv_rks[k]+1):rks[k],(y.ttv_rks[k+1]+1):rks[k+1]] = y.ttv_vec[k]
     end
     #last core
     ttv_vec[d][:,1:x.ttv_rks[d],1] = x.ttv_vec[d]
-    ttv_vec[d][:,(x.ttv_rks[d]+1):rks[d],1] = y.ttv_vec[d]
+    ttv_vec[d][:,(y.ttv_rks[d]+1):rks[d],1] = y.ttv_vec[d]
     return TTvector{T}(d,ttv_vec,x.ttv_dims,rks,zeros(d))
 end
 
