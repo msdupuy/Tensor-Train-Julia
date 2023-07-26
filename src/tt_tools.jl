@@ -101,12 +101,13 @@ end
 """
 Returns a random TTvector with dimensions `dims` and ranks `rks`
 """
-function rand_tt(dims,rks;T=Float64)
+function rand_tt(dims,rks;T=Float64,normalise=false)
 	@assert length(dims)+1==length(rks) "Dimensions and ranks are not compatible"
 	d = length(dims)
 	tt_vec = Array{Array{T,3}}(undef,d)
 	for i in eachindex(tt_vec) 
 		tt_vec[i] = randn(T,dims[i],rks[i],rks[i+1])
+		normalise && tt_vec[i] *=1/(rks[i]*rks[i+1])
 	end
 	return TTvector{T}(d,tt_vec,dims,copy(rks),zeros(Int,d))
 end
