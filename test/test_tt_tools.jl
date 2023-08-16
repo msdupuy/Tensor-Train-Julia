@@ -1,5 +1,6 @@
 using Test
 using LinearAlgebra
+using TensorTrains
 
 @testset "tt_up_rks" begin
 	x = randn(4,4,4,4)
