@@ -1,5 +1,14 @@
 using Base.Threads
 using LinearAlgebra
+import LinearAlgebra.norm
+
+function r_and_d_to_rks(rks,dims;rmax=prod(dims))
+	new_rks = ones(eltype(rks),length(rks)) 
+	for i in eachindex(dims)
+		new_rks[i] = min(rks[i],prod(dims[1:i-1]),prod(dims[i:end]),rmax)
+	end
+	return new_rks
+end
 
 #local ttvec rank increase function with noise ϵ_wn
 function tt_up_rks_noise(tt_vec,tt_ot_i,rkm,rk,ϵ_wn)
@@ -53,9 +62,12 @@ function orthogonalize(x_tt::TTvector{T};i=1::Int) where {T<:Number}
 		y_tt.ttv_ot[j]=1
 		y_vectemp = reshape(y_tt.ttv_vec[j],y_tt.ttv_dims[j]*y_tt.ttv_rks[j],y_tt.ttv_rks[j+1])
 		F = qr(y_vectemp)
+		y_tt.ttv_rks[j+1] = size(Matrix(F.Q),2)
 		y_tt.ttv_vec[j] = reshape(Matrix(F.Q)[:,1:y_tt.ttv_rks[j+1]],x_tt.ttv_dims[j],y_tt.ttv_rks[j],y_tt.ttv_rks[j+1])
+		y_tt_temp = copy(y_tt.ttv_vec[j+1])
+		y_tt.ttv_vec[j+1] = zeros(T,x_tt.ttv_dims[j],y_tt.ttv_rks[j+1],y_tt.ttv_rks[j+2])
 		@threads for k in 1:x_tt.ttv_dims[j]
-			y_tt.ttv_vec[j+1][k,:,:] = F.R[1:y_tt.ttv_rks[j+1],1:y_tt.ttv_rks[j+1]]*y_tt.ttv_vec[j+1][k,:,:]
+			y_tt.ttv_vec[j+1][k,:,:] = F.R[1:y_tt.ttv_rks[j+1],:]*y_tt_temp[k,:,:]
 		end
 	end
 	for j in d:-1:i+1
@@ -81,10 +93,19 @@ function cut_off_index(s::Array{T}, tol::Float64; degen_tol=1e-10) where {T<:Num
 	return k
 end
 
+function LinearAlgebra.norm(v::TTvector)
+	if length(findall(v.ttv_ot.==0))==1 #orthogonalized TTvector
+		return norm(v.ttv_vec[findfirst(v.ttv_ot.==0)])
+	else 
+		w = orthogonalize(v;i=v.N)
+		return norm(w.ttv_vec[end])
+	end
+end
+
 """
 returns a TT representation where the singular values lower than tol are discarded
 """
-function tt_rounding(x_tt::TTvector{T};tol=1e-12) where {T<:Number}
+function tt_rounding(x_tt::TTvector{T};tol=1e-12,rmax=max(prod(x_tt.ttv_dims[1:floor(Int,x_tt.N/2)]),prod(x_tt.ttv_dims[ceil(Int,x_tt.N/2):end]))) where {T<:Number}
 	d = x_tt.N
 	y_rks = copy(x_tt.ttv_rks)
 	y_vec = copy(x_tt.ttv_vec)
@@ -92,7 +113,7 @@ function tt_rounding(x_tt::TTvector{T};tol=1e-12) where {T<:Number}
 		A = zeros(T,x_tt.ttv_dims[j],y_rks[j],x_tt.ttv_dims[j+1],y_rks[j+2])
 		@tensor A[a,b,c,d] = y_vec[j][a,b,z]*y_vec[j+1][c,z,d]
 		u,s,v = svd(reshape(A,size(A,1)*size(A,2),:),full=false)
-		k = cut_off_index(s,tol)
+		k = min(cut_off_index(s,tol),rmax)
 		Σ = s[1:k]
 		y_rks[j+1] = length(Σ)
 		y_vec[j] = reshape(u[:,1:k],x_tt.ttv_dims[j],y_rks[j],:)
@@ -102,7 +123,7 @@ function tt_rounding(x_tt::TTvector{T};tol=1e-12) where {T<:Number}
 		A = zeros(T,x_tt.ttv_dims[j-1],y_rks[j-1],x_tt.ttv_dims[j],y_rks[j+1])
 		@tensor A[a,b,c,d] = y_vec[j-1][a,b,z]*y_vec[j][c,z,d]
 		u,s,v = svd(reshape(A,size(A,1)*size(A,2),:),full=false)
-		k = cut_off_index(s,tol)
+		k = min(cut_off_index(s,tol),rmax)
 		Σ = s[1:k]
 		y_rks[j] = length(Σ)
 		y_vec[j] = permutedims(reshape(v'[1:k,:],:,x_tt.ttv_dims[j],y_rks[j+1]),[2 1 3])
@@ -114,8 +135,8 @@ end
 """
 returns the rounding of the TT operator
 """
-function tt_rounding(A_tto::TToperator;tol=1e-12)
-	return ttv_to_tto(tt_rounding(tto_to_ttv(A_tto);tol=tol))
+function tt_rounding(A_tto::TToperator;tol=1e-12,rmax=max(prod(x_tt.ttv_dims[1:floor(Int,x_tt.N/2)]),prod(x_tt.ttv_dims[ceil(Int,x_tt.N/2):end])))
+	return ttv_to_tto(tt_rounding(tto_to_ttv(A_tto);tol=tol,rmax=rmax))
 end
 
 """
