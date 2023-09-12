@@ -106,30 +106,23 @@ end
 returns a TT representation where the singular values lower than tol are discarded
 """
 function tt_rounding(x_tt::TTvector{T};tol=1e-12,rmax=max(prod(x_tt.ttv_dims[1:floor(Int,x_tt.N/2)]),prod(x_tt.ttv_dims[ceil(Int,x_tt.N/2):end]))) where {T<:Number}
-	d = x_tt.N
-	y_rks = copy(x_tt.ttv_rks)
-	y_vec = copy(x_tt.ttv_vec)
-	for j in 1:d-1
-		A = zeros(T,x_tt.ttv_dims[j],y_rks[j],x_tt.ttv_dims[j+1],y_rks[j+2])
-		@tensor A[a,b,c,d] = y_vec[j][a,b,z]*y_vec[j+1][c,z,d]
-		u,s,v = svd(reshape(A,size(A,1)*size(A,2),:),full=false)
+	y_tt = orthogonalize(x_tt;i=x_tt.N)
+	y_temp = zeros(T,maximum(y_tt.ttv_dims),maximum(y_tt.ttv_rks),maximum(y_tt.ttv_rks))
+	for j in x_tt.N:-1:2
+		y_temp[1:y_tt.ttv_dims[j-1],1:y_tt.ttv_rks[j-1],1:y_tt.ttv_rks[j]] = y_tt.ttv_vec[j-1]
+		u,s,v = svd(reshape(permutedims(y_tt.ttv_vec[j],[2 1 3]),y_tt.ttv_rks[j],:),full=false)
 		k = min(cut_off_index(s,tol),rmax)
 		Σ = s[1:k]
-		y_rks[j+1] = length(Σ)
-		y_vec[j] = reshape(u[:,1:k],x_tt.ttv_dims[j],y_rks[j],:)
-		y_vec[j+1] = permutedims(reshape(Diagonal(Σ)*v'[1:k,:],:,x_tt.ttv_dims[j+1],y_rks[j+2]),[2 1 3])
+		y_tt.ttv_vec[j] = permutedims(reshape(v'[1:k,:],:,x_tt.ttv_dims[j],y_tt.ttv_rks[j+1]),[2 1 3])
+		y_tt.ttv_vec[j-1] = zeros(T,y_tt.ttv_dims[j-1],y_tt.ttv_rks[j-1],k)
+		@threads for i in 1:y_tt.ttv_dims[j-1]
+			y_tt.ttv_vec[j-1][i,:,:] = y_temp[i,1:y_tt.ttv_rks[j-1],1:y_tt.ttv_rks[j]]*u[:,1:k]*Diagonal(Σ)
+		end
+		y_tt.ttv_rks[j] = k
+		y_tt.ttv_ot[j] = 1
 	end
-	for j in d:-1:2
-		A = zeros(T,x_tt.ttv_dims[j-1],y_rks[j-1],x_tt.ttv_dims[j],y_rks[j+1])
-		@tensor A[a,b,c,d] = y_vec[j-1][a,b,z]*y_vec[j][c,z,d]
-		u,s,v = svd(reshape(A,size(A,1)*size(A,2),:),full=false)
-		k = min(cut_off_index(s,tol),rmax)
-		Σ = s[1:k]
-		y_rks[j] = length(Σ)
-		y_vec[j] = permutedims(reshape(v'[1:k,:],:,x_tt.ttv_dims[j],y_rks[j+1]),[2 1 3])
-		y_vec[j-1] = reshape(u[:,1:k]*Diagonal(Σ),x_tt.ttv_dims[j-1],y_rks[j-1],:)
-	end
-	return TTvector{T}(d,y_vec,x_tt.ttv_dims,y_rks,vcat(0,ones(Int64,d-1)))
+	y_tt.ttv_ot[1] = 0
+	return y_tt
 end
 
 """
