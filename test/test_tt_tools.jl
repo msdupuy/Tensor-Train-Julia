@@ -45,6 +45,17 @@ end
     @test(isapprox(reshape(tto_to_tensor(A_tto),n^d,:),A))
 end
 
+@testset "TT orthogonalize" begin
+    dims = 2*ones(Int,8)
+    rks = [1,2,4,8,8,8,4,2,1]
+    x_tt = rand_tt(dims,rks)
+    y_tt = orthogonalize(x_tt)
+    i = rand(2:8)
+    @test(isapprox(sum(y_tt.ttv_vec[i][k,:,:]*y_tt.ttv_vec[i][k,:,:]' for k in 1:dims[i]),Matrix(I,rks[i],rks[i])))
+    @test(size(y_tt.ttv_vec[i])==(dims[i],rks[i],rks[i+1]))
+    @test(isapprox(ttv_to_tensor(x_tt),ttv_to_tensor(y_tt)))
+end
+
 @testset "TT rounding" begin
     n=5
     d=3
@@ -57,17 +68,6 @@ end
     @test(isapprox(ttv_to_tensor(tt_rounding(y_tt))[:],y))
     @test(isapprox(dot(x_tt,y_tt),dot(x[:],y)))
 #    @test(isapprox(ttv_to_tensor(tt_compression_par(y_tt))[:],y))
-end
-
-@testset "TT orthogonalize" begin
-    dims = 2*ones(Int,8)
-    rks = [1,2,4,8,8,8,4,2,1]
-    x_tt = rand_tt(dims,rks)
-    y_tt = orthogonalize(x_tt)
-    i = rand(2:8)
-    @test(isapprox(sum(y_tt.ttv_vec[i][k,:,:]*y_tt.ttv_vec[i][k,:,:]' for k in 1:dims[i]),Matrix(I,rks[i],rks[i])))
-    @test(size(y_tt.ttv_vec[i])==(dims[i],rks[i],rks[i+1]))
-    @test(isapprox(ttv_to_tensor(x_tt),ttv_to_tensor(y_tt)))
 end
 
 @testset "Vidal" begin
