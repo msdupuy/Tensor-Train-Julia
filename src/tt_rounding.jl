@@ -56,31 +56,39 @@ returns the orthogonalized TTvector with root i
 function orthogonalize(x_tt::TTvector{T};i=1::Int) where {T<:Number}
 	d = x_tt.N
 	@assert(1≤i≤d, DimensionMismatch("Impossible orthogonalization"))
-	y_tt = copy(x_tt)
-	y_tt.ttv_ot[i]=0
+	y_rks = r_and_d_to_rks(x_tt.ttv_rks,x_tt.ttv_dims)
+	y_tt = zeros_tt(x_tt.ttv_dims,y_rks;T=T)
+	FR = ones(T,1,1)
+	yleft_temp = zeros(T,maximum(x_tt.ttv_dims),maximum(y_tt.ttv_rks),maximum(x_tt.ttv_rks))
 	for j in 1:i-1
 		y_tt.ttv_ot[j]=1
-		y_vectemp = reshape(y_tt.ttv_vec[j],y_tt.ttv_dims[j]*y_tt.ttv_rks[j],y_tt.ttv_rks[j+1])
-		F = qr(y_vectemp)
+#		 reshape(kron(FR,Matrix{T}(I,x_tt.ttv_dims[j],x_tt.ttv_dims[j]))*reshape(x_tt.ttv_vec[j],x_tt.ttv_dims[j]*x_tt.ttv_rks[j],x_tt.ttv_rks[j+1]),x_tt.ttv_dims[j],y_tt.ttv_rks[j],x_tt.ttv_rks[j+1]) #zeros(T,x_tt.ttv_dims[j],y_tt.ttv_rks[j],x_tt.ttv_rks[j+1])
+#		yleft_temp =zeros(T,x_tt.ttv_dims[j],y_tt.ttv_rks[j],x_tt.ttv_rks[j+1])
+		@threads for k in 1:x_tt.ttv_dims[j]
+			@views yleft_temp[1:x_tt.ttv_dims[j],1:y_tt.ttv_rks[j],1:x_tt.ttv_rks[j+1]][k,:,:] = FR*x_tt.ttv_vec[j][k,:,:]
+		end
+		F = qr(reshape(yleft_temp[1:x_tt.ttv_dims[j],1:y_tt.ttv_rks[j],1:x_tt.ttv_rks[j+1]],x_tt.ttv_dims[j]*y_tt.ttv_rks[j],:))
 		y_tt.ttv_rks[j+1] = size(Matrix(F.Q),2)
 		y_tt.ttv_vec[j] = reshape(Matrix(F.Q)[:,1:y_tt.ttv_rks[j+1]],x_tt.ttv_dims[j],y_tt.ttv_rks[j],y_tt.ttv_rks[j+1])
-		y_tt_temp = copy(y_tt.ttv_vec[j+1])
-		y_tt.ttv_vec[j+1] = zeros(T,x_tt.ttv_dims[j],y_tt.ttv_rks[j+1],y_tt.ttv_rks[j+2])
-		@threads for k in 1:x_tt.ttv_dims[j]
-			y_tt.ttv_vec[j+1][k,:,:] = F.R[1:y_tt.ttv_rks[j+1],:]*y_tt_temp[k,:,:]
-		end
+		FR = F.R[1:y_tt.ttv_rks[j+1],:]
 	end
+	FL = ones(T,1,1)
+	yright_temp = zeros(T,maximum(x_tt.ttv_dims),maximum(x_tt.ttv_rks),maximum(y_tt.ttv_rks))
 	for j in d:-1:i+1
 		y_tt.ttv_ot[j]=-1
-		y_vectemp = reshape(permutedims(y_tt.ttv_vec[j],[2,1,3]),y_tt.ttv_rks[j],y_tt.ttv_dims[j]*y_tt.ttv_rks[j+1])
-		F = lq(y_vectemp)
+#		yright_temp = zeros(T,x_tt.ttv_dims[j],x_tt.ttv_rks[j],y_tt.ttv_rks[j+1])
+		@threads for k in 1:x_tt.ttv_dims[j]
+			@views yright_temp[1:x_tt.ttv_dims[j],1:x_tt.ttv_rks[j],1:y_tt.ttv_rks[j+1]][k,:,:] = x_tt.ttv_vec[j][k,:,:]*FL
+		end
+		F = lq(reshape(permutedims(yright_temp[1:x_tt.ttv_dims[j],1:x_tt.ttv_rks[j],1:y_tt.ttv_rks[j+1]],[2 1 3]),x_tt.ttv_rks[j],:))
 		y_tt.ttv_rks[j] = size(Matrix(F.Q),1)
 		y_tt.ttv_vec[j] = permutedims(reshape(Matrix(F.Q)[1:y_tt.ttv_rks[j],:],y_tt.ttv_rks[j],x_tt.ttv_dims[j],y_tt.ttv_rks[j+1]),[2 1 3])
-		y_tt_temp = copy(y_tt.ttv_vec[j-1])
-		y_tt.ttv_vec[j-1] = zeros(T,x_tt.ttv_dims[j],y_tt.ttv_rks[j-1],y_tt.ttv_rks[j])
-		@threads for k in 1:x_tt.ttv_dims[j]
-			y_tt.ttv_vec[j-1][k,:,:] = y_tt_temp[k,:,:]*F.L[:,1:y_tt.ttv_rks[j]]
-		end
+		FL = F.L[:,1:y_tt.ttv_rks[j]]
+	end
+	y_tt.ttv_ot[i]=0
+	y_tt.ttv_vec[i] = zeros(T,y_tt.ttv_dims[i],y_tt.ttv_rks[i],y_tt.ttv_rks[i+1])
+	@threads for k in 1:x_tt.ttv_dims[i]
+		y_tt.ttv_vec[i][k,:,:] = FR*x_tt.ttv_vec[i][k,:,:]*FL
 	end
 	return y_tt
 end
