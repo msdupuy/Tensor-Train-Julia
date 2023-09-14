@@ -4,7 +4,7 @@ import LinearAlgebra.norm
 
 function r_and_d_to_rks(rks,dims;rmax=prod(dims))
 	new_rks = ones(eltype(rks),length(rks)) 
-	for i in eachindex(dims)
+	@simd for i in eachindex(dims)
 		new_rks[i] = min(rks[i],prod(dims[1:i-1]),prod(dims[i:end]),rmax)
 	end
 	return new_rks
@@ -59,33 +59,29 @@ function orthogonalize(x_tt::TTvector{T};i=1::Int) where {T<:Number}
 	y_rks = r_and_d_to_rks(x_tt.ttv_rks,x_tt.ttv_dims)
 	y_tt = zeros_tt(x_tt.ttv_dims,y_rks;T=T)
 	FR = ones(T,1,1)
-	yleft_temp =zeros(T,maximum(x_tt.ttv_dims),maximum(y_tt.ttv_rks),maximum(x_tt.ttv_rks))
+	yleft_temp =zeros(T,maximum(y_tt.ttv_rks),maximum(x_tt.ttv_dims),maximum(x_tt.ttv_rks))
 	for j in 1:i-1
 		y_tt.ttv_ot[j]=1
-#		yleft_temp =zeros(T,x_tt.ttv_dims[j],y_tt.ttv_rks[j],x_tt.ttv_rks[j+1])
-		for k in 1:x_tt.ttv_dims[j]
-			yleft_temp[k,1:y_tt.ttv_rks[j],1:x_tt.ttv_rks[j+1]] = FR*x_tt.ttv_vec[j][k,:,:]
-		end
-		F = qr(reshape(yleft_temp[1:x_tt.ttv_dims[j],1:y_tt.ttv_rks[j],1:x_tt.ttv_rks[j+1]],x_tt.ttv_dims[j]*y_tt.ttv_rks[j],:))
+		@tensoropt((βⱼ₋₁,αⱼ),	yleft_temp[1:y_tt.ttv_rks[j],1:x_tt.ttv_dims[j],1:x_tt.ttv_rks[j+1]][αⱼ₋₁,iⱼ,αⱼ] = FR[αⱼ₋₁,βⱼ₋₁]*x_tt.ttv_vec[j][iⱼ,βⱼ₋₁,αⱼ])
+		F = qr(reshape(yleft_temp[1:y_tt.ttv_rks[j],1:x_tt.ttv_dims[j],1:x_tt.ttv_rks[j+1]],x_tt.ttv_dims[j]*y_tt.ttv_rks[j],:))
 		y_tt.ttv_rks[j+1] = size(Matrix(F.Q),2)
-		y_tt.ttv_vec[j] = reshape(Matrix(F.Q),x_tt.ttv_dims[j],y_tt.ttv_rks[j],y_tt.ttv_rks[j+1])
+		y_tt.ttv_vec[j] = permutedims(reshape(Matrix(F.Q),y_tt.ttv_rks[j],x_tt.ttv_dims[j],y_tt.ttv_rks[j+1]),[2 1 3])
 		FR = F.R[1:y_tt.ttv_rks[j+1],:]
 	end
 	FL = ones(T,1,1)
+	(i<x_tt.N) && (yright_temp =zeros(T,maximum(x_tt.ttv_rks),maximum(y_tt.ttv_rks),maximum(x_tt.ttv_dims)))
 	for j in d:-1:i+1
 		y_tt.ttv_ot[j]=-1
-		yright_temp = zeros(T,x_tt.ttv_dims[j],x_tt.ttv_rks[j],y_tt.ttv_rks[j+1])
-		for k in 1:x_tt.ttv_dims[j]
-			yright_temp[k,:,:] = x_tt.ttv_vec[j][k,:,:]*FL
-		end
-		F = lq(reshape(permutedims(yright_temp,[2 1 3]),x_tt.ttv_rks[j],:))
+		yright_temp = zeros(T,x_tt.ttv_rks[j],y_tt.ttv_rks[j+1],x_tt.ttv_dims[j])
+		@tensoropt((αⱼ₋₁,αⱼ),	yright_temp[1:x_tt.ttv_rks[j],1:y_tt.ttv_rks[j+1],1:x_tt.ttv_dims[j]][αⱼ₋₁,βⱼ,iⱼ] = x_tt.ttv_vec[j][iⱼ,αⱼ₋₁,αⱼ]*FL[αⱼ,βⱼ])
+		F = lq(reshape(yright_temp[1:x_tt.ttv_rks[j],1:y_tt.ttv_rks[j+1],1:x_tt.ttv_dims[j]],x_tt.ttv_rks[j],:))
 		y_tt.ttv_rks[j] = size(Matrix(F.Q),1)
-		y_tt.ttv_vec[j] = permutedims(reshape(Matrix(F.Q)[1:y_tt.ttv_rks[j],:],y_tt.ttv_rks[j],x_tt.ttv_dims[j],y_tt.ttv_rks[j+1]),[2 1 3])
+		y_tt.ttv_vec[j] = permutedims(reshape(Matrix(F.Q),y_tt.ttv_rks[j],y_tt.ttv_rks[j+1],x_tt.ttv_dims[j]),[3 1 2])
 		FL = F.L[:,1:y_tt.ttv_rks[j]]
 	end
 	y_tt.ttv_ot[i]=0
 	y_tt.ttv_vec[i] = zeros(T,y_tt.ttv_dims[i],y_tt.ttv_rks[i],y_tt.ttv_rks[i+1])
-	for k in 1:x_tt.ttv_dims[i]
+	@simd for k in 1:x_tt.ttv_dims[i]
 		y_tt.ttv_vec[i][k,:,:] = FR*x_tt.ttv_vec[i][k,:,:]*FL
 	end
 	return y_tt
@@ -117,12 +113,7 @@ function tt_rounding(x_tt::TTvector{T};tol=1e-12,rmax=max(prod(x_tt.ttv_dims[1:f
 		u,s,v = svd(reshape(permutedims(y_tt.ttv_vec[j],[2 1 3]),y_tt.ttv_rks[j],:),full=false)
 		k = min(cut_off_index(s,tol),rmax)
 		y_tt.ttv_vec[j] = permutedims(reshape(v'[1:k,:],:,x_tt.ttv_dims[j],y_tt.ttv_rks[j+1]),[2 1 3])
-#		y_temp = y_tt.ttv_vec[j-1]
 		y_tt.ttv_vec[j-1] = reshape(reshape(y_tt.ttv_vec[j-1],y_tt.ttv_dims[j-1]*y_tt.ttv_rks[j-1],:)*u[:,1:k]*Diagonal(s[1:k]),y_tt.ttv_dims[j-1],y_tt.ttv_rks[j-1],:)
-#		y_tt.ttv_vec[j-1] = zeros(T,y_tt.ttv_dims[j-1],y_tt.ttv_rks[j-1],k)
-#		@threads for i in 1:y_tt.ttv_dims[j-1]
-#			y_tt.ttv_vec[j-1][i,:,:] = y_temp[i,:,:]*u[:,1:k]*Diagonal(s[1:k]) 
-#		end
 		y_tt.ttv_rks[j] = k
 		y_tt.ttv_ot[j] = 1
 	end
