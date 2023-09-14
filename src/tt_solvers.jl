@@ -1,4 +1,50 @@
 """
+Gradient descent with fixed step and periodic TT rounding
+"""
+
+function gradient_fixed_step(A,b,α;x0=copy(b), Imax=100, tol_gd=1e-6, i_trunc = 5, eps_tt = 1e-4, r_tt = 512, rand_rounding=false, verbose=false)
+    i=1
+    x=copy(x0)
+    p = A*x-b
+    resid = zeros(Imax)
+    resid[1] = norm(p)
+    it_trunc = 1
+    x_rks = x.ttv_rks
+    p_rks = x.ttv_rks
+    while i<Imax && resid[i] > (tol_gd+eps_tt)*resid[1]
+       i+=1
+       x = x - α*p
+       p = A*x-b
+       if verbose
+        println("Iteration: "*string(i))
+        println("TT rank p: "*string(maximum(p.ttv_rks)))
+        println("TT rank x: "*string(maximum(x.ttv_rks))*"\n")
+       end
+       if (it_trunc == i_trunc) || (max(maximum(p.ttv_rks),maximum(x.ttv_rks)) > r_tt)
+          if rand_rounding
+            x = ttrand_rounding(x,rks=2*x_rks,rmax=r_tt)
+            p = ttrand_rounding(p,rks=2*p_rks,rmax=r_tt)
+          end
+            x = tt_rounding(x;tol = eps_tt,rmax=r_tt)
+            p = tt_rounding(p;tol = eps_tt,rmax=r_tt)
+            it_trunc = 1
+            if rand_rounding
+                if maximum(x.ttv_rks) ≥ 2maximum(x_rks)
+                    x_rks = x.ttv_rks
+                end
+                if maximum(p.ttv_rks) ≥ 2maximum(p_rks)
+                    p_rks = p.ttv_rks
+                end
+            end
+       else 
+          it_trunc +=1 
+       end
+       resid[i] = norm(p)
+    end
+    return x, resid[1:i]
+ end
+
+"""
 TT version of the restarted GMRES algorithm
 """
 
@@ -162,4 +208,42 @@ function init_adapt(A::TToperator,b::TTvector)
     end
     println(opt_rks)
     return init(A,b,opt_rks)
+end
+
+function arnoldi(A::TToperator,m;v::TTvector{T}) where T
+    H = UpperHessenberg(zeros(T,m+1,m+1))
+    V = Array{TTvector,1}(undef,m+1)
+    V[1] = v/norm(v)
+    for j in 1:m 
+      w = dot_randrounding(A,V[j])
+      for i in 1:j 
+        H[i,j] = dot(V[i],w) #modified GS
+        w = w-H[i,j]*V[i]
+      end
+      w = ttrand_rounding(w)
+      H[j+1,j] = norm(w)
+      V[j+1] = 1/H[j+1,j]*w
+    end
+    return H[1:m,1:m],V[1:m],H[m+1,m] 
+end
+
+function eig_arnoldi(A::TToperator{T},m,v::TTvector{T};Imax=100,ε=1e-6) where T
+    i = 1
+    H,V,h = arnoldi(A,m,v=v)
+    F = eigen(H)
+    k = argmax(abs.(F.values))
+    λ = F.values[k]
+    v = V*F.vectors[:,k] #largest eigenvalue
+    while (i<Imax) && abs(h)>ε
+      if eltype(v) == ComplexF64
+        A = complex(A)
+      end
+      H,V,h = arnoldi(A,m,v=v)
+      F = eigen(H)
+      k = argmax(abs.(F.values))
+      λ = F.values[k]
+      v = V*F.vectors[:,k] #largest eigenvalue
+      i+=1
+    end
+    return λ,v
 end
