@@ -7,7 +7,7 @@ include("tt_operations.jl")
 export *, +, dot, -
 
 include("tt_rounding.jl")
-export tt_svdvals,tt_rounding,tt_compression_par,orthogonalize,tt_up_rks
+export tt_svdvals, tt_rounding, tt_compression_par, orthogonalize, tt_up_rks, norm, r_and_d_to_rks
 
 include("als.jl")
 export als_linsolv, als_eigsolv, als_gen_eigsolv
@@ -19,7 +19,7 @@ include("dmrg.jl")
 export dmrg_linsolv, dmrg_eigsolv
 
 include("tt_solvers.jl")
-export tt_cg, tt_gmres
+export tt_cg, tt_gmres, gradient_fixed_step
 
 include("models.jl")
 export hubbard_1D, hubbard_2D, PPP_C_NH_N, hV_to_mpo, site_switch, half_filling, part_num, one_e_two_e_integrals_to_hV
@@ -29,5 +29,11 @@ export entropy, fiedler_order, bwpo_order, bwpo_order_sites, N_rdm, one_prdm, CA
 
 include("particular_states.jl")
 export random_slater, random_prime_tensor, random_static_correlation_tensor
+
+include("pde_models.jl")
+export Δ, Δ_tto
+
+include("tt_randtools.jl")
+export ttrand_rounding
 
 end
