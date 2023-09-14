@@ -19,17 +19,19 @@ function +(x::TTvector{T},y::TTvector{T}) where {T<:Number}
     @threads for k in 1:d
         ttv_vec[k] = zeros(T,x.ttv_dims[k],rks[k],rks[k+1])
     end
-   #first core 
-    ttv_vec[1][:,:,1:x.ttv_rks[2]] = x.ttv_vec[1]
-    ttv_vec[1][:,:,(y.ttv_rks[2]+1):rks[2]] = y.ttv_vec[1]
-    #2nd to end-1 cores
-    @threads for k in 2:(d-1)
-        ttv_vec[k][:,1:x.ttv_rks[k],1:x.ttv_rks[k+1]] = x.ttv_vec[k]
-        ttv_vec[k][:,(y.ttv_rks[k]+1):rks[k],(y.ttv_rks[k+1]+1):rks[k+1]] = y.ttv_vec[k]
-    end
-    #last core
-    ttv_vec[d][:,1:x.ttv_rks[d],1] = x.ttv_vec[d]
-    ttv_vec[d][:,(y.ttv_rks[d]+1):rks[d],1] = y.ttv_vec[d]
+#    @inbounds begin
+        #first core 
+        ttv_vec[1][:,:,1:x.ttv_rks[2]] = x.ttv_vec[1]
+        ttv_vec[1][:,:,(x.ttv_rks[2]+1):rks[2]] = y.ttv_vec[1]
+        #2nd to end-1 cores
+        @threads for k in 2:(d-1)
+            ttv_vec[k][:,1:x.ttv_rks[k],1:x.ttv_rks[k+1]] = x.ttv_vec[k]
+            ttv_vec[k][:,(x.ttv_rks[k]+1):rks[k],(x.ttv_rks[k+1]+1):rks[k+1]] = y.ttv_vec[k]
+        end
+        #last core
+        ttv_vec[d][:,1:x.ttv_rks[d],1] = x.ttv_vec[d]
+        ttv_vec[d][:,(x.ttv_rks[d]+1):rks[d],1] = y.ttv_vec[d]
+#        end
     return TTvector{T}(d,ttv_vec,x.ttv_dims,rks,zeros(d))
 end
 
@@ -47,17 +49,19 @@ function +(x::TToperator{T},y::TToperator{T}) where {T<:Number}
     @threads for k in 1:d
         tto_vec[k] = zeros(T,x.tto_dims[k],x.tto_dims[k],rks[k],rks[k+1])
     end
-    #first core 
-    tto_vec[1][:,:,:,1:x.tto_rks[1+1]] = x.tto_vec[1]
-    tto_vec[1][:,:,:,(x.tto_rks[2]+1):rks[2]] = y.tto_vec[1]
-    #2nd to end-1 cores
-    @threads for k in 2:(d-1)
-        tto_vec[k][:,:,1:x.tto_rks[k],1:x.tto_rks[k+1]] = x.tto_vec[k]
-        tto_vec[k][:,:,(x.tto_rks[k]+1):rks[k],(x.tto_rks[k+1]+1):rks[k+1]] = y.tto_vec[k]
+    @inbounds begin
+        #first core 
+        tto_vec[1][:,:,:,1:x.tto_rks[1+1]] = x.tto_vec[1]
+        tto_vec[1][:,:,:,(x.tto_rks[2]+1):rks[2]] = y.tto_vec[1]
+        #2nd to end-1 cores
+        @threads for k in 2:(d-1)
+            tto_vec[k][:,:,1:x.tto_rks[k],1:x.tto_rks[k+1]] = x.tto_vec[k]
+            tto_vec[k][:,:,(x.tto_rks[k]+1):rks[k],(x.tto_rks[k+1]+1):rks[k+1]] = y.tto_vec[k]
+        end
+        #last core
+        tto_vec[d][:,:,1:x.tto_rks[d],1] = x.tto_vec[d]
+        tto_vec[d][:,:,(x.tto_rks[d]+1):rks[d],1] = y.tto_vec[d]
     end
-    #last core
-    tto_vec[d][:,:,1:x.tto_rks[d],1] = x.tto_vec[d]
-    tto_vec[d][:,:,(x.tto_rks[d]+1):rks[d],1] = y.tto_vec[d]
     return TToperator{T}(d,tto_vec,x.tto_dims,rks,zeros(d))
 end
 
@@ -99,7 +103,7 @@ function dot(A::TTvector{T},B::TTvector{T}) where {T<:Number}
     A_rks = A.ttv_rks
     B_rks = B.ttv_rks
 	out = zeros(T,maximum(A_rks),maximum(B_rks))
-    out[1,1] = convert(T,1.0)
+    out[1,1] = one(T)
     @inbounds for k in eachindex(A.ttv_dims)
         M = @view(out[1:A_rks[k+1],1:B_rks[k+1]])
 		@tensoropt((α,β), M[a,b] = A.ttv_vec[k][z,α,a]*B.ttv_vec[k][z,β,b]*out[1:A_rks[k],1:B_rks[k]][α,β]) #size R^A_{k} × R^B_{k} 

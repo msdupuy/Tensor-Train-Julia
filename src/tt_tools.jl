@@ -6,6 +6,7 @@ using TensorOperations
 import Base.isempty
 import Base.eltype
 import Base.copy
+import Base.complex
 
 """
 TT constructor of a tensor
@@ -60,6 +61,9 @@ struct TToperator{T<:Number}
 end
 
 Base.eltype(::TToperator{T}) where {T} = T 
+function Base.complex(A::TToperator{T}) where T
+	return TToperator{Complex{T}}(A.N,complex(A.tto_vec),A.tto_dims,A.tto_rks,A.tto_ot)
+end
 
 """
 returns a zero TTvector with dimensions `dims` and ranks `rks`
@@ -68,18 +72,29 @@ function zeros_tt(dims,rks;T=Float64,ot=zeros(Int,length(dims)))
 	@assert length(dims)+1==length(rks) "Dimensions and ranks are not compatible"
 	d = length(dims)
 	tt_vec = Array{Array{T,3}}(undef,d)
-	for i in 1:d
+	@simd for i in eachindex(tt_vec)
 		tt_vec[i] = zeros(T,dims[i],rks[i],rks[i+1])
 	end
 	return TTvector{T}(d,tt_vec,dims,copy(rks),copy(ot))
 end
 
 """
+returns the ones tensor in TT format
+"""
+function ones_tt(dims;T=Float64)
+	return TTvector{T}(length(dims),[ones(T,n,1,1) for n in dims],dims,ones(Int64,length(dims)),zeros(Int64,length(dims)))
+end
+
+function ones_tt(n,d;T=Float64)
+	return TTvector{T}(d,[ones(n,1,1) for i in 1:d],n*ones(Int64,d),ones(Int64,d+1),zeros(Int64,d))
+end
+
+"""
 returns a zero TToperator with dimensions `dims` and ranks `rks`
 """
 function fill_TTo!(vec,dims,rks)
-	for i in eachindex(vec)
-		vec[i] = zeros(dims[i],dims[i],rks[i],rks[i+1])
+	@simd for i in eachindex(vec)
+		vec[i] = zeros(eltype(eltype(vec)),dims[i],dims[i],rks[i],rks[i+1])
 	end
 end
 
@@ -105,7 +120,7 @@ function rand_tt(dims,rks;T=Float64,normalise=false)
 	@assert length(dims)+1==length(rks) "Dimensions and ranks are not compatible"
 	d = length(dims)
 	tt_vec = Array{Array{T,3}}(undef,d)
-	for i in eachindex(tt_vec) 
+	@simd for i in eachindex(tt_vec) 
 		tt_vec[i] = randn(T,dims[i],rks[i],rks[i+1])
 		normalise && (tt_vec[i] *=1/(rks[i]*rks[i+1]))
 	end

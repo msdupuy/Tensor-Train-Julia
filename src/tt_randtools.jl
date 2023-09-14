@@ -22,25 +22,31 @@ end
 TT rounding algorithm in https://doi.org/10.1137/21M1451191
 Algorithm 3.2 "Randomize then Orthogonalize"
 """
-function ttrand_rounding(y_tt,r)
+function ttrand_rounding(y_tt::TTvector{T};rks=vcat(1,round.(Int,1.5*y_tt.ttv_rks[2:end-1]),1),rmax=prod(y_tt.ttv_dims)) where T
+  rks = r_and_d_to_rks(rks,y_tt.ttv_dims;rmax=rmax)
   L = length(y_tt.ttv_dims)
-  x_tt = zeros_tt(y_tt.ttv_dims,r)
+  x_tt = zeros_tt(y_tt.ttv_dims,rks;T=T)
   x_tt.ttv_vec[1] = y_tt.ttv_vec[1]
-  ℜ_tt = rand_tt(y_tt.ttv_dims,r;normalise=true)
+  ℜ_tt = rand_tt(y_tt.ttv_dims,rks;normalise=true,T=T)
   W = partial_contraction(y_tt,ℜ_tt)
-  A_temp = zeros(maximum(r),maximum(y_tt.ttv_rks))
-  Y_temp = zeros(maximum(y_tt.ttv_dims),maximum(r),maximum(y_tt.ttv_rks))
+  A_temp = zeros(T,maximum(rks),maximum(y_tt.ttv_rks))
+  Y_temp = zeros(T,maximum(y_tt.ttv_dims),maximum(rks),maximum(y_tt.ttv_rks))
   Y_temp[1:y_tt.ttv_dims[1],1:1,1:y_tt.ttv_rks[2]] = y_tt.ttv_vec[1]
-  Z_temp = zeros(maximum(y_tt.ttv_dims),maximum(r),maximum(r))
-  for k in 1:L-1
-    @tensor Z_temp[1:y_tt.ttv_dims[k],1:r[k],1:r[k+1]][iₖ,αₖ₋₁,αₖ] = (Y_temp[1:y_tt.ttv_dims[k],1:r[k],1:y_tt.ttv_rks[k+1]])[iₖ,αₖ₋₁,βₖ]*W[k+1][βₖ,αₖ] # nₖ × ℓₖ₋₁ × ℓₖ
-    Qₖ_temp,Rₖ = qr(reshape(Z_temp[1:y_tt.ttv_dims[k],1:r[k],1:r[k+1]],x_tt.ttv_dims[k]*r[k],:))
-    x_tt.ttv_vec[k] = reshape(Matrix(Qₖ_temp),y_tt.ttv_dims[k],r[k],:)
-    A_temp[1:r[k+1],1:y_tt.ttv_rks[k+1]] = Matrix(Qₖ_temp)'*reshape(Y_temp[1:x_tt.ttv_dims[k],1:r[k],1:y_tt.ttv_rks[k+1]],x_tt.ttv_dims[k]*r[k],:) # × Rˣₖ
-    for iₖ₊₁ in 1:y_tt.ttv_dims[k+1]
-      Y_temp[iₖ₊₁,1:r[k+1],1:y_tt.ttv_rks[k+2]] = A_temp[1:r[k+1],1:y_tt.ttv_rks[k+1]]*y_tt.ttv_vec[k+1][iₖ₊₁,:,:]
+  Z_temp = zeros(T,maximum(y_tt.ttv_dims),maximum(rks),maximum(rks))
+  @inbounds begin
+    for k in 1:L-1
+      @tensoropt((βₖ,αₖ₋₁,αₖ), Z_temp[1:y_tt.ttv_dims[k],1:rks[k],1:rks[k+1]][iₖ,αₖ₋₁,αₖ] = (Y_temp[1:y_tt.ttv_dims[k],1:rks[k],1:y_tt.ttv_rks[k+1]])[iₖ,αₖ₋₁,βₖ]*W[k+1][βₖ,αₖ]) # nₖ × ℓₖ₋₁ × ℓₖ
+      Qₖ_temp,Rₖ = qr(reshape(Z_temp[1:y_tt.ttv_dims[k],1:rks[k],1:rks[k+1]],x_tt.ttv_dims[k]*rks[k],:))
+      x_tt.ttv_vec[k] = reshape(Matrix(Qₖ_temp),y_tt.ttv_dims[k],rks[k],:)
+      A_temp[1:rks[k+1],1:y_tt.ttv_rks[k+1]] = Matrix(Qₖ_temp)'*reshape(Y_temp[1:x_tt.ttv_dims[k],1:rks[k],1:y_tt.ttv_rks[k+1]],x_tt.ttv_dims[k]*rks[k],:) # × Rˣₖ
+      @tensoropt((βₖ,αₖ₊₁), Y_temp[1:y_tt.ttv_dims[k+1],1:rks[k+1],1:y_tt.ttv_rks[k+2]][iₖ₊₁,αₖ,αₖ₊₁] = A_temp[1:rks[k+1],1:y_tt.ttv_rks[k+1]][αₖ,βₖ]*y_tt.ttv_vec[k+1][iₖ₊₁,βₖ,αₖ₊₁])
     end
+    x_tt.ttv_vec[L] = Y_temp[1:y_tt.ttv_dims[L],1:rks[L],1:1]
   end
-  x_tt.ttv_vec[L] = Y_temp[1:y_tt.ttv_dims[L],1:r[L],1:1]
   return x_tt
+end
+
+function dot_randrounding(A,x)
+  y = A*x
+  return ttrand_rounding(y)
 end
