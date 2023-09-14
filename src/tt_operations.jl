@@ -3,6 +3,7 @@ using TensorOperations
 import Base.+
 import Base.-
 import Base.*
+import Base./
 import LinearAlgebra.dot
 
 """
@@ -19,7 +20,7 @@ function +(x::TTvector{T},y::TTvector{T}) where {T<:Number}
     @threads for k in 1:d
         ttv_vec[k] = zeros(T,x.ttv_dims[k],rks[k],rks[k+1])
     end
-#    @inbounds begin
+    @inbounds begin
         #first core 
         ttv_vec[1][:,:,1:x.ttv_rks[2]] = x.ttv_vec[1]
         ttv_vec[1][:,:,(x.ttv_rks[2]+1):rks[2]] = y.ttv_vec[1]
@@ -31,7 +32,7 @@ function +(x::TTvector{T},y::TTvector{T}) where {T<:Number}
         #last core
         ttv_vec[d][:,1:x.ttv_rks[d],1] = x.ttv_vec[d]
         ttv_vec[d][:,(x.ttv_rks[d]+1):rks[d],1] = y.ttv_vec[d]
-#        end
+        end
     return TTvector{T}(d,ttv_vec,x.ttv_dims,rks,zeros(d))
 end
 
@@ -96,6 +97,13 @@ function *(A::TToperator{T},B::TToperator{T}) where {T<:Number}
     return TToperator{T}(d,Y,A.tto_dims,A.tto_rks.*B.tto_rks,zeros(Integer,d))
 end
 
+function *(A::Array{TTvector,1},x::Vector)
+    out = x[1]*A[1]
+    for i in 2:length(A)
+        out = out + x[i]*A[i]
+    end
+    return out
+end
 
 #dot returns the dot product of two TTvector
 function dot(A::TTvector{T},B::TTvector{T}) where {T<:Number}
@@ -134,11 +142,15 @@ function dot_par(A::TTvector{T},B::TTvector{T}) where {T<:Number}
 end
 
 function *(a::S,A::TTvector{R}) where {S<:Number,R<:Number}
-    i = findfirst(isequal(0),A.ttv_ot)
     T = typejoin(typeof(a),R)
-    X = copy(A.ttv_vec)
-    X[i] = a*X[i]
-    return TTvector{T}(A.N,X,A.ttv_dims,A.ttv_rks,A.ttv_ot)
+    if iszero(a)
+        return zeros_tt(A.ttv_dims,ones(Int64,A.N+1);T=T)
+    else
+        i = findfirst(isequal(0),A.ttv_ot)
+        X = copy(A.ttv_vec)
+        X[i] = a*X[i]
+        return TTvector{T}(A.N,X,A.ttv_dims,A.ttv_rks,A.ttv_ot)
+    end
 end
 
 function *(a::S,A::TToperator{R}) where {S<:Number,R<:Number}
@@ -155,4 +167,8 @@ end
 
 function -(A::TToperator{T},B::TToperator{T}) where {T<:Number}
     return *(-1.0,B)+A
+end
+
+function /(A::TTvector,a)
+    return 1/a*A
 end

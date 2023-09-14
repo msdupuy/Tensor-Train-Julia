@@ -227,23 +227,33 @@ function arnoldi(A::TToperator,m;v::TTvector{T}) where T
     return H[1:m,1:m],V[1:m],H[m+1,m] 
 end
 
-function eig_arnoldi(A::TToperator{T},m,v::TTvector{T};Imax=100,ε=1e-6) where T
+function eig_arnoldi(A::TToperator,m,v::TTvector;Imax=100,ε=1e-6,ε_tt=1e-4,rmax=256,which=:LM,σ=zero(eltype(v))) #where {S,T}
     i = 1
     H,V,h = arnoldi(A,m,v=v)
-    F = eigen(H)
-    k = argmax(abs.(F.values))
+    F = eigen(H+σ*I)
+    if which==:LM
+        k = argmax(abs.(F.values))
+    else 
+        k = argmin(abs.(F.values))
+    end
     λ = F.values[k]
-    v = V*F.vectors[:,k] #largest eigenvalue
+    v = ttrand_rounding(V*F.vectors[:,k];rks=2*v.ttv_rks) #largest eigenvalue
+    v = tt_rounding(v,tol=ε_tt,rmax=rmax)
     while (i<Imax) && abs(h)>ε
       if eltype(v) == ComplexF64
         A = complex(A)
       end
       H,V,h = arnoldi(A,m,v=v)
-      F = eigen(H)
-      k = argmax(abs.(F.values))
+      F = eigen(H+σ*I)
+      if which==:LM
+        k = argmax(abs.(F.values))
+      else 
+        k = argmin(abs.(F.values))
+      end
       λ = F.values[k]
-      v = V*F.vectors[:,k] #largest eigenvalue
+      v = ttrand_rounding(V*F.vectors[:,k];rks=2*v.ttv_rks) #largest eigenvalue
+      v = tt_rounding(v,tol=ε_tt,rmax=rmax)
       i+=1
     end
-    return λ,v
+    return λ-σ,v
 end

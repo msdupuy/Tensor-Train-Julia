@@ -124,7 +124,7 @@ end
 """
 returns the rounding of the TT operator
 """
-function tt_rounding(A_tto::TToperator;tol=1e-12,rmax=max(prod(x_tt.ttv_dims[1:floor(Int,x_tt.N/2)]),prod(x_tt.ttv_dims[ceil(Int,x_tt.N/2):end])))
+function tt_rounding(A_tto::TToperator;tol=1e-12,rmax=max(prod(A_tto.tto_dims[1:floor(Int,A_tto.N/2)]),prod(A_tto.tto_dims[ceil(Int,A_tto.N/2):end])))
 	return ttv_to_tto(tt_rounding(tto_to_ttv(A_tto);tol=tol,rmax=rmax))
 end
 
