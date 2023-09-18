@@ -74,9 +74,9 @@ function *(A::TToperator{T},v::TTvector{T}) where {T<:Number}
     Y = Array{Array{T,3},1}(undef, d)
     A_rks = A.tto_rks #R_0, ..., R_d
     v_rks = v.ttv_rks #r_0, ..., r_d
-    @threads for k in 1:d
-		M = zeros(A.tto_dims[k], A_rks[k],v_rks[k], A_rks[k+1],v_rks[k+1])
-		@tensor M[a,b,c,d,e] = A.tto_vec[k][a,z,b,d]*v.ttv_vec[k][z,c,e]
+    @inbounds @simd for k in 1:d
+		M = zeros(T,A.tto_dims[k], A_rks[k],v_rks[k], A_rks[k+1],v_rks[k+1])
+		@tensoropt M[a,b,c,d,e] = A.tto_vec[k][a,z,b,d]*v.ttv_vec[k][z,c,e]
         Y[k] = reshape(M, A.tto_dims[k], A_rks[k]*v_rks[k], A_rks[k+1]*v_rks[k+1])
     end
     return TTvector{T}(d,Y,A.tto_dims,A.tto_rks.*v.ttv_rks,zeros(Integer,d))
@@ -89,7 +89,7 @@ function *(A::TToperator{T},B::TToperator{T}) where {T<:Number}
     Y = Array{Array{T,4},1}(undef, d)
     A_rks = A.tto_rks #R_0, ..., R_d
     B_rks = B.tto_rks #r_0, ..., r_d
-    @threads for k in 1:d
+    @simd for k in 1:d
 		M = zeros(T,A.tto_dims[k],A.tto_dims[k],A_rks[k],B_rks[k],A_rks[k+1],B_rks[k+1])
 		@tensor M[a,b,c,d,e,f] = A.tto_vec[k][a,z,c,e]*B.tto_vec[k][z,b,d,f]
         Y[k] = reshape(M, A.tto_dims[k], A.tto_dims[k], A_rks[k]*B_rks[k], A_rks[k+1]*B_rks[k+1])
@@ -97,7 +97,7 @@ function *(A::TToperator{T},B::TToperator{T}) where {T<:Number}
     return TToperator{T}(d,Y,A.tto_dims,A.tto_rks.*B.tto_rks,zeros(Integer,d))
 end
 
-function *(A::Array{TTvector,1},x::Vector)
+function *(A::Array{TTvector,1},x::Vector{T}) where {T}
     out = x[1]*A[1]
     for i in 2:length(A)
         out = out + x[i]*A[i]
