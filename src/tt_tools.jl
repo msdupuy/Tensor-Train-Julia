@@ -68,14 +68,14 @@ end
 """
 returns a zero TTvector with dimensions `dims` and ranks `rks`
 """
-function zeros_tt(dims,rks;T=Float64,ot=zeros(Int,length(dims)))
+function zeros_tt(dims,rks;ot=zeros(Int,length(dims)))
+	return zeros_tt(Float64,dims,rks;ot=ot)
+end
+
+function zeros_tt(::Type{T},dims,rks;ot=zeros(Int,length(dims))) where T
 	#@assert length(dims)+1==length(rks) "Dimensions and ranks are not compatible"
-	d = length(dims)
-	tt_vec = Array{T,3}[]
-	@inbounds for i in 1:d
-		push!(tt_vec,zeros(T,dims[i],rks[i],rks[i+1]))
-	end
-	return TTvector{T}(d,tt_vec,dims,copy(rks),copy(ot))
+	tt_vec = [zeros(T,dims[i],rks[i],rks[i+1]) for i in eachindex(dims)]
+	return TTvector{T}(length(dims),tt_vec,dims,copy(rks),copy(ot))
 end
 
 """
@@ -116,9 +116,13 @@ end
 """
 Returns a random TTvector with dimensions `dims` and ranks `rks`
 """
-function rand_tt(dims,rks;T=Float64,normalise=false)
-	y = zeros_tt(dims,rks;T=T)
-	for i in eachindex(y.ttv_vec)
+function rand_tt(dims,rks;normalise=false)
+	return rand_tt(Float64,dims,rks;normalise=normalise)
+end
+
+function rand_tt(::Type{T},dims,rks;normalise=false) where T
+	y = zeros_tt(T,dims,rks)
+	@simd for i in eachindex(y.ttv_vec)
 		y.ttv_vec[i] = randn(T,dims[i],rks[i],rks[i+1])
 		if normalise
 			y.ttv_vec[i] *= 1/sqrt(dims[i]*rks[i]*rks[i+1])
@@ -144,7 +148,7 @@ function rand_tt(dims,rmax::Int;T=Float64)
 end
 
 function Base.copy(x_tt::TTvector{T}) where {T<:Number}
-	y_tt = zeros_tt(x_tt.ttv_dims,x_tt.ttv_rks;T=T,ot=x_tt.ttv_ot)
+	y_tt = zeros_tt(T,x_tt.ttv_dims,x_tt.ttv_rks;ot=x_tt.ttv_ot)
 	@threads for i in eachindex(x_tt.ttv_dims)
 		y_tt.ttv_vec[i] = copy(x_tt.ttv_vec[i])
 	end
@@ -297,7 +301,7 @@ end
 Returns a left-canonical TT representation
 """
 function vidal_to_left_canonical(x_v::TT_vidal{T}) where {T<:Number}
-	x_tt = zeros_tt(x_v.dims,x_v.rks,ot=vcat(ones(length(x_v.dims)), 0))
+	x_tt = zeros_tt(T,x_v.dims,x_v.rks,ot=vcat(ones(length(x_v.dims)), 0))
 	x_tt.ttv_vec[1] = x_v.core[1]
 	for i in 2:length(x_v.dims)
 		for j in 1:x_v.dims[i]
