@@ -212,7 +212,7 @@ end
 
 function arnoldi(A::TToperator,m;v::TTvector{T}) where T
     H = UpperHessenberg(zeros(T,m+1,m+1))
-    V = Array{TTvector,1}(undef,m+1)
+    V = Array{TTvector{T},1}(undef,m+1)
     V[1] = v/norm(v)
     for j in 1:m 
       w = dot_randrounding(A,V[j])

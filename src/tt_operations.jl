@@ -70,7 +70,7 @@ end
 #matrix vector multiplication in TT format
 function *(A::TToperator{T},v::TTvector{T}) where {T<:Number}
     @assert A.tto_dims==v.ttv_dims "Incompatible dimensions"
-    y = zeros_tt(A.tto_dims,A.tto_rks.*v.ttv_rks;T=T)
+    y = zeros_tt(T,A.tto_dims,A.tto_rks.*v.ttv_rks)
     @inbounds begin @simd for k in 1:v.N
         yvec_temp = reshape(y.ttv_vec[k], (y.ttv_dims[k], A.tto_rks[k], v.ttv_rks[k], A.tto_rks[k+1], v.ttv_rks[k+1]))
         @tensoropt((νₖ₋₁,νₖ), yvec_temp[iₖ,αₖ₋₁,νₖ₋₁,αₖ,νₖ] = A.tto_vec[k][iₖ,jₖ,αₖ₋₁,αₖ]*v.ttv_vec[k][jₖ,νₖ₋₁,νₖ])
@@ -93,7 +93,7 @@ function *(A::TToperator{T},B::TToperator{T}) where {T<:Number}
     return TToperator{T}(d,Y,A.tto_dims,A.tto_rks.*B.tto_rks,zeros(Integer,d))
 end
 
-function *(A::Array{TTvector,1},x::Vector{T}) where {T}
+function *(A::Array{TTvector{T},1},x::Vector{T}) where {T}
     out = x[1]*A[1]
     for i in 2:length(A)
         out = out + x[i]*A[i]
@@ -110,7 +110,7 @@ function dot(A::TTvector{T},B::TTvector{T}) where {T<:Number}
     out[1,1] = one(T)
     @inbounds for k in eachindex(A.ttv_dims)
         M = @view(out[1:A_rks[k+1],1:B_rks[k+1]])
-		@tensoropt((α,β), M[a,b] = A.ttv_vec[k][z,α,a]*B.ttv_vec[k][z,β,b]*out[1:A_rks[k],1:B_rks[k]][α,β]) #size R^A_{k} × R^B_{k} 
+		@tensor M[a,b] = A.ttv_vec[k][z,α,a]*(B.ttv_vec[k][z,β,b]*out[1:A_rks[k],1:B_rks[k]][α,β]) #size R^A_{k} × R^B_{k} 
     end
     return out[1,1]::T
 end
@@ -140,7 +140,7 @@ end
 function *(a::S,A::TTvector{R}) where {S<:Number,R<:Number}
     T = typejoin(typeof(a),R)
     if iszero(a)
-        return zeros_tt(A.ttv_dims,ones(Int64,A.N+1);T=T)
+        return zeros_tt(T,A.ttv_dims,ones(Int64,A.N+1))
     else
         i = findfirst(isequal(0),A.ttv_ot)
         X = copy(A.ttv_vec)

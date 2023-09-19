@@ -57,7 +57,7 @@ function orthogonalize(x_tt::TTvector{T};i=1::Int) where {T<:Number}
 	d = x_tt.N
 	@assert(1≤i≤d, DimensionMismatch("Impossible orthogonalization"))
 	y_rks = r_and_d_to_rks(x_tt.ttv_rks,x_tt.ttv_dims)
-	y_tt = zeros_tt(x_tt.ttv_dims,y_rks;T=T)
+	y_tt = zeros_tt(T,x_tt.ttv_dims,y_rks)
 	FR = ones(T,1,1)
 	yleft_temp =zeros(T,maximum(y_tt.ttv_rks),maximum(x_tt.ttv_dims),maximum(x_tt.ttv_rks))
 	for j in 1:i-1
