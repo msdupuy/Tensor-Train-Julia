@@ -70,16 +70,12 @@ end
 #matrix vector multiplication in TT format
 function *(A::TToperator{T},v::TTvector{T}) where {T<:Number}
     @assert A.tto_dims==v.ttv_dims "Incompatible dimensions"
-    d = v.N
-    Y = Array{Array{T,3},1}(undef, d)
-    A_rks = A.tto_rks #R_0, ..., R_d
-    v_rks = v.ttv_rks #r_0, ..., r_d
-    @inbounds @simd for k in 1:d
-		M = zeros(T,A.tto_dims[k], A_rks[k],v_rks[k], A_rks[k+1],v_rks[k+1])
-		@tensoropt M[a,b,c,d,e] = A.tto_vec[k][a,z,b,d]*v.ttv_vec[k][z,c,e]
-        Y[k] = reshape(M, A.tto_dims[k], A_rks[k]*v_rks[k], A_rks[k+1]*v_rks[k+1])
-    end
-    return TTvector{T}(d,Y,A.tto_dims,A.tto_rks.*v.ttv_rks,zeros(Integer,d))
+    y = zeros_tt(A.tto_dims,A.tto_rks.*v.ttv_rks;T=T)
+    @inbounds begin @simd for k in 1:v.N
+        yvec_temp = reshape(y.ttv_vec[k], (y.ttv_dims[k], A.tto_rks[k], v.ttv_rks[k], A.tto_rks[k+1], v.ttv_rks[k+1]))
+        @tensoropt((νₖ₋₁,νₖ), yvec_temp[iₖ,αₖ₋₁,νₖ₋₁,αₖ,νₖ] = A.tto_vec[k][iₖ,jₖ,αₖ₋₁,αₖ]*v.ttv_vec[k][jₖ,νₖ₋₁,νₖ])
+    end end
+    return y
 end
 
 #matrix matrix multiplication in TT format

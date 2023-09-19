@@ -229,6 +229,7 @@ end
 
 function eig_arnoldi(A::TToperator,m,v::TTvector;Imax=100,ε=1e-6,ε_tt=1e-4,rmax=256,which=:LM,σ=zero(eltype(v))) #where {S,T}
     i = 1
+    λ = zero(eltype(v))
     H,V,h = arnoldi(A,m,v=v)
     F = eigen(H+σ*I)
     if which==:LM

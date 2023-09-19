@@ -46,7 +46,7 @@ function ttrand_rounding(y_tt::TTvector{T};rks=vcat(1,round.(Int,1.5*y_tt.ttv_rk
   return x_tt
 end
 
-function dot_randrounding(A,x)
+function dot_randrounding(A::TToperator,x::TTvector)
   y = A*x
   return ttrand_rounding(y)
 end

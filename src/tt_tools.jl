@@ -69,11 +69,11 @@ end
 returns a zero TTvector with dimensions `dims` and ranks `rks`
 """
 function zeros_tt(dims,rks;T=Float64,ot=zeros(Int,length(dims)))
-	@assert length(dims)+1==length(rks) "Dimensions and ranks are not compatible"
+	#@assert length(dims)+1==length(rks) "Dimensions and ranks are not compatible"
 	d = length(dims)
-	tt_vec = Array{Array{T,3}}(undef,d)
-	@simd for i in eachindex(tt_vec)
-		tt_vec[i] = zeros(T,dims[i],rks[i],rks[i+1])
+	tt_vec = Array{T,3}[]
+	@inbounds for i in 1:d
+		push!(tt_vec,zeros(T,dims[i],rks[i],rks[i+1]))
 	end
 	return TTvector{T}(d,tt_vec,dims,copy(rks),copy(ot))
 end
@@ -86,7 +86,7 @@ function ones_tt(dims;T=Float64)
 end
 
 function ones_tt(n,d;T=Float64)
-	return TTvector{T}(d,[ones(n,1,1) for i in 1:d],n*ones(Int64,d),ones(Int64,d+1),zeros(Int64,d))
+	return TTvector{T}(d,[ones(T,n,1,1) for i in 1:d],n*ones(Int64,d),ones(Int64,d+1),zeros(Int64,d))
 end
 
 """
@@ -101,7 +101,7 @@ end
 function zeros_tto(dims,rks;T=Float64) 
 	@assert length(dims)+1==length(rks) "Dimensions and ranks are not compatible"
 	d = length(dims)
-	H = Array{Array{T,4}}(undef,d)
+	H = Vector{Array{T,4}}(undef,d)
 	fill_TTo!(H,dims,rks)
 	return TToperator{T}(d,H,dims,rks,zeros(Int,d))
 end
@@ -117,14 +117,14 @@ end
 Returns a random TTvector with dimensions `dims` and ranks `rks`
 """
 function rand_tt(dims,rks;T=Float64,normalise=false)
-	@assert length(dims)+1==length(rks) "Dimensions and ranks are not compatible"
-	d = length(dims)
-	tt_vec = Array{Array{T,3}}(undef,d)
-	@simd for i in eachindex(tt_vec) 
-		tt_vec[i] = randn(T,dims[i],rks[i],rks[i+1])
-		normalise && (tt_vec[i] *=1/(rks[i]*rks[i+1]))
+	y = zeros_tt(dims,rks;T=T)
+	for i in eachindex(y.ttv_vec)
+		y.ttv_vec[i] = randn(T,dims[i],rks[i],rks[i+1])
+		if normalise
+			y.ttv_vec[i] *= 1/sqrt(dims[i]*rks[i]*rks[i+1])
+		end
 	end
-	return TTvector{T}(d,tt_vec,dims,copy(rks),zeros(Int,d))
+	return y
 end
 
 """
@@ -132,7 +132,7 @@ Returns a random TTvector with dimensions `dims` and maximal rank `rmax`
 """
 function rand_tt(dims,rmax::Int;T=Float64)
 	d = length(dims)
-	tt_vec = Array{Array{T,3}}(undef,d)
+	tt_vec = Vector{Array{T,3}}(undef,d)
 	rks = ones(Int,d+1)
 	for i in eachindex(tt_vec) 
 		ri = min(prod(dims[1:i-1]),prod(dims[i:d]),rmax)
