@@ -36,4 +36,7 @@ export Δ, Δ_tto
 include("tt_randtools.jl")
 export ttrand_rounding
 
+include("FCIDUMP.jl")
+export read_electron_integral_tensors
+
 end

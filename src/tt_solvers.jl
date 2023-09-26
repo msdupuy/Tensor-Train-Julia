@@ -210,7 +210,7 @@ function init_adapt(A::TToperator,b::TTvector)
     return init(A,b,opt_rks)
 end
 
-function arnoldi(A::TToperator,m;v::TTvector{T}) where T
+function arnoldi(A::TToperator,m;v::TTvector{T},ε_tt=1e-6,rmax=256) where T
     H = UpperHessenberg(zeros(T,m+1,m+1))
     V = Array{TTvector{T},1}(undef,m+1)
     V[1] = v/norm(v)
@@ -220,7 +220,11 @@ function arnoldi(A::TToperator,m;v::TTvector{T}) where T
         H[i,j] = dot(V[i],w) #modified GS
         w = w-H[i,j]*V[i]
       end
+      #println("TT rank: $(maximum(w.ttv_rks))")
       w = ttrand_rounding(w)
+      #println("TT rank after rand_rounding: $(maximum(w.ttv_rks))")
+      w = tt_rounding(w;tol=ε_tt,rmax=rmax)
+      #println("TT rank after tt_rounding: $(maximum(w.ttv_rks))")
       H[j+1,j] = norm(w)
       V[j+1] = 1/H[j+1,j]*w
     end
@@ -230,7 +234,7 @@ end
 function eig_arnoldi(A::TToperator,m,v::TTvector;Imax=100,ε=1e-6,ε_tt=1e-4,rmax=256,which=:LM,σ=zero(eltype(v))) #where {S,T}
     i = 1
     λ = zero(eltype(v))
-    H,V,h = arnoldi(A,m,v=v)
+    H,V,h = arnoldi(A,m,v=v,rmax=rmax)
     F = eigen(H+σ*I)
     if which==:LM
         k = argmax(abs.(F.values))
@@ -241,10 +245,11 @@ function eig_arnoldi(A::TToperator,m,v::TTvector;Imax=100,ε=1e-6,ε_tt=1e-4,rma
     v = ttrand_rounding(V*F.vectors[:,k];rks=2*v.ttv_rks) #largest eigenvalue
     v = tt_rounding(v,tol=ε_tt,rmax=rmax)
     while (i<Imax) && abs(h)>ε
+        println("Arnoldi iteration $i")
       if eltype(v) == ComplexF64
         A = complex(A)
       end
-      H,V,h = arnoldi(A,m,v=v)
+      H,V,h = arnoldi(A,m;v=v,ε_tt=ε_tt,rmax=rmax)
       F = eigen(H+σ*I)
       if which==:LM
         k = argmax(abs.(F.values))
@@ -254,6 +259,8 @@ function eig_arnoldi(A::TToperator,m,v::TTvector;Imax=100,ε=1e-6,ε_tt=1e-4,rma
       λ = F.values[k]
       v = ttrand_rounding(V*F.vectors[:,k];rks=2*v.ttv_rks) #largest eigenvalue
       v = tt_rounding(v,tol=ε_tt,rmax=rmax)
+      println("Current eigenvalue: $λ")
+      println("Arnoldi residual $h")
       i+=1
     end
     return λ-σ,v
