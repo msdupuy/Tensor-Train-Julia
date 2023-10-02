@@ -21,7 +21,7 @@ The following properties are stored
 		* ttv_ot[i] = 0 if nothing is known
 """
 struct TTvector{T<:Number}
-	N :: Int
+	N :: Int64
 	ttv_vec :: Array{Array{T,3},1}
 	ttv_dims :: Array{Int64,1}
 	ttv_rks :: Array{Int64,1}
@@ -36,7 +36,7 @@ struct TT_vidal{T<:Number}
 	#Vidal representation of a higher-order tensor 
 	#C[μ_1,…,μ_L] = core[μ_1] * Diagonal(Σ_1) * … * Diagonal(Σ_{L-1}) * core[μ_L]
 	#Cores are orthogonal and Σ are the higher-order singular values
-	N :: Int
+	N :: Int64
 	core :: Array{Array{T,3},1}
 	Σ :: Array{Array{Float64,1},1}
 	dims :: Array{Int64,1}
@@ -375,11 +375,11 @@ function tto_to_tensor(tto :: TToperator{T}) where {T<:Number}
 	rks = tto.tto_rks
 	r_max = maximum(rks)
 	# The tensor has dimensions [n_1,...,n_d,n_1,...,n_d]
-	dims = (tto.tto_dims...,tto.tto_dims...)
-	tensor = zeros(T,dims)
+	tensor = zeros(T,Tuple(vcat(tto.tto_dims,tto.tto_dims)))::Array{T}
 	# Fill in the tensor for every t=(x_1,...,x_d,y_1,...,y_d)
+	curr = ones(T,r_max)
 	for t in CartesianIndices(tensor)
-		curr = ones(T,r_max)
+		curr[1] = one(T)
 		for i = d:-1:1
 			curr[1:rks[i]] = tto.tto_vec[i][t[i], t[d + i], :, :]*curr[1:rks[i+1]]
 		end
