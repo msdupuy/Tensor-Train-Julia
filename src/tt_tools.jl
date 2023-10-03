@@ -3,6 +3,7 @@ using LinearAlgebra
 using Base.Threads
 using IterativeSolvers
 using TensorOperations
+using StaticArrays
 import Base.isempty
 import Base.eltype
 import Base.copy
@@ -20,15 +21,20 @@ The following properties are stored
 		* ttv_ot[i] = -1 iff ``A_i`` is right-orthogonal *i.e.* ``\\sum_{\\mu_i} A_i[\\mu_i] A_i[\\mu_i]^T = I_{r_{i-1}}``
 		* ttv_ot[i] = 0 if nothing is known
 """
-struct TTvector{T<:Number}
+struct TTvector{T<:Number,M,M1}
 	N :: Int64
-	ttv_vec :: Array{Array{T,3},1}
-	ttv_dims :: Array{Int64,1}
-	ttv_rks :: Array{Int64,1}
-	ttv_ot :: Array{Int64,1}
+	ttv_vec :: SizedVector{M,Array{T,3},Vector{Array{T,3}}}
+	ttv_dims :: SizedVector{M,Int64,Vector{Int64}}
+	ttv_rks :: SizedVector{M1,Int64,Vector{Int64}}
+	ttv_ot :: SizedVector{M,Int64,Vector{Int64}}
+#	function TTvector{T,N,N1}() where {T}
+#		@assert N isa Int64
+#		@assert N1 isa Int64
+#		new{T,N,N1}(N,SizedVector{0}(Int64[]),SizedVector{0}(Int64[]))
+#	end
 end
 
-Base.eltype(::TTvector{T}) where {T<:Number} = T 
+Base.eltype(::TTvector{T,N,N1}) where {T<:Number,N,N1} = T 
 """
 Vidal representation of TT vector
 """
@@ -68,25 +74,34 @@ end
 """
 returns a zero TTvector with dimensions `dims` and ranks `rks`
 """
-function zeros_tt(dims,rks;ot=zeros(Int,length(dims)))
+function zeros_tt(dims,rks;ot=SizedVector{length(dims)}(zeros(Int64,length(dims))))
 	return zeros_tt(Float64,dims,rks;ot=ot)
 end
 
-function zeros_tt(::Type{T},dims,rks;ot=zeros(Int,length(dims))) where T
+function zeros_tt(::Type{T},dims,rks;ot=SizedVector{length(dims)}(zeros(Int64,length(dims)))) where T
 	#@assert length(dims)+1==length(rks) "Dimensions and ranks are not compatible"
-	tt_vec = [zeros(T,dims[i],rks[i],rks[i+1]) for i in eachindex(dims)]
-	return TTvector{T}(length(dims),tt_vec,dims,copy(rks),copy(ot))
+	tt_vec = SizedVector{length(dims)}(zeros(T,dims[i],rks[i],rks[i+1]) for i in eachindex(dims))
+	return TTvector{T,length(dims),length(dims)+1}(length(dims),tt_vec,dims,copy(rks),copy(ot))
 end
 
 """
 returns the ones tensor in TT format
 """
-function ones_tt(dims;T=Float64)
-	return TTvector{T}(length(dims),[ones(T,n,1,1) for n in dims],dims,ones(Int64,length(dims)),zeros(Int64,length(dims)))
+function ones_tt(dims)
+	return ones_tt(Float64,dims)
 end
 
-function ones_tt(n,d;T=Float64)
-	return TTvector{T}(d,[ones(T,n,1,1) for i in 1:d],n*ones(Int64,d),ones(Int64,d+1),zeros(Int64,d))
+function ones_tt(::Type{T},dims) where T
+	N = length(dims)
+	vec = SizedVector{N}(ones(T,n,1,1) for n in dims)
+	rks = SizedVector{N+1}(ones(Int64,N+1))
+	ot = SizedVector{N}(zeros(Int64,N))
+	return TTvector{T,N,N+1}(N,vec,dims,rks,ot)
+end
+
+function ones_tt(n::Integer,d::Integer)
+	dims = SizedVector{d}(n*ones(Int64,d))
+	return ones_tt(dims)
 end
 
 """
