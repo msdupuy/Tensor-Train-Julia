@@ -34,7 +34,7 @@ end
 """
 returns the TTvector with ranks rks and noise ϵ_wn for the updated ranks
 """
-function tt_up_rks(x_tt::TTvector{T},rk_max::Int;rks=vcat(1,rk_max*ones(Int,length(x_tt.ttv_dims)-1),1),ϵ_wn=0.0) where {T<:Number}
+function tt_up_rks(x_tt::TTvector{T,N},rk_max::Int;rks=vcat(1,rk_max*ones(Int,length(x_tt.ttv_dims)-1),1),ϵ_wn=0.0) where {T<:Number,N}
 	d = x_tt.N
 	vec_out = Array{Array{T}}(undef,d)
 	out_ot = zeros(Int64,d)
@@ -47,13 +47,13 @@ function tt_up_rks(x_tt::TTvector{T},rk_max::Int;rks=vcat(1,rk_max*ones(Int,leng
 		rks[i+1] = min(rks[i+1],n_in,n_out)
 		vec_out[i] = tt_up_rks_noise(x_tt.ttv_vec[i],x_tt.ttv_ot[i],rks[i],rks[i+1],ϵ_wn)
 	end	
-	return TTvector{T}(d,vec_out,x_tt.ttv_dims,rks,x_tt.ttv_ot)
+	return TTvector{T,N}(d,vec_out,x_tt.ttv_dims,rks,out_ot)
 end
 
 """
 returns the orthogonalized TTvector with root i
 """
-function orthogonalize(x_tt::TTvector{T};i=1::Int) where {T<:Number}
+function orthogonalize(x_tt::TTvector{T,N};i=1::Int) where {T<:Number,N}
 	d = x_tt.N
 	@assert(1≤i≤d, DimensionMismatch("Impossible orthogonalization"))
 	y_rks = r_and_d_to_rks(x_tt.ttv_rks,x_tt.ttv_dims)
@@ -107,7 +107,7 @@ end
 """
 returns a TT representation where the singular values lower than tol are discarded
 """
-function tt_rounding(x_tt::TTvector{T};tol=1e-12,rmax=max(prod(x_tt.ttv_dims[1:floor(Int,x_tt.N/2)]),prod(x_tt.ttv_dims[ceil(Int,x_tt.N/2):end]))) where {T<:Number}
+function tt_rounding(x_tt::TTvector{T,N};tol=1e-12,rmax=max(prod(x_tt.ttv_dims[1:floor(Int,x_tt.N/2)]),prod(x_tt.ttv_dims[ceil(Int,x_tt.N/2):end]))) where {T<:Number,N}
 	y_tt = orthogonalize(x_tt;i=x_tt.N)
 	for j in x_tt.N:-1:2
 		u,s,v = svd(reshape(permutedims(y_tt.ttv_vec[j],[2 1 3]),y_tt.ttv_rks[j],:),full=false)
@@ -131,7 +131,7 @@ end
 """
 returns the singular values of the reshaped tensor x[μ_1⋯μ_k;μ_{k+1}⋯μ_d] for all 1≤ k ≤ d
 """
-function tt_svdvals(x_tt::TTvector{T};tol=1e-14) where {T<:Number}
+function tt_svdvals(x_tt::TTvector{T,N};tol=1e-14) where {T<:Number,N}
 	d = x_tt.N
 	Σ = Array{Array{Float64,1},1}(undef,d-1)
 	y_tt = orthogonalize(x_tt)
