@@ -7,9 +7,10 @@ using Random
     L=6
     p=rand(1:L)
     q=rand(1:L)
+    dims = ntuple(x->2,L)
     #one-body MPO constructors
     H = one_body_to_matrix(p,q,L)
-    Hmpo = one_body_mpo(p,q,L)
+    Hmpo = one_body_mpo(p,q,dims)
     H2 = tto_to_tensor(Hmpo)
     @test isapprox(norm(H-reshape(H2,2^L,2^L)),0.0,atol=1e-10)
     #two-body MPO constructors
