@@ -221,6 +221,66 @@ function hV_to_mpo(h::Array{T,2},V,dims::NTuple{N,Int64};tol=1e-8::Float64,n_rnd
 end
 
 """
+for normal ordered Hamiltonians
+"""
+function normal_ordering(p,q,r,s,n)
+    if s≤n  
+        if r≤n 
+            return r,s,p,q,1.0
+        else 
+            return s,p,q,r,-1.0
+        end
+    else 
+        if r≤n 
+            return r,p,q,s,1.0
+        end
+    end
+    if p≤n 
+        return q,p,r,s,-1.0
+    end 
+    return p,q,r,s,1.0
+end
+
+function hV_no_to_mpo(h::Array{T,2},V,dims::NTuple{N,Int64};n=ceil(Int64,L/2),tol=1e-8::Float64,n_rnd=20::Int) where {T,N}
+    L = size(h,1)
+    @assert issymmetric(h)
+#    @assert isapprox(V,permutedims(V,(2,1,4,3)))
+    A = zeros_tto(T,dims,ones(Int64,L+1))
+    i_rnd = 1
+    #Precomputation of creation and annihilation operators
+    tto_crea = [tto_creation(i,dims) for i in 1:L]
+    tto_anni = [tto_annihilation(i,dims) for i in 1:L]
+    for i in findall(x->!isapprox(x,0.0,atol=1e-12),h)
+        if i[1]<i[2]
+            H = tto_crea[i[1]]*tto_anni[i[2]] + tto_crea[i[2]]*tto_anni[i[1]]
+            A = A+h[i]*H
+        elseif i[1]==i[2]
+            H = tto_crea[i[1]]*tto_anni[i[2]]
+            A = A+h[i]*H
+        end
+        if i_rnd > n_rnd 
+            A = tt_rounding(A,tol=tol)
+            i_rnd = 1
+        else
+            i_rnd+=1
+        end
+    end
+    for i in findall(x->!isapprox(x,0.0,atol=1e-12),V)
+        p,q,r,s,ϕ =  normal_ordering(i[1],i[2],i[3],i[4],n)
+        H = tto_crea[p]*tto_crea[q]*tto_anni[r]*tto_anni[s]
+        A = A+ϕ*V[i]*H
+        if i_rnd > n_rnd 
+            A = tt_rounding(A,tol=tol)
+            i_rnd = 1
+        else
+            i_rnd+=1
+        end
+    end
+    A = tt_rounding(A,tol=tol)
+    return A
+end
+
+"""
 Examples of standard Hamiltonians
 """
 
@@ -340,8 +400,8 @@ end
 Returns the particle number operator ̂N of L sites
 """
 function part_num(dims::NTuple{N,Int64}) where N
-    A = zeros_tto(dims,ones(Int64,L+1))
-    for i in 1:L
+    A = zeros_tto(dims,ones(Int64,N+1))
+    for i in 1:N
         A = A + one_body_mpo(i,i,dims)
     end
     return tt_rounding(A)
