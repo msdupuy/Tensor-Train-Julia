@@ -76,7 +76,7 @@ end
 #odd index = spin up 
 #returns TT of a Slater determinant
 function slater(n,d;σ=1:n)
-    x = zeros_tt(2*ones(Int64,d),ones(Int64,d+1))
+    x = zeros_tt(ntuple(x->2,d),ones(Int64,d+1))
     for i in σ
         x.ttv_vec[i][2,1,1] = 1.0
     end
