@@ -12,7 +12,7 @@ n^d discrete Laplacian in TTO format with rank 2
 """
 function Δ_tto(n,d)
   h = Δ(n)
-  H_vec = Array{Array{Float64,4}}(undef,d)
+  H_vec = Vector{Array{Float64,4}}(undef,d)
   rks = vcat(1,2ones(Int64,d-1),1)
   # first TTO core
   H_vec[1] = zeros(n,n,1,2)
@@ -27,5 +27,5 @@ function Δ_tto(n,d)
   H_vec[d] = zeros(n,n,2,1)
   H_vec[d][:,:,1,1] = Matrix{Float64}(I,n,n)
   H_vec[d][:,:,2,1] = h
-  return TToperator(d,H_vec,n*ones(Int64,d),rks,zeros(Int64,d))
+  return TToperator(d,H_vec,Tuple(n*ones(Int64,d)),rks,zeros(Int64,d))
 end

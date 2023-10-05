@@ -70,7 +70,7 @@ function half_filling(N)
         tt_vec[2i] = zeros(2,1,1)
         tt_vec[2i][2,1,1] = 1.0
     end
-    return TTvector{Float64}(2N,tt_vec,2*ones(Int,2N),ones(Int,2N+1),zeros(2N))
+    return TTvector{Float64,2N}(2N,tt_vec,Tuple(2*ones(Int,2N)),ones(Int,2N+1),zeros(2N))
 end
 
 #odd index = spin up 
@@ -87,27 +87,32 @@ function slater(n,d;σ=1:n)
 end
 
 #auxiliary functions for a_p^†a_q
-function mpo_core_id(;T=Float64)
+mpo_core_id() = mpo_core_id(Float64)
+
+function mpo_core_id(::Type{T}) where T
     out = zeros(T,2,2,1,1)
     out[1,1,1,1] = 1.0
     out[2,2,1,1] = 1.0
     return out
 end
 
-function mpo_core_ferm_sign(;T=Float64)
+mpo_core_ferm_sign() = mpo_core_ferm_sign(Float64)
+function mpo_core_ferm_sign(::Type{T}) where T
     out = zeros(T,2,2,1,1)
     out[1,1,1,1] = 1.0
     out[2,2,1,1] = -1.0
     return out
 end
 
-function mpo_core_creation(;T=Float64)
+mpo_core_creation() = mpo_core_creation(Float64)
+function mpo_core_creation(::Type{T}) where T
     out = zeros(T,2,2,1,1)
     out[2,1,1,1] = 1.0
     return out
 end
 
-function mpo_core_annihilation(;T=Float64)
+mpo_core_annihilation() = mpo_core_annihilation(Float64)
+function mpo_core_annihilation(::Type{T}) where T
     out = zeros(T,2,2,1,1)
     out[1,2,1,1] = 1.0
     return out
@@ -116,14 +121,18 @@ end
 """
 MPO of the creation operator a^†_p (default = fermionic creation)
 """
-function tto_creation(p,L::Int;fermion=true,T=Float64)
-    A = zeros_tto(2*ones(Int,L),ones(Int,L+1))
+function tto_creation(p,dims::NTuple{N,Int64};fermion=true) where N
+    return tto_creation(Float64,p,dims;fermion=fermion)
+end
+
+function tto_creation(::Type{T},p,dims::NTuple{N,Int64};fermion=true) where {T,N}
+    A = zeros_tto(T,dims,ones(Int64,N+1))
     for i in 1:p-1
-        fermion ? (A.tto_vec[i] = mpo_core_ferm_sign(;T=T)) : (A.tto_vec[i] = mpo_core_id(;T=T))
+        fermion ? (A.tto_vec[i] = mpo_core_ferm_sign(T)) : (A.tto_vec[i] = mpo_core_id(T))
     end
-    A.tto_vec[p] = mpo_core_creation(;T=T)
-    for i in p+1:L
-        A.tto_vec[i] = mpo_core_id(;T=T)
+    A.tto_vec[p] = mpo_core_creation(T)
+    for i in p+1:N
+        A.tto_vec[i] = mpo_core_id(T)
     end
     return A
 end
@@ -131,14 +140,15 @@ end
 """
 MPO of the annihilation operator a_q (default = fermionic annihilation)
 """
-function tto_annihilation(q,L::Int;fermion=true,T=Float64)
-    A = zeros_tto(2*ones(Int,L),ones(Int,L+1))
+tto_annihilation(q,dims::NTuple{N,Int64};fermion=true) where N = tto_annihilation(Float64,q,dims;fermion=fermion)
+function tto_annihilation(::Type{T},q,dims::NTuple{N,Int64};fermion=true) where {T,N}
+    A = zeros_tto(T,dims,ones(Int,N+1))
     for i in 1:q-1
-        fermion ? (A.tto_vec[i] = mpo_core_ferm_sign(;T=T)) : (A.tto_vec[i] = mpo_core_id(;T=T))
+        fermion ? (A.tto_vec[i] = mpo_core_ferm_sign(T)) : (A.tto_vec[i] = mpo_core_id(T))
     end
-    A.tto_vec[q] = mpo_core_annihilation(;T=T)
-    for i in q+1:L
-        A.tto_vec[i] = mpo_core_id(;T=T)
+    A.tto_vec[q] = mpo_core_annihilation(T)
+    for i in q+1:N
+        A.tto_vec[i] = mpo_core_id(T)
     end
     return A
 end
@@ -146,15 +156,18 @@ end
 """
 returns bosonic or fermionic MPO of a_p^†a_q
 """
-function one_body_mpo(p::Integer,q::Integer,L::Integer;fermion=true,T=Float64)
-    return tto_creation(p,L;fermion=fermion,T=T)*tto_annihilation(q,L;fermion=fermion,T=T)
+one_body_mpo(p::Integer,q::Integer,dims::NTuple{N,Int64};fermion=true) where N = one_body_mpo(Float64,p::Integer,q::Integer,dims;fermion=fermion)
+function one_body_mpo(T,p::Integer,q::Integer,dims;fermion=true)
+    return tto_creation(T,p,dims;fermion=fermion)*tto_annihilation(T,q,dims;fermion=fermion)
 end
 
 """
 returns bosonic or fermionic MPO of a_k^† a^†_l a_m a_n 
 """
-function two_body_mpo(k,l,m,n,L;fermion=true,T=Float64)::TToperator{T}
-    return tto_creation(k,L;fermion=fermion,T=T)*tto_creation(l,L;fermion=fermion,T=T)*tto_annihilation(m,L;fermion=fermion,T=T)*tto_annihilation(n,L;fermion=fermion,T=T)
+
+two_body_mpo(k,l,m,n,dims::NTuple{N,Int64};fermion=true) where N = two_body_mpo(Float64,k,l,m,n,dims;fermion=fermion)
+function two_body_mpo(::Type{T},k,l,m,n,dims::NTuple{N,Int64};fermion=true) where {T,N}
+    return tto_creation(T,k,dims;fermion=fermion)*tto_creation(T,l,dims;fermion=fermion)*tto_annihilation(T,m,dims;fermion=fermion)*tto_annihilation(T,n,dims;fermion=fermion)
 end
 
 
@@ -164,15 +177,15 @@ H = Σ_{ij} h_ij a_i† a_j + Σ_{ijkl} V_{ijkl} a_i†a_j†a_ka_l
 h and V have to be Symmetric 
 """
 #assuming diagonal terms are divided by 2 in the h and V matrix
-function hV_to_mpo(h::AbstractArray{T,2},V::Array{T,4};tol=1e-8::Float64,n_rnd=20::Int) where T<:Number
+function hV_to_mpo(h::Array{T,2},V,dims::NTuple{N,Int64};tol=1e-8::Float64,n_rnd=20::Int) where {T,N}
     L = size(h,1)
     @assert issymmetric(h)
 #    @assert isapprox(V,permutedims(V,(2,1,4,3)))
-    A = zeros_tto(2*ones(Int64,L),ones(Int64,L+1),T=T)
+    A = zeros_tto(T,dims,ones(Int64,L+1))
     i_rnd = 1
     #Precomputation of creation and annihilation operators
-    tto_crea = [tto_creation(i,L) for i in 1:L]
-    tto_anni = [tto_annihilation(i,L) for i in 1:L]
+    tto_crea = [tto_creation(i,dims) for i in 1:L]
+    tto_anni = [tto_annihilation(i,dims) for i in 1:L]
     for i in findall(x->!isapprox(x,0.0,atol=1e-12),h)
         if i[1]<i[2]
             H = tto_crea[i[1]]*tto_anni[i[2]] + tto_crea[i[2]]*tto_anni[i[1]]
@@ -190,7 +203,7 @@ function hV_to_mpo(h::AbstractArray{T,2},V::Array{T,4};tol=1e-8::Float64,n_rnd=2
     end
     for i in findall(x->!isapprox(x,0.0,atol=1e-12),V)
         if (i[1],i[2])<(i[4],i[3]) 
-            H = tto_crea[i[1]]*tto_crea[i[2]]*tto_anni[i[3]]*tto_anni[i[4]]+tto_crea[i[4]]*tto_crea[i[3]]*tto_anni[i[2]]*tto_anni[i[1]]
+            H = (tto_crea[i[1]]*tto_crea[i[2]]*tto_anni[i[3]]*tto_anni[i[4]])+(tto_crea[i[4]]*tto_crea[i[3]]*tto_anni[i[2]]*tto_anni[i[1]])
             A = A+V[i]*H
         elseif (i[1],i[2])==(i[4],i[3])
             H = tto_crea[i[1]]*tto_crea[i[2]]*tto_anni[i[3]]*tto_anni[i[4]]
@@ -204,7 +217,7 @@ function hV_to_mpo(h::AbstractArray{T,2},V::Array{T,4};tol=1e-8::Float64,n_rnd=2
         end
     end
     A = tt_rounding(A,tol=tol)
-    return A::TToperator{T}
+    return A
 end
 
 """
@@ -298,6 +311,7 @@ Ground-state energy = -12.72 eV (N=6)
 """
 function PPP_C_NH_N(N;β=-2.5/27.2113845,b=1.4*1.8897259886,γ0=10.84/27.2113845,order=collect(1:2N),tol=1e-8)
     @assert isperm(order) "Ordering given is not a permutation."
+    dims = ntuple(x->2,2N)
     h = zeros(2N,2N)
     γ = sum(1/(1/γ0+b*sin(k/N*pi)/sin(pi/N)) for k in 1:N)
     for i in 1:N-1
@@ -306,13 +320,13 @@ function PPP_C_NH_N(N;β=-2.5/27.2113845,b=1.4*1.8897259886,γ0=10.84/27.2113845
     end
     h[2N,2],h[2,2N] = β,β
     h[2N-1,1],h[1,2N-1] = β,β
-    H_tto = hV_to_mpo(Symmetric(h)[order,order],zeros(2N,2N,2N,2N))
+    H_tto = hV_to_mpo(Symmetric(h)[order,order],zeros(2N,2N,2N,2N),dims)
     σ = invperm(order)
     id = -1.0*id_tto(2N)
     for i in 1:N
-        Hi = (one_body_mpo(σ[2i],σ[2i],2N)+one_body_mpo(σ[2i-1],σ[2i-1],2N))+id
+        Hi = (one_body_mpo(σ[2i],σ[2i],H_tto.tto_dims)+one_body_mpo(σ[2i-1],σ[2i-1],H_tto.tto_dims))+id
         for j in 1:N
-            Hj = (one_body_mpo(σ[2j],σ[2j],2N)+one_body_mpo(σ[2j-1],σ[2j-1],2N)) + id 
+            Hj = (one_body_mpo(σ[2j],σ[2j],H_tto.tto_dims)+one_body_mpo(σ[2j-1],σ[2j-1],H_tto.tto_dims)) + id 
             Htemp = Hi*Hj
             γij = 1/(1/γ0+b*sin(pi/N*mod(i-j,N))/sin(pi/N))
             H_tto = H_tto + 0.5*γij*Htemp
@@ -325,10 +339,10 @@ end
 """
 Returns the particle number operator ̂N of L sites
 """
-function part_num(L)
-    A = zeros_tto(2*ones(Int64,L),ones(Int64,L+1))
+function part_num(dims::NTuple{N,Int64}) where N
+    A = zeros_tto(dims,ones(Int64,L+1))
     for i in 1:L
-        A = A + one_body_mpo(i,i,L)
+        A = A + one_body_mpo(i,i,dims)
     end
     return tt_rounding(A)
 end

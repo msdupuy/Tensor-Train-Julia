@@ -26,6 +26,10 @@ struct TTvector{T<:Number,M}
 	ttv_dims :: NTuple{M,Int64}
 	ttv_rks :: Vector{Int64}
 	ttv_ot :: Vector{Int64}
+	function TTvector{T,M}(N,vec,dims,rks,ot) where {T,M}
+		@assert M isa Int64
+		new{T,M}(N,vec,dims,rks,ot)
+	end
 end
 
 Base.eltype(::TTvector{T,N}) where {T<:Number,N} = T 
@@ -54,11 +58,15 @@ The following properties are stored
 """
 
 struct TToperator{T<:Number,M}
-	N :: Int
+	N :: Int64
 	tto_vec :: Array{Array{T,4},1}
 	tto_dims :: NTuple{M,Int64}
 	tto_rks :: Array{Int64,1}
 	tto_ot :: Array{Int64,1}
+	function TToperator{T,M}(N,vec,dims,rks,ot) where {T,M}
+		@assert M isa Int64
+		new{T,M}(N,vec,dims,rks,ot)
+	end
 end
 
 Base.eltype(::TToperator{T,M}) where {T,M} = T 
@@ -73,10 +81,10 @@ function zeros_tt(dims,rks;ot=zeros(Int64,length(dims)))
 	return zeros_tt(Float64,dims,rks;ot=ot)
 end
 
-function zeros_tt(::Type{T},dims,rks;ot=zeros(Int64,length(dims))) where T
+function zeros_tt(::Type{T},dims::NTuple{N,Int64},rks;ot=zeros(Int64,length(dims))) where {T,N}
 	#@assert length(dims)+1==length(rks) "Dimensions and ranks are not compatible"
 	tt_vec = [zeros(T,dims[i],rks[i],rks[i+1]) for i in eachindex(dims)]
-	return TTvector{T,length(dims)}(length(dims),tt_vec,dims,copy(rks),copy(ot))
+	return TTvector{T,N}(N,tt_vec,dims,copy(rks),copy(ot))
 end
 
 """
@@ -102,18 +110,14 @@ end
 """
 returns a zero TToperator with dimensions `dims` and ranks `rks`
 """
-function fill_TTo!(vec,dims,rks)
-	@simd for i in eachindex(vec)
-		vec[i] = zeros(eltype(eltype(vec)),dims[i],dims[i],rks[i],rks[i+1])
-	end
+function zeros_tto(dims,rks)
+	return zeros_tto(Float64,dims,rks)
 end
 
-function zeros_tto(dims,rks;T=Float64) 
+function zeros_tto(::Type{T},dims::NTuple{N,Int64},rks)  where {T,N}
 	@assert length(dims)+1==length(rks) "Dimensions and ranks are not compatible"
-	d = length(dims)
-	H = Vector{Array{T,4}}(undef,d)
-	fill_TTo!(H,dims,rks)
-	return TToperator{T}(d,H,dims,rks,zeros(Int,d))
+	vec = [zeros(T,dims[i],dims[i],rks[i],rks[i+1]) for i in eachindex(dims)]
+	return TToperator{T,N}(N,vec,dims,rks,zeros(Int64,N))
 end
 
 #returns partial isometry Q ∈ R^{n x m}
@@ -248,7 +252,7 @@ function ttv_to_tensor(x_tt :: TTvector{T,N}) where {T<:Number,N}
 	# Initialize the to be returned tensor
 	tensor = zeros(T, x_tt.ttv_dims)
 	# Fill in the tensor for every t=(x_1,...,x_d)
-	for t in CartesianIndices(tensor)
+	@simd for t in CartesianIndices(tensor)
 		curr = ones(T,r_max)
 		a = collect(Tuple(t))
 		for i = d:-1:1
@@ -325,14 +329,14 @@ end
 """
 Transforms a TToperator into a TTvector
 """
-function tto_to_ttv(A::TToperator{T}) where {T<:Number}
+function tto_to_ttv(A::TToperator{T,N}) where {T<:Number,N}
 	d = A.N
 	xtt_vec = Array{Array{T,3},1}(undef,d)
 	A_rks = A.tto_rks
 	for i in eachindex(xtt_vec)
 		xtt_vec[i] = reshape(A.tto_vec[i],A.tto_dims[i]^2,A_rks[i],A_rks[i+1])
 	end
-	return TTvector{T,d}(d,xtt_vec,A.tto_dims.^2,A.tto_rks,A.tto_ot)
+	return TTvector{T,N}(d,xtt_vec,A.tto_dims.^2,A.tto_rks,A.tto_ot)
 end
 
 """
@@ -343,12 +347,11 @@ function ttv_to_tto(x::TTvector{T,N}) where {T<:Number,N}
 	d = x.N
 	Att_vec = Array{Array{T,4},1}(undef,d)
 	x_rks = x.ttv_rks
-	A_dims = zeros(Int64,d)
+	A_dims = isqrt.(x.ttv_dims)
 	for i in eachindex(A_dims)
-		A_dims[i] = isqrt(x.ttv_dims[i])
 		Att_vec[i] = reshape(x.ttv_vec[i],A_dims[i],A_dims[i],x_rks[i],x_rks[i+1])
 	end
-	return TToperator{T,d}(d,Att_vec,A_dims,x.ttv_rks,x.ttv_ot)
+	return TToperator{T,N}(d,Att_vec,A_dims,x.ttv_rks,x.ttv_ot)
 end
 
 """
@@ -389,7 +392,7 @@ function tto_to_tensor(tto :: TToperator{T,N}) where {T<:Number,N}
 	tensor = zeros(T,(tto.tto_dims...,tto.tto_dims...))
 	# Fill in the tensor for every t=(x_1,...,x_d,y_1,...,y_d)
 	curr = ones(T,r_max)
-	for t in CartesianIndices(tensor)
+	@simd for t in CartesianIndices(tensor)
 		curr[1] = one(T)
 		for i = d:-1:1
 			curr[1:rks[i]] = tto.tto_vec[i][t[i], t[d + i], :, :]*curr[1:rks[i+1]]
@@ -405,11 +408,11 @@ function id_tto(d;n_dim=2)
 end
 
 function id_tto(::Type{T},d;n_dim=2) where {T}
-	dims = n_dim*ones(Int64,d)
+	dims = Tuple(n_dim*ones(Int64,d))
 	A = Array{Array{T,4},1}(undef,d)
 	for j in 1:d
 		A[j] = zeros(T,2,2,1,1)
 		A[j][:,:,1,1] = Matrix{T}(I,2,2)
 	end
-	return TToperator{T,N}(d,A,dims,ones(Int64,d+1),zeros(d))
+	return TToperator{T,d}(d,A,dims,ones(Int64,d+1),zeros(d))
 end

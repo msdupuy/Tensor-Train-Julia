@@ -33,7 +33,7 @@ function +(x::TTvector{T,N},y::TTvector{T,N}) where {T<:Number,N}
         ttv_vec[d][:,1:x.ttv_rks[d],1] = x.ttv_vec[d]
         ttv_vec[d][:,(x.ttv_rks[d]+1):rks[d],1] = y.ttv_vec[d]
         end
-    return TTvector{T,N}(d,ttv_vec,x.ttv_dims,rks,zeros(d))
+    return TTvector{T,N}(d,ttv_vec,x.ttv_dims,rks,zeros(Int64,d))
 end
 
 """
@@ -63,7 +63,7 @@ function +(x::TToperator{T,N},y::TToperator{T,N}) where {T<:Number,N}
         tto_vec[d][:,:,1:x.tto_rks[d],1] = x.tto_vec[d]
         tto_vec[d][:,:,(x.tto_rks[d]+1):rks[d],1] = y.tto_vec[d]
     end
-    return TToperator{T,N}(d,tto_vec,x.tto_dims,rks,zeros(d))
+    return TToperator{T,N}(d,tto_vec,x.tto_dims,rks,zeros(Int64,d))
 end
 
 
@@ -82,16 +82,21 @@ end
 function *(A::TToperator{T,N},B::TToperator{T,N}) where {T<:Number,N}
     @assert A.tto_dims==B.tto_dims "Incompatible dimensions"
     d = A.N
-    Y = Array{Array{T,4},1}(undef, d)
     A_rks = A.tto_rks #R_0, ..., R_d
     B_rks = B.tto_rks #r_0, ..., r_d
-    @simd for k in 1:d
-		M = zeros(T,A.tto_dims[k],A.tto_dims[k],A_rks[k],B_rks[k],A_rks[k+1],B_rks[k+1])
-		@tensor M[a,b,c,d,e,f] = A.tto_vec[k][a,z,c,e]*B.tto_vec[k][z,b,d,f]
-        Y[k] = reshape(M, A.tto_dims[k], A.tto_dims[k], A_rks[k]*B_rks[k], A_rks[k+1]*B_rks[k+1])
+    Y = [zeros(T,A.tto_dims[k], A.tto_dims[k], A_rks[k]*B_rks[k], A_rks[k+1]*B_rks[k+1]) for k in eachindex(A.tto_dims)]
+    @inbounds @simd for k in eachindex(Y)
+		M_temp = reshape(Y[k], A.tto_dims[k], A.tto_dims[k], A_rks[k],B_rks[k], A_rks[k+1],B_rks[k+1])
+        @simd for jₖ in size(M_temp,2)
+            @simd for iₖ in size(M_temp,1)
+                @tensor M_temp[iₖ,jₖ,αₖ₋₁,βₖ₋₁,αₖ,βₖ] = A.tto_vec[k][iₖ,z,αₖ₋₁,αₖ]*B.tto_vec[k][z,jₖ,βₖ₋₁,βₖ]
+            end
+        end
     end
-    return TToperator{T,N}(d,Y,A.tto_dims,A.tto_rks.*B.tto_rks,zeros(Integer,d))
+    return TToperator{T,N}(d,Y,A.tto_dims,A.tto_rks.*B.tto_rks,zeros(Int64,d))
 end
+
+*(A::TToperator{T,N},B...) where {T,N} = *(A,*(B...))
 
 function *(A::Array{TTvector{T,N},1},x::Vector{T}) where {T,N}
     out = x[1]*A[1]
@@ -149,7 +154,7 @@ function *(a::S,A::TTvector{R,N}) where {S<:Number,R<:Number,N}
     end
 end
 
-function *(a::S,A::TToperator{R}) where {S<:Number,R<:Number}
+function *(a::S,A::TToperator{R,N}) where {S<:Number,R<:Number,N}
     i = findfirst(isequal(0),A.tto_ot)
     T = typejoin(typeof(a),R)
     X = copy(A.tto_vec)

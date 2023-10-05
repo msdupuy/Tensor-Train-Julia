@@ -210,9 +210,9 @@ function init_adapt(A::TToperator,b::TTvector)
     return init(A,b,opt_rks)
 end
 
-function arnoldi(A::TToperator,m;v::TTvector{T},ε_tt=1e-6,rmax=256) where T
+function arnoldi(A::TToperator,m;v::TTvector{T,N},ε_tt=1e-6,rmax=256) where {T,N}
     H = UpperHessenberg(zeros(T,m+1,m+1))
-    V = Array{TTvector{T},1}(undef,m+1)
+    V = Array{TTvector{T,N},1}(undef,m+1)
     V[1] = v/norm(v)
     for j in 1:m 
       w = dot_randrounding(A,V[j])

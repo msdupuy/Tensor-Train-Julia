@@ -51,7 +51,7 @@ function tt_up_rks(x_tt::TTvector{T,N},rk_max::Int;rks=vcat(1,rk_max*ones(Int,le
 end
 
 """
-returns the orthogonalized TTvector with root i
+	returns the orthogonalized TTvector with root i with ranks at most max(nⱼ)rₖ
 """
 function orthogonalize(x_tt::TTvector{T,N};i=1::Int) where {T<:Number,N}
 	d = x_tt.N
@@ -59,7 +59,7 @@ function orthogonalize(x_tt::TTvector{T,N};i=1::Int) where {T<:Number,N}
 	y_rks = r_and_d_to_rks(x_tt.ttv_rks,x_tt.ttv_dims)
 	y_tt = zeros_tt(T,x_tt.ttv_dims,y_rks)
 	FR = ones(T,1,1)
-	yleft_temp =zeros(T,maximum(y_tt.ttv_rks),maximum(x_tt.ttv_dims),maximum(x_tt.ttv_rks))
+	yleft_temp =zeros(T,maximum(y_tt.ttv_rks)*maximum(x_tt.ttv_dims),maximum(x_tt.ttv_dims),maximum(x_tt.ttv_rks))
 	for j in 1:i-1
 		y_tt.ttv_ot[j]=1
 		@tensoropt((βⱼ₋₁,αⱼ),	yleft_temp[1:y_tt.ttv_rks[j],1:x_tt.ttv_dims[j],1:x_tt.ttv_rks[j+1]][αⱼ₋₁,iⱼ,αⱼ] = FR[αⱼ₋₁,βⱼ₋₁]*x_tt.ttv_vec[j][iⱼ,βⱼ₋₁,αⱼ])
@@ -104,6 +104,10 @@ function LinearAlgebra.norm(v::TTvector)
 	end
 end
 
+function full_orthogonalize(x_tt::TTvector{T,N};i=1::Int) where {T,N}
+	return orthogonalize(orthogonalize(x_tt,i=1),i=i)
+end
+
 """
 returns a TT representation where the singular values lower than tol are discarded
 """
@@ -124,7 +128,7 @@ end
 """
 returns the rounding of the TT operator
 """
-function tt_rounding(A_tto::TToperator;tol=1e-12,rmax=max(prod(A_tto.tto_dims[1:floor(Int,A_tto.N/2)]),prod(A_tto.tto_dims[ceil(Int,A_tto.N/2):end])))
+function tt_rounding(A_tto::TToperator{T,N};tol=1e-12,rmax=prod(A_tto.tto_dims)) where {T,N}
 	return ttv_to_tto(tt_rounding(tto_to_ttv(A_tto);tol=tol,rmax=rmax))
 end
 
