@@ -259,7 +259,7 @@ function eig_arnoldi(A::TToperator,m,v::TTvector;Imax=100,ε=1e-6,ε_tt=1e-4,rma
       λ = F.values[k]
       v = ttrand_rounding(V*F.vectors[:,k];rks=2*v.ttv_rks) #largest eigenvalue
       v = tt_rounding(v,tol=ε_tt,rmax=rmax)
-      println("Current eigenvalue: $λ")
+      println("Current eigenvalue: $(λ-σ)")
       println("Arnoldi residual $h")
       i+=1
     end
