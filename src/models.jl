@@ -233,15 +233,15 @@ function normal_ordering(p,q,r,s,n)
     else 
         if r≤n 
             return r,p,q,s,1.0
+        elseif p≤n 
+            return q,p,r,s,-1.0
+        else 
+            return p,q,r,s,1.0
         end
     end
-    if p≤n 
-        return q,p,r,s,-1.0
-    end 
-    return p,q,r,s,1.0
 end
 
-function hV_no_to_mpo(h::Array{T,2},V,dims::NTuple{N,Int64};n=ceil(Int64,L/2),tol=1e-8::Float64,n_rnd=20::Int) where {T,N}
+function hV_no_to_mpo(h::Array{T,2},V,dims::NTuple{N,Int64};n=ceil(Int64,N/2),tol=1e-8::Float64,n_rnd=20::Int) where {T,N}
     L = size(h,1)
     @assert issymmetric(h)
 #    @assert isapprox(V,permutedims(V,(2,1,4,3)))
@@ -266,9 +266,9 @@ function hV_no_to_mpo(h::Array{T,2},V,dims::NTuple{N,Int64};n=ceil(Int64,L/2),to
         end
     end
     for i in findall(x->!isapprox(x,0.0,atol=1e-12),V)
-        p,q,r,s,ϕ =  normal_ordering(i[1],i[2],i[3],i[4],n)
+        p,q,r,s = i[1],i[2],i[3],i[4]
         H = tto_crea[p]*tto_crea[q]*tto_anni[r]*tto_anni[s]
-        A = A+ϕ*V[i]*H
+        A = A+V[i]*H
         if i_rnd > n_rnd 
             A = tt_rounding(A,tol=tol)
             i_rnd = 1
