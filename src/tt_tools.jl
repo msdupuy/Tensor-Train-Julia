@@ -416,3 +416,25 @@ function id_tto(::Type{T},d;n_dim=2) where {T}
 	end
 	return TToperator{T,d}(d,A,dims,ones(Int64,d+1),zeros(d))
 end
+
+function json_to_mps(x)
+	dims = Tuple(convert(Vector{Int64},x[:ttv_dims]))
+	rks = convert(Vector{Int64},x[:ttv_rks])
+	ot = convert(Vector{Int64},x[:ttv_ot])
+	vec = Vector{Array{eltype(x[:ttv_vec][1]),3}}(undef,x[:N])
+	for i in eachindex(vec)
+		vec[i] = reshape(convert(Vector{eltype(eltype(vec))}, (x[:ttv_vec])[i]),dims[i],rks[i],rks[i+1])
+	end
+	return TTvector{eltype(eltype(vec)),x[:N]}(x[:N],vec,dims,rks,ot)
+end
+
+function json_to_mpo(x)
+	dims = Tuple(convert(Vector{Int64},x[:tto_dims]))
+	rks = convert(Vector{Int64},x[:tto_rks])
+	ot = convert(Vector{Int64},x[:tto_ot])
+	vec = Vector{Array{eltype(x[:tto_vec][1]),4}}(undef,x[:N])
+	for i in eachindex(vec)
+		vec[i] = reshape(convert(Vector{eltype(eltype(vec))}, (x[:tto_vec])[i]),dims[i],dims[i],rks[i],rks[i+1])
+	end
+	return TToperator{eltype(eltype(vec)),x[:N]}(x[:N],vec,dims,rks,ot)
+end
