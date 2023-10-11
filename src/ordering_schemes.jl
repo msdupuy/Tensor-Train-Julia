@@ -11,10 +11,10 @@ ordering schemes for QC-DMRG or 2D statistical models
 """
 function one_rdm(x_tt::TTvector{T}) where {T<:Number}
     d = x_tt.N
-    @assert(2*ones(Int,d)==x_tt.ttv_dims)
+    @assert(ntuple(x->2,d)==x_tt.ttv_dims)
     γ = zeros(T,d,2,2)
     for i in 1:d
-        y_tt = one_body_mpo(i,i,d;T=T)*x_tt
+        y_tt = one_body_mpo(T,i,i,x_tt.ttv_dims)*x_tt
         γ[i,2,2] = dot(x_tt,y_tt)
         γ[i,1,1] = 1-γ[i,2,2]
     end
@@ -26,15 +26,15 @@ end
 """
 function two_rdm(x_tt::TTvector{S};fermion=true) where {S<:Number}
     d = x_tt.N
-    @assert(2*ones(Int,d)==x_tt.ttv_dims)
+    @assert(ntuple(x->2,d)==x_tt.ttv_dims)
     γ = zeros(S,d,d,2,2,2,2) #(i,j;i,j) occupancy
     for i in 1:d-1
         for j in i+1:d
-            γ[i,j,2,2,2,2] = -dot(x_tt,two_body_mpo(i,j,i,j,d,T=S)*x_tt)
-            γ[i,j,1,2,1,2] = -γ[i,j,2,2,2,2] + dot(x_tt,one_body_mpo(j,j,d,T=S)*x_tt)
-            γ[i,j,2,1,2,1] = -γ[i,j,2,2,2,2] + dot(x_tt,one_body_mpo(i,i,d,T=S)*x_tt)
+            γ[i,j,2,2,2,2] = -dot(x_tt,two_body_mpo(S,i,j,i,j,x_tt.ttv_dims)*x_tt)
+            γ[i,j,1,2,1,2] = -γ[i,j,2,2,2,2] + dot(x_tt,one_body_mpo(S,j,j,x_tt.ttv_dims)*x_tt)
+            γ[i,j,2,1,2,1] = -γ[i,j,2,2,2,2] + dot(x_tt,one_body_mpo(S,i,i,x_tt.ttv_dims)*x_tt)
             γ[i,j,1,1,1,1] = 1.0 -γ[i,j,2,2,2,2] -γ[i,j,2,1,2,1] -γ[i,j,1,2,1,2] 
-            γ[i,j,2,1,1,2] = dot(x_tt,one_body_mpo(i,j,d;fermion=fermion,T=S)*x_tt)
+            γ[i,j,2,1,1,2] = dot(x_tt,one_body_mpo(S,i,j,x_tt.ttv_dims;fermion=fermion)*x_tt)
             γ[i,j,1,2,2,1] = γ[i,j,2,1,1,2]
         end
     end
