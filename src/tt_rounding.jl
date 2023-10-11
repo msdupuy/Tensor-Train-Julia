@@ -59,7 +59,7 @@ function orthogonalize(x_tt::TTvector{T,N};i=1::Int) where {T<:Number,N}
 	y_rks = r_and_d_to_rks(x_tt.ttv_rks,x_tt.ttv_dims)
 	y_tt = zeros_tt(T,x_tt.ttv_dims,y_rks)
 	FR = ones(T,1,1)
-	yleft_temp =zeros(T,maximum(y_tt.ttv_rks)*maximum(x_tt.ttv_dims),maximum(x_tt.ttv_dims),maximum(x_tt.ttv_rks))
+	yleft_temp =zeros(T,maximum(x_tt.ttv_rks),maximum(x_tt.ttv_dims),maximum(x_tt.ttv_rks))
 	for j in 1:i-1
 		y_tt.ttv_ot[j]=1
 		@tensoropt((βⱼ₋₁,αⱼ),	yleft_temp[1:y_tt.ttv_rks[j],1:x_tt.ttv_dims[j],1:x_tt.ttv_rks[j+1]][αⱼ₋₁,iⱼ,αⱼ] = FR[αⱼ₋₁,βⱼ₋₁]*x_tt.ttv_vec[j][iⱼ,βⱼ₋₁,αⱼ])
