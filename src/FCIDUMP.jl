@@ -64,3 +64,47 @@ function read_electron_integral_tensors(fcidump_filename::String)::Tuple{Float64
 
     return Nuclear_energy, orbital_count,electron_count, one_electron_integral_tensor, two_electron_integral_tensor
 end
+
+function read_electron_integral_tensors_nosymmetry(fcidump_filename::String)::Tuple{Float64,Int,Int,Array{Float64,2},Array{Float64,4}}
+
+    lines = readlines(fcidump_filename)
+    #@assert lines[4] == " /"
+    electron_count_match = match(r"NELEC= *([0-9]+)", lines[1])
+    electron_count= parse(Int, electron_count_match[1])
+
+
+    orbital_count_match = match(r"NORB= *([0-9]+)", lines[1])
+    orbital_count = parse(Int, orbital_count_match[1])
+ 
+    one_electron_integral_tensor = zeros(orbital_count, orbital_count)
+
+    two_electron_integral_tensor =
+        zeros(orbital_count, orbital_count, orbital_count, orbital_count)
+
+    Nuclear_energy=0;
+    for line in lines[5:end]
+
+        tokens = split(line)
+        value = parse(Float64, tokens[1])
+        i = parse(Int, tokens[2])
+        j = parse(Int, tokens[3])
+        k = parse(Int, tokens[4])
+        l = parse(Int, tokens[5])
+
+        if i == j == k == l == 0
+
+            @debug begin
+                println("core energy = $value")
+            end
+            Nuclear_energy=value;
+
+        elseif k == l == 0
+            one_electron_integral_tensor[i, j] = one_electron_integral_tensor[j, i] = value
+        else
+            two_electron_integral_tensor[i,j,k,l] = value
+        end
+    end
+
+    return Nuclear_energy, orbital_count,electron_count, one_electron_integral_tensor, two_electron_integral_tensor
+end
+

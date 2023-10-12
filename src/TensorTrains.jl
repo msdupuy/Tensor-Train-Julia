@@ -37,6 +37,6 @@ include("tt_randtools.jl")
 export ttrand_rounding
 
 include("FCIDUMP.jl")
-export read_electron_integral_tensors
+export read_electron_integral_tensors,read_electron_integral_tensors_nosymmetry
 
 end

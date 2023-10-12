@@ -20,7 +20,8 @@ The following properties are stored
 		* ttv_ot[i] = -1 iff ``A_i`` is right-orthogonal *i.e.* ``\\sum_{\\mu_i} A_i[\\mu_i] A_i[\\mu_i]^T = I_{r_{i-1}}``
 		* ttv_ot[i] = 0 if nothing is known
 """
-struct TTvector{T<:Number,M}
+abstract type AbstractTTvector end
+struct TTvector{T<:Number,M} <: AbstractTTvector
 	N :: Int64
 	ttv_vec :: Vector{Array{T,3}}
 	ttv_dims :: NTuple{M,Int64}
@@ -37,7 +38,7 @@ Base.eltype(::TTvector{T,N}) where {T<:Number,N} = T
 """
 Vidal representation of TT vector
 """
-struct TT_vidal{T<:Number,M}
+struct TT_vidal{T<:Number,M} <: AbstractTTvector
 	#Vidal representation of a higher-order tensor 
 	#C[μ_1,…,μ_L] = core[μ_1] * Diagonal(Σ_1) * … * Diagonal(Σ_{L-1}) * core[μ_L]
 	#Cores are orthogonal and Σ are the higher-order singular values
@@ -56,8 +57,8 @@ The following properties are stored
 	* ttv_dims: the dimension of the tensor along each mode
 	* ttv_rks: the TT ranks ``(r_0,...,r_d)`` where ``r_0=r_d=1``
 """
-
-struct TToperator{T<:Number,M}
+abstract type AbstractTToperator end
+struct TToperator{T<:Number,M} <: AbstractTToperator
 	N :: Int64
 	tto_vec :: Array{Array{T,4},1}
 	tto_dims :: NTuple{M,Int64}
@@ -84,7 +85,7 @@ end
 function zeros_tt(::Type{T},dims::NTuple{N,Int64},rks;ot=zeros(Int64,length(dims))) where {T,N}
 	#@assert length(dims)+1==length(rks) "Dimensions and ranks are not compatible"
 	tt_vec = [zeros(T,dims[i],rks[i],rks[i+1]) for i in eachindex(dims)]
-	return TTvector{T,N}(N,tt_vec,dims,copy(rks),copy(ot))
+	return TTvector{T,N}(N,tt_vec,dims,deepcopy(rks),deepcopy(ot))
 end
 
 """
