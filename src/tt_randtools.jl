@@ -52,5 +52,5 @@ end
 function dot_randrounding(A::TToperator,x::TTvector)
   y = A*x
   y = ttrand_rounding(y)
-  return tt_rounding(y;tol=1e-6)
+  return tt_rounding(y;tol=1e-8)
 end
