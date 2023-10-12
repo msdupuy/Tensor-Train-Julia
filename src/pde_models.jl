@@ -27,5 +27,25 @@ function Δ_tto(n,d)
   H_vec[d] = zeros(n,n,2,1)
   H_vec[d][:,:,1,1] = Matrix{Float64}(I,n,n)
   H_vec[d][:,:,2,1] = h
-  return TToperator(d,H_vec,Tuple(n*ones(Int64,d)),rks,zeros(Int64,d))
+  return TToperator{Float64,d}(d,H_vec,Tuple(n*ones(Int64,d)),rks,zeros(Int64,d))
+end
+
+"""
+  H = -Δ + ∑ₖ₌₁ʳ sₖ|ϕₖ⟩⟨φₖ|
+"""
+function perturbed_Δ_tto(n,d;hermitian=true,r=1,rks=ones(Int64,d+1))
+  H = Δ_tto(n,d)
+  s = randn(r)
+  for k in 1:r
+    ϕₖ = rand_tt(H.tto_dims,rks)
+    ϕₖ = 1/norm(ϕₖ)*ϕₖ
+    if hermitian 
+      H = H+s[k]*outer_product(ϕₖ,ϕₖ)
+    else 
+      φₖ = rand_tt(H.tto_dims,rks)
+      φₖ = 1/norm(φₖ)*φₖ
+      H = H+s[k]*outer_product(ϕₖ,φₖ)
+    end
+  end
+  return H
 end

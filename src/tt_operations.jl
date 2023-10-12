@@ -173,3 +173,19 @@ end
 function /(A::TTvector,a)
     return 1/a*A
 end
+
+"""
+returns the matrix x y' in the TTO format
+"""
+function outer_product(x::TTvector{T,N},y::TTvector{T,N}) where {T<:Number,N}
+    Y = [zeros(T,x.ttv_dims[k], x.ttv_dims[k], x.ttv_rks[k]*y.ttv_rks[k], x.ttv_rks[k+1]*y.ttv_rks[k+1]) for k in eachindex(x.ttv_dims)]
+    @inbounds @simd for k in eachindex(Y)
+		M_temp = reshape(Y[k], x.ttv_dims[k], x.ttv_dims[k], x.ttv_rks[k], y.ttv_rks[k], x.ttv_rks[k+1],y.ttv_rks[k+1])
+        @simd for jₖ in size(M_temp,2)
+            @simd for iₖ in size(M_temp,1)
+                @tensor M_temp[iₖ,jₖ,αₖ₋₁,βₖ₋₁,αₖ,βₖ] = x.ttv_vec[k][iₖ,αₖ₋₁,αₖ]*conj(y.ttv_vec[k][jₖ,βₖ₋₁,βₖ])
+            end
+        end
+    end
+    return TToperator{T,N}(x.N,Y,x.ttv_dims,x.ttv_rks.*y.ttv_rks,zeros(Int64,x.N))
+end
