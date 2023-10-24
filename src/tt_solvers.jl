@@ -231,10 +231,10 @@ function arnoldi(A::TToperator,m;v::TTvector{T,N},ε_tt=1e-6,rmax=256) where {T,
     return H[1:m,1:m],V[1:m],H[m+1,m] 
 end
 
-function eig_arnoldi(A::TToperator,m,v::TTvector;Imax=100,ε=1e-6,ε_tt=1e-4,rmax=256,which=:LM,σ=zero(eltype(v))) #where {S,T}
+function eig_arnoldi(A::TToperator,m,v::TTvector;Imax=100,ε=1e-6,ε_tt=1e-4,rmax=256,which=:LM,σ=zero(eltype(v)),history=false) #where {S,T}
     i = 1
     λ = zero(eltype(v))
-    H,V,h = arnoldi(A,m,v=v,rmax=rmax)
+    H,V,h = arnoldi(A,m,v=v,rmax=2rmax)
     F = eigen(H+σ*I)
     if which==:LM
         k = argmax(abs.(F.values))
@@ -244,12 +244,13 @@ function eig_arnoldi(A::TToperator,m,v::TTvector;Imax=100,ε=1e-6,ε_tt=1e-4,rma
     λ = F.values[k]
     v = ttrand_rounding(V*F.vectors[:,k];rks=2*v.ttv_rks) #largest eigenvalue
     v = tt_rounding(v,tol=ε_tt,rmax=rmax)
+    hist = eltype(v)[]
     while (i<Imax) && abs(h)>ε
         println("Arnoldi iteration $i")
       if eltype(v) == ComplexF64
         A = complex(A)
       end
-      H,V,h = arnoldi(A,m;v=v,ε_tt=ε_tt,rmax=rmax)
+      H,V,h = arnoldi(A,m;v=v,ε_tt=ε_tt,rmax=2rmax)
       F = eigen(H+σ*I)
       if which==:LM
         k = argmax(abs.(F.values))
@@ -259,9 +260,12 @@ function eig_arnoldi(A::TToperator,m,v::TTvector;Imax=100,ε=1e-6,ε_tt=1e-4,rma
       λ = F.values[k]
       v = ttrand_rounding(V*F.vectors[:,k];rks=2*v.ttv_rks) #largest eigenvalue
       v = tt_rounding(v,tol=ε_tt,rmax=rmax)
+      if history 
+        push!(hist,norm(A*v-(λ-σ)*v))
+      end
       println("Current eigenvalue: $(λ-σ)")
       println("Arnoldi residual $h")
       i+=1
     end
-    return λ-σ,v
+    return λ-σ,v,hist
 end
