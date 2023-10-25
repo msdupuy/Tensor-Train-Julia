@@ -75,6 +75,10 @@ function Base.complex(A::TToperator{T,M}) where {T,M}
 	return TToperator{Complex{T},M}(A.N,complex(A.tto_vec),A.tto_dims,A.tto_rks,A.tto_ot)
 end
 
+function Base.complex(v::TTvector{T,N}) where {T,N}
+	return TTvector{Complex{T},N}(v.N,complex(v.ttv_vec),v.ttv_dims,v.ttv_rks,v.ttv_ot)
+end
+
 """
 returns a zero TTvector with dimensions `dims` and ranks `rks`
 """

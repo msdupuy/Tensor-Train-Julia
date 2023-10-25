@@ -270,3 +270,63 @@ function eig_arnoldi(A::TToperator,m,v::TTvector{T,N};Imax=100,ε=1e-6,ε_tt=1e-
     end
     return λ-σ,v,hist
 end
+
+function inner_davidson!(A,u,uhat,θ,V,W,H,m,r,prec;which=:LM,rmax=256,ε_tt=1e-6,σ=0.0)
+    for j in 1:m-1
+        V[j+1] = als_linsolv(prec-θ*id_tto(A.N),r,r) #1-site ALS
+        println(norm(V[j+1]))
+        for i in 1:j
+            V[j+1] =V[j+1] -dot(V[i],V[j+1])*V[i] #modified GS
+        end
+        V[j+1] = ttrand_rounding(V[j+1])
+        V[j+1] = tt_rounding(V[j+1],rmax=rmax,tol=ε_tt)
+        V[j+1] = V[j+1]/norm(V[j+1])
+        W[j+1] = tt_rounding(dot_randrounding(A,V[j+1]),tol=ε_tt,rmax=rmax)
+        for i in 1:j+1
+            H[i,j+1] = dot(V[i],W[j+1])
+            H[j+1,i] = dot(V[j+1],W[i])
+        end
+        F = eigen(H+σ*I)
+        if which==:LM
+            k = argmax(abs.(F.values))
+        else #lowest magnitude
+            k = argmin(abs.(F.values))
+        end
+        θ = F.values[k]
+        if eltype(F.vectors[:,k]) == ComplexF64
+            V = complex(V)
+            W = complex(W)
+            H = complex(H)
+        end
+        u = V[1:j]*F.vectors[:,k]
+        uhat = W[1:j]*F.vectors[:,k]
+        r = tt_rounding(uhat-θ*u,tol=ε_tt,rmax=rmax)
+    end
+  end
+
+  function davidson(A::TToperator,m,v::TTvector{T,N};Imax=100,ε=1e-6,ε_tt=1e-4,rmax=256,which=:LM,σ=0.0,prec=I) where {T,N}
+    res = float(T)[]
+    λ = zero(eltype(v))
+    V = Array{TTvector{T,N},1}(undef,m)
+    W = Array{TTvector{T,N},1}(undef,m)
+    H = zeros(T,m,m)
+    v = v/norm(v)
+    vhat = copy(v)
+    V[1] = v
+    W[1] = tt_rounding(dot_randrounding(A,v),tol=ε_tt,rmax=rmax)
+    θ = dot(V[1],W[1])
+    H[1,1] = θ
+    r = tt_rounding(W[1]-H[1,1]*V[1],tol=ε_tt,rmax=rmax)
+    inner_davidson!(A,v,vhat,θ,V,W,H,m,r,prec;which=which,σ=σ,rmax=rmax,ε_tt=ε_tt)
+    push!(res,norm(dot_randrounding(A,v)-λ*v))
+    i = 1
+    while (i<Imax) && res[i] > ε
+      V[1] = v
+      W[1] = vhat
+      H[1,1] = θ
+      inner_davidson!(A,v,vhat,θ,V,W,H,m,r,prec;which=which,σ=σ,rmax=rmax,ε_tt=ε_tt)
+      push!(res,norm(A*v-λ*v))
+      i+=1
+    end
+    return λ, v, res
+  end

@@ -115,7 +115,7 @@ function tt_rounding(x_tt::TTvector{T,N};tol=1e-12,rmax=max(prod(x_tt.ttv_dims[1
 	y_tt = orthogonalize(x_tt;i=x_tt.N)
 	for j in x_tt.N:-1:2
 		u,s,v = svd(reshape(permutedims(y_tt.ttv_vec[j],[2 1 3]),y_tt.ttv_rks[j],:),full=false)
-		k = min(cut_off_index(s,tol),rmax)
+		k = min(cut_off_index(s,tol),rmax,1)
 		y_tt.ttv_vec[j] = permutedims(reshape(v'[1:k,:],:,x_tt.ttv_dims[j],y_tt.ttv_rks[j+1]),[2 1 3])
 		y_tt.ttv_vec[j-1] = reshape(reshape(y_tt.ttv_vec[j-1],y_tt.ttv_dims[j-1]*y_tt.ttv_rks[j-1],:)*u[:,1:k]*Diagonal(s[1:k]),y_tt.ttv_dims[j-1],y_tt.ttv_rks[j-1],:)
 		y_tt.ttv_rks[j] = k

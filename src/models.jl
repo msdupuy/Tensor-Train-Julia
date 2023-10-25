@@ -430,3 +430,11 @@ function one_e_two_e_integrals_to_hV(int1e,int2e)
     end
     return h,0.5*V
 end
+
+"""
+    H = ∑ hᵢ aᵢ⁺aᵢ + σ in MPO of rank 2
+"""
+function one_body_diagonal(h::Vector{T};σ=zero(T)) where T
+    a⁺a = mpo_core_creation(T)[:,:,1,1]* mpo_core_annihilation(T)[:,:,1,1]
+    return Δ_tto(2,length(h);h=[h[i]*a⁺a+σ*I for i in eachindex(h)])
+end
