@@ -210,10 +210,9 @@ function init_adapt(A::TToperator,b::TTvector)
     return init(A,b,opt_rks)
 end
 
-function arnoldi(A::TToperator,m;v::TTvector{T,N},ε_tt=1e-6,rmax=256) where {T,N}
+function arnoldi(A::TToperator{T,N},m,V;ε_tt=1e-6,rmax=256) where {T,N}
     H = UpperHessenberg(zeros(T,m+1,m+1))
-    V = Array{TTvector{T,N},1}(undef,m+1)
-    V[1] = v/norm(v)
+    V[1] = V[1]/norm(V[1])
     for j in 1:m 
       w = dot_randrounding(A,V[j])
       for i in 1:j 
@@ -228,13 +227,15 @@ function arnoldi(A::TToperator,m;v::TTvector{T,N},ε_tt=1e-6,rmax=256) where {T,
       H[j+1,j] = norm(w)
       V[j+1] = 1/H[j+1,j]*w
     end
-    return H[1:m,1:m],V[1:m],H[m+1,m] 
+    return H[1:m,1:m],V,H[m+1,m] 
 end
 
-function eig_arnoldi(A::TToperator,m,v::TTvector;Imax=100,ε=1e-6,ε_tt=1e-4,rmax=256,which=:LM,σ=zero(eltype(v)),history=false) #where {S,T}
+function eig_arnoldi(A::TToperator,m,v::TTvector{T,N};Imax=100,ε=1e-6,ε_tt=1e-4,rmax=256,which=:LM,σ=zero(eltype(v)),history=false) where {T,N}
     i = 1
     λ = zero(eltype(v))
-    H,V,h = arnoldi(A,m,v=v,rmax=2rmax)
+    V = Array{TTvector{T,N},1}(undef,m+1)
+    V[1] = v
+    H,V,h = arnoldi(A,m,V,rmax=2rmax)
     F = eigen(H+σ*I)
     if which==:LM
         k = argmax(abs.(F.values))
@@ -242,7 +243,7 @@ function eig_arnoldi(A::TToperator,m,v::TTvector;Imax=100,ε=1e-6,ε_tt=1e-4,rma
         k = argmin(abs.(F.values))
     end
     λ = F.values[k]
-    v = ttrand_rounding(V*F.vectors[:,k];rks=2*v.ttv_rks) #largest eigenvalue
+    v = ttrand_rounding(V[1:m]*F.vectors[:,k];rks=2*v.ttv_rks) #largest eigenvalue
     v = tt_rounding(v,tol=ε_tt,rmax=rmax)
     hist = eltype(v)[]
     while (i<Imax) && abs(h)>ε
@@ -250,7 +251,7 @@ function eig_arnoldi(A::TToperator,m,v::TTvector;Imax=100,ε=1e-6,ε_tt=1e-4,rma
       if eltype(v) == ComplexF64
         A = complex(A)
       end
-      H,V,h = arnoldi(A,m;v=v,ε_tt=ε_tt,rmax=2rmax)
+      H,V,h = arnoldi(A,m,V;ε_tt=ε_tt,rmax=2rmax)
       F = eigen(H+σ*I)
       if which==:LM
         k = argmax(abs.(F.values))
@@ -258,7 +259,7 @@ function eig_arnoldi(A::TToperator,m,v::TTvector;Imax=100,ε=1e-6,ε_tt=1e-4,rma
         k = argmin(abs.(F.values))
       end
       λ = F.values[k]
-      v = ttrand_rounding(V*F.vectors[:,k];rks=2*v.ttv_rks) #largest eigenvalue
+      v = ttrand_rounding(V[1:m]*F.vectors[:,k];rks=2*v.ttv_rks) #largest eigenvalue
       v = tt_rounding(v,tol=ε_tt,rmax=rmax)
       if history 
         push!(hist,norm(A*v-(λ-σ)*v))
