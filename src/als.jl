@@ -198,7 +198,7 @@ function als_linsolv(A :: TToperator{T}, b :: TTvector{T}, tt_start :: TTvector{
 				# Define V as solution of K*x=Pb in x
 				V = Ksolve(G[i],G_b[i],H[i],H_b[i])
 				tt_opt = left_core_move(tt_opt,V,i,rks)
-				println(norm(tt_opt.ttv_vec[i-1]))
+#				println(norm(tt_opt.ttv_vec[i-1]))
 				update_H!(tt_opt.ttv_vec[i],A.tto_vec[i],H[i],H[i-1])
 				update_Hb!(tt_opt.ttv_vec[i],b.ttv_vec[i],H_b[i],H_b[i-1])
 			end
