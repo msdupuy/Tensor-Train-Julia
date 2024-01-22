@@ -407,6 +407,33 @@ function tto_to_tensor(tto :: TToperator{T,N}) where {T<:Number,N}
 	return tensor
 end
 
+function occ_to_μ(x::Vector{Int},L::Int)
+	out = ones(Int64,L)
+	for i in x
+		out[i] = 2
+	end
+	out
+end
+
+function mpo_Nparticle_to_matrix(A::TToperator{T,L},N) where {T,L}
+	rmax = maximum(A.tto_rks)
+	temp = ones(T,rmax)
+	mat = zeros(T,binomial(L,N),binomial(L,N))
+	occ_list = collect(combinations(1:L,N))
+	@simd for j in axes(mat,2)
+		for i in axes(mat,1)
+			temp[1] = one(T)
+			μ_row = occ_to_μ(occ_list[i],L)
+			μ_col = occ_to_μ(occ_list[j],L)
+			for k in L:-1:1
+				temp[1:A.tto_rks[k]] = A.tto_vec[k][μ_row[k],μ_col[k],:,:]*temp[1:A.tto_rks[k+1]]
+			end
+			mat[i,j] = temp[1]
+		end
+	end
+	return mat
+end
+
 #TTO representation of the identity matrix
 function id_tto(d;n_dim=2)
 	return id_tto(Float64,d;n_dim=n_dim)
@@ -421,6 +448,20 @@ function id_tto(::Type{T},d;n_dim=2) where {T}
 	end
 	return TToperator{T,d}(d,A,dims,ones(Int64,d+1),zeros(d))
 end
+
+function rand_tto(dims,rmax::Int;T=Float64)
+	d = length(dims)
+	tt_vec = Vector{Array{T,4}}(undef,d)
+	rks = ones(Int,d+1)
+	for i in eachindex(tt_vec) 
+		ri = min(prod(dims[1:i-1]),prod(dims[i:d]),rmax)
+		rip = min(prod(dims[1:i]),prod(dims[i+1:d]),rmax)
+		rks[i+1] = rip
+		tt_vec[i] = randn(T,dims[i],dims[i],ri,rip)
+	end
+	return TToperator{T,d}(d,tt_vec,dims,rks,zeros(Int,d))
+end
+
 
 function json_to_mps(x)
 	dims = Tuple(convert(Vector{Int64},x[:ttv_dims]))
