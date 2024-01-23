@@ -159,7 +159,7 @@ function sv_trunc(s::Array{Float64},tol)
 		i=0
 		weight = 0.0
 		norm2 = dot(s,s)
-		while (i<d) && weight<tol*norm2
+		while (i<d) && weight<tol^2*norm2
 			weight+=s[d-i]^2
 			i+=1
 		end

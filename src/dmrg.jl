@@ -97,10 +97,8 @@ end
 function right_core_move(x_tt::TTvector{T},V::Array{T,3},i::Int,tol::Float64,rmax::Integer) where {T<:Number}
 	# Perform the truncated svd
 	u_V, s_V, v_V = svd(reshape(V,x_tt.ttv_rks[i]*x_tt.ttv_dims[i],:))
-	# Determine the truncated rank
-	s_trunc = sv_trunc(s_V,tol)
 	# Update the ranks to the truncated one
-	x_tt.ttv_rks[i+1] = min(length(s_trunc),rmax)
+	x_tt.ttv_rks[i+1] = min(cut_off_index(s_V,tol),rmax)
 	println("Rank: $(x_tt.ttv_rks[i+1]),	Max rank=$rmax")
 	println("Discarded weight: $((norm(s_V)-norm(s_V[1:x_tt.ttv_rks[i+1]]))/norm(s_V))")
 
@@ -114,10 +112,8 @@ function left_core_move(x_tt::TTvector{T},V::Array{T,3},j::Int,tol::Float64,rmax
 	# Perform the truncated svd
 	W = reshape(V, :, x_tt.ttv_dims[j], x_tt.ttv_rks[j+1])
 	u_V, s_V, v_V = svd(reshape(W,:, x_tt.ttv_dims[j]*x_tt.ttv_rks[j+1]))
-	# Determine the truncated rank
-	s_trunc = sv_trunc(s_V,tol)
 	# Update the ranks to the truncated one
-	x_tt.ttv_rks[j] = min(length(s_trunc),rmax)
+	x_tt.ttv_rks[j] = min(cut_off_index(s_V,tol),rmax)
 	println("Rank: $(x_tt.ttv_rks[j]),	Max rank=$rmax")
 	println("Discarded weight: $((norm(s_V)-norm(s_V[1:x_tt.ttv_rks[j]]))/norm(s_V))")
 
