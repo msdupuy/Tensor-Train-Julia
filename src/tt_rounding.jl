@@ -2,10 +2,22 @@ using Base.Threads
 using LinearAlgebra
 import LinearAlgebra.norm
 
-function r_and_d_to_rks(rks,dims;rmax=prod(dims))
+function r_and_d_to_rks(rks,dims;rmax=1024)
 	new_rks = ones(eltype(rks),length(rks)) 
 	@simd for i in eachindex(dims)
-		new_rks[i] = min(rks[i],prod(dims[1:i-1]),prod(dims[i:end]),rmax)
+		if  prod(dims[i:end]) != 0
+			if prod(dims[1:i-1]) != 0
+				new_rks[i] = min(rks[i],prod(dims[1:i-1]),prod(dims[i:end]),rmax)
+			else 
+				new_rks[i] = min(rks[i],prod(dims[i:end]),rmax)
+			end
+		else 
+			if prod(dims[1:i-1]) != 0
+				new_rks[i] = min(rks[i],prod(dims[1:i-1]),rmax)
+			else 
+				new_rks[i] = min(rks[i],rmax)
+			end
+		end
 	end
 	return new_rks
 end
