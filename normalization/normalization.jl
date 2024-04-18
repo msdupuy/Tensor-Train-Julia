@@ -27,9 +27,9 @@ end
 
 #returns an invertible matrix of size n × n with a condition number less than 'tol'
 function rand_inv(n::Int,tol=1e6)
-    out = randn(n,n)
+    out = randn(n,n)/n
     while cond(out)>tol
-        out = randn(n,n)
+        out = randn(n,n)/n
     end
     return out
 end
@@ -145,7 +145,7 @@ end
 
 L = 10
 n = 3
-dims = n*ones(Int64,L)
+dims = ntuple(x->n,L)
 rks = ones(Int64,L+1)
 for i in 2:L
     rks[i] = min(n^(i-1),n^(L+1-i),1024)
@@ -158,7 +158,8 @@ x = ttv_to_tensor(x_tt)
 hsv = tt_svdvals(x_tt)
 x_v = tt_to_vidal(x_tt)
 
-ytt, cost_list = ttcore_norm_minimization(x_tt,N=150)
+Random.seed!(2008)
+ytt, cost_list = ttcore_norm_minimization(x_tt,N=150,X=init_X(x_tt.ttv_rks;random=true))
 y = ttv_to_tensor(ytt)
 
 #TR tests
@@ -166,5 +167,6 @@ Random.seed!(1234)
 x_tr = rand_tr(dims,6)
 xr = tr_to_tensor(x_tr)
 
+Random.seed!(2604)
 yr, ycost = trcore_norm_minimization(x_tr,N=200,X=init_X(x_tr.ttv_rks;random=true))
 yr_tensor = tr_to_tensor(yr)
