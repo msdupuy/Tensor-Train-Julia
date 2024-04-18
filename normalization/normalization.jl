@@ -27,9 +27,9 @@ end
 
 #returns an invertible matrix of size n × n with a condition number less than 'tol'
 function rand_inv(n::Int,tol=1e6)
-    out = randn(n,n)/n
+    out = randn(n,n)/sqrt(n)
     while cond(out)>tol
-        out = randn(n,n)/n
+        out = randn(n,n)/sqrt(n)
     end
     return out
 end
@@ -46,6 +46,8 @@ function init_X(rks;random=false)
            X[i] = Matrix{Float64}(I,rks[i],rks[i])
         end
     end
+    X[1] = Matrix{Float64}(I,rks[1],rks[1])
+    X[end] = Matrix{Float64}(I,rks[end],rks[end])
     return X
 end
 
@@ -57,29 +59,31 @@ function ttcore_norm_minimization(x_tt::TTvector{T};N=6,X=init_X(x_tt.ttv_rks)) 
     y_tt = copy(x_tt)
     for i in 1:N
         for j in 2:d
-            Atemp = vcat([inv(X[j-1])*y_tt.ttv_vec[j-1][k,:,:] for k in 1:x_tt.ttv_dims[j-1]]...)
+            Atemp = vcat([y_tt.ttv_vec[j-1][k,:,:] for k in 1:x_tt.ttv_dims[j-1]]...)
             A = Symmetric(Atemp'*Atemp)
-            Btemp = vcat([X[j+1]'*y_tt.ttv_vec[j][k,:,:]' for k in 1:x_tt.ttv_dims[j]]...)
+            Btemp = vcat([y_tt.ttv_vec[j][k,:,:]' for k in 1:x_tt.ttv_dims[j]]...)
             B = Symmetric(Btemp'*Btemp)
             M = ads(A,B)
             X[j] = Matrix(cholesky(Symmetric(real.(M))).L)
-        end
-        for i in 1:d
-            for j in 1:y_tt.ttv_dims[i]
-                y_tt.ttv_vec[i][j,:,:] = inv(X[i])*y_tt.ttv_vec[i][j,:,:]*X[i+1]
+            for k in 1:y_tt.ttv_dims[j-1]
+                y_tt.ttv_vec[j-1][k,:,:] = y_tt.ttv_vec[j-1][k,:,:]*X[j]
+            end
+            for k in 1:y_tt.ttv_dims[j]
+                y_tt.ttv_vec[j][k,:,:] = inv(X[j])*y_tt.ttv_vec[j][k,:,:]
             end
         end
         for j in d-1:-1:3
-            Atemp = vcat([inv(X[j-1])*y_tt.ttv_vec[j-1][k,:,:] for k in 1:x_tt.ttv_dims[j-1]]...)
+            Atemp = vcat([y_tt.ttv_vec[j-1][k,:,:] for k in 1:x_tt.ttv_dims[j-1]]...)
             A = Symmetric(Atemp'*Atemp)
-            Btemp = vcat([X[j+1]'*y_tt.ttv_vec[j][k,:,:]' for k in 1:x_tt.ttv_dims[j]]...)
+            Btemp = vcat([y_tt.ttv_vec[j][k,:,:]' for k in 1:x_tt.ttv_dims[j]]...)
             B = Symmetric(Btemp'*Btemp)
             M = ads(A,B)
             X[j] = Matrix(cholesky(Symmetric(real.(M))).L)
-        end
-        for i in 1:d
-            for j in 1:y_tt.ttv_dims[i]
-                y_tt.ttv_vec[i][j,:,:] = inv(X[i])*y_tt.ttv_vec[i][j,:,:]*X[i+1]
+            for k in 1:y_tt.ttv_dims[j-1]
+                y_tt.ttv_vec[j-1][k,:,:] = y_tt.ttv_vec[j-1][k,:,:]*X[j]
+            end
+            for k in 1:y_tt.ttv_dims[j]
+                y_tt.ttv_vec[j][k,:,:] = inv(X[j])*y_tt.ttv_vec[j][k,:,:]
             end
         end
         cost[i+1] = norm_tt(y_tt)
@@ -158,8 +162,8 @@ x = ttv_to_tensor(x_tt)
 hsv = tt_svdvals(x_tt)
 x_v = tt_to_vidal(x_tt)
 
-Random.seed!(2008)
-ytt, cost_list = ttcore_norm_minimization(x_tt,N=150,X=init_X(x_tt.ttv_rks;random=true))
+Random.seed!(rand(1:100000))
+ytt, cost_list = ttcore_norm_minimization(x_tt,N=60,X=init_X(x_tt.ttv_rks;random=true))
 y = ttv_to_tensor(ytt)
 
 #TR tests
@@ -168,5 +172,5 @@ x_tr = rand_tr(dims,6)
 xr = tr_to_tensor(x_tr)
 
 Random.seed!(2604)
-yr, ycost = trcore_norm_minimization(x_tr,N=200,X=init_X(x_tr.ttv_rks;random=true))
-yr_tensor = tr_to_tensor(yr)
+#yr, ycost = trcore_norm_minimization(x_tr,N=200,X=init_X(x_tr.ttv_rks;random=true))
+#yr_tensor = tr_to_tensor(yr)
