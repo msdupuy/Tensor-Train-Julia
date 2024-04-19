@@ -57,21 +57,25 @@ end
 """
 Returns a random 'TRvector' of dimensions 'dims' and ranks 'rks'
 """
-function rand_tr(dims,rks)
-	return rand_tr(Float64,dims,rks)
+function rand_tr(dims,rks;normalise=true)
+	return rand_tr(Float64,dims,rks;normalise=normalise)
 end
 
-function rand_tr(::Type{T},dims,rks) where T
+function rand_tr(::Type{T},dims,rks;normalise=true) where T
 	@assert length(dims)+1==length(rks) "Incompatible dimensions and ranks"
 	@assert rks[1] == rks[end] "Incompatible first and last ranks"
 	d = length(dims)
-	tt_vec = [randn(T,dims[i],rks[i],rks[i+1]) for i in eachindex(dims)]
+	if normalise
+		tt_vec = [randn(T,dims[i],rks[i],rks[i+1])/sqrt(dims[i]*rks[i]*rks[i+1]) for i in eachindex(dims)]
+	else
+		tt_vec = [randn(T,dims[i],rks[i],rks[i+1]) for i in eachindex(dims)]
+	end
 	return TRvector{T,d}(d,tt_vec,dims,copy(rks),zeros(Int64,d))
 end
 
 """
 Returns a random 'TRvector' of dimensions 'dims' and maximal rank 'rmax'
 """
-function rand_tr(dims,rmax::Int)
-	return rand_tr(dims,rmax*ones(Int,length(dims)+1))
+function rand_tr(dims,rmax::Int;normalise=true)
+	return rand_tr(dims,rmax*ones(Int,length(dims)+1);normalise=normalise)
 end
