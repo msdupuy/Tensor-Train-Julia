@@ -290,7 +290,7 @@ function tt_to_vidal(x_tt::TTvector{T,N};tol=1e-14) where {T<:Number,N}
 		for i in 1:x_tt.ttv_dims[j]
 			core[j][i,:,:] = inv(Diagonal(Σ[j-1]))*core[j][i,:,:]
 		end
-		@tensor B[i2,α,β] := (Diagonal(s)*v')[α,z]*y_tt.ttv_vec[j+1][i2,z,β] 
+		@tensor B[i2,α,β] := (Diagonal(s[s.>tol])*v[:,s.>tol]')[α,z]*y_tt.ttv_vec[j+1][i2,z,β] 
 	end
 	@tensor core[d][i,α,β] := v'[α,z]*y_tt.ttv_vec[d][i,z,β]
 	return TT_vidal{T,N}(d,core,Σ,y_tt.ttv_dims,y_rks)
