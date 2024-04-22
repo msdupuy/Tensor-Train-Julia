@@ -157,7 +157,7 @@ end
 
 #TT tests
 Random.seed!(1234)
-x_tt = rand_tt(dims,rks,normalise=false)
+x_tt = rand_tt(dims,rks,normalise=true)
 x = ttv_to_tensor(x_tt)
 hsv = tt_svdvals(x_tt)
 x_v = tt_to_vidal(x_tt)
