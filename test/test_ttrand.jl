@@ -20,3 +20,16 @@ end
   A_rand = ttv_to_tensor(A_ttrand)
   @test isapprox(A,A_rand)
 end
+
+@testset "TT sum rand_rounding" begin
+  d = 10
+  n = 50
+  rks = 5
+  dims = ntuple(x->n,d)
+  A_tt = rand_tt(dims,rks;normalise=true)
+  B_tt = rand_tt(dims,20*rks;normalise=true)
+  ε = 1e-4
+  @time A_ttsvd = tt_rounding(A_tt+ε*B_tt;tol=ε)
+  @time A_rand = ttrand_rounding(A_tt+ε*B_tt;rmax=10)
+  @test(norm(A_tt-A_rand)<1e-3*norm(A_tt))
+end
