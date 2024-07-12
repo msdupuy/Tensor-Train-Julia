@@ -251,8 +251,7 @@ function dmrg_linsolv(A :: TToperator{T}, b :: TTvector{T}, tt_start :: TTvector
 	H_bi = @view(H_b[1][1:tt_opt.ttv_rks[1+N],:])
 	# Define V as solution of K*x=Pb in x
 	V = Ksolve(Gi,G_bi,Hi,H_bi,Amid_list[1],bmid_list[1])
-	tt_opt,V = left_core_move(tt_opt,V,N,tol,rmax)
-	for i in N-1:-1:2
+	for i in N:-1:2
 		tt_opt, V = left_core_move(tt_opt,V,i,tol,rmax)
 	end
 	tt_opt.ttv_vec[1] = permutedims(reshape(V,1,tt_opt.ttv_dims[1],:),(2,1,3))
