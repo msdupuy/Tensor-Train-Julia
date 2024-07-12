@@ -156,14 +156,12 @@ Returns a random TTvector with dimensions `dims` and maximal rank `rmax`
 function rand_tt(dims,rmax::Int;T=Float64,normalise=false)
 	d = length(dims)
 	tt_vec = Vector{Array{T,3}}(undef,d)
-	rks = ones(Int,d+1)
+	rks = rmax*ones(Int,d+1)
+	rks = r_and_d_to_rks(rks,dims;rmax=rmax)
 	for i in eachindex(tt_vec) 
-		ri = min(prod(dims[1:i-1]),prod(dims[i:d]),rmax)
-		rip = min(prod(dims[1:i]),prod(dims[i+1:d]),rmax)
-		rks[i+1] = rip
-		tt_vec[i] = randn(T,dims[i],ri,rip)
+		tt_vec[i] = randn(T,dims[i],rks[i],rks[i+1])
 		if normalise
-			tt_vec[i] *= 1/sqrt(dims[i]*rip)
+			tt_vec[i] *= 1/sqrt(dims[i]*rks[i+1])
 		end
 	end
 	return TTvector{T,d}(d,tt_vec,dims,rks,zeros(Int,d))
