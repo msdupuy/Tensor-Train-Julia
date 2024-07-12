@@ -5,14 +5,14 @@ import LinearAlgebra.norm
 function r_and_d_to_rks(rks,dims;rmax=1024)
 	new_rks = ones(eltype(rks),length(rks)) 
 	@simd for i in eachindex(dims)
-		if  prod(dims[i:end]) != 0
-			if prod(dims[1:i-1]) != 0
+		if  prod(dims[i:end]) > 0
+			if prod(dims[1:i-1]) > 0
 				new_rks[i] = min(rks[i],prod(dims[1:i-1]),prod(dims[i:end]),rmax)
 			else 
 				new_rks[i] = min(rks[i],prod(dims[i:end]),rmax)
 			end
 		else 
-			if prod(dims[1:i-1]) != 0
+			if prod(dims[1:i-1]) > 0
 				new_rks[i] = min(rks[i],prod(dims[1:i-1]),rmax)
 			else 
 				new_rks[i] = min(rks[i],rmax)
@@ -51,12 +51,8 @@ function tt_up_rks(x_tt::TTvector{T,N},rk_max::Int;rks=vcat(1,rk_max*ones(Int,le
 	vec_out = Array{Array{T}}(undef,d)
 	out_ot = zeros(Int64,d)
 	@assert(rk_max > maximum(x_tt.ttv_rks),"New bond dimension too low")
-	n_in = 1
-	n_out = prod(x_tt.ttv_dims)
+	rks = r_and_d_to_rks(rks,x_tt.ttv_dims;rmax=rk_max)
 	for i in 1:d
-		n_in *= x_tt.ttv_dims[i]
-		n_out = Int(n_out/x_tt.ttv_dims[i])
-		rks[i+1] = min(rks[i+1],n_in,n_out)
 		vec_out[i] = tt_up_rks_noise(x_tt.ttv_vec[i],x_tt.ttv_ot[i],rks[i],rks[i+1],ϵ_wn)
 	end	
 	return TTvector{T,N}(d,vec_out,x_tt.ttv_dims,rks,out_ot)
