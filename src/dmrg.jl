@@ -178,6 +178,9 @@ function dmrg_linsolv(A :: TToperator{T}, b :: TTvector{T}, tt_start :: TTvector
 
 	# Initialize the to be returned tensor in its tensor train format
 	d = b.N
+	if N==1
+		tt_start = tt_up_rks(tt_start,rmax)
+	end
 	tt_opt = orthogonalize(tt_start)
 	dims = tt_start.ttv_dims
 
