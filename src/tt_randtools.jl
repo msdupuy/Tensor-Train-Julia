@@ -25,12 +25,12 @@ end
 TT rounding algorithm in https://doi.org/10.1137/21M1451191
 Algorithm 3.2 "Randomize then Orthogonalize"
 """
-function ttrand_rounding(y_tt::TTvector{T,N};rks=vcat(1,round.(Int,1.5*y_tt.ttv_rks[2:end-1]),1),rmax=prod(y_tt.ttv_dims)) where {T,N}
+function ttrand_rounding(y_tt::TTvector{T,N};rks=vcat(1,round.(Int,1.5*y_tt.ttv_rks[2:end-1]),1),rmax=prod(y_tt.ttv_dims),orthogonal=true) where {T,N}
   rks = r_and_d_to_rks(rks,y_tt.ttv_dims;rmax=rmax)
   L = length(y_tt.ttv_dims)
   x_tt = zeros_tt(T,y_tt.ttv_dims,rks)
-  ℜ_tt = rand_tt(T,y_tt.ttv_dims,rks;normalise=true)
-  @timeit tmr "partial_contraction" W = partial_contraction(y_tt,ℜ_tt)
+  ℜ_tt = rand_tt(T,y_tt.ttv_dims,rks;normalise=true,orthogonal=orthogonal)
+  W = partial_contraction(y_tt,ℜ_tt)
   A_temp = zeros(T,maximum(rks),maximum(y_tt.ttv_rks))
   Y_temp = zeros(T,maximum(y_tt.ttv_dims),maximum(rks),maximum(y_tt.ttv_rks))
   Y_temp[1:y_tt.ttv_dims[1],1:1,1:y_tt.ttv_rks[2]] = y_tt.ttv_vec[1]

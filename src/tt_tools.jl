@@ -135,16 +135,20 @@ end
 """
 Returns a random TTvector with dimensions `dims` and ranks `rks`
 """
-function rand_tt(dims,rks;normalise=false)
-	return rand_tt(Float64,dims,rks;normalise=normalise)
+function rand_tt(dims,rks;normalise=false,orthogonal=false)
+	return rand_tt(Float64,dims,rks;normalise=normalise,orthogonal=orthogonal)
 end
 
-function rand_tt(::Type{T},dims,rks;normalise=false) where T
+function rand_tt(::Type{T},dims,rks;normalise=false,orthogonal=false) where T
 	y = zeros_tt(T,dims,rks)
 	@simd for i in eachindex(y.ttv_vec)
 		y.ttv_vec[i] = randn(T,dims[i],rks[i],rks[i+1])
 		if normalise
 			y.ttv_vec[i] *= 1/sqrt(dims[i]*rks[i+1])
+		if orthogonal
+			q,_ = qr(reshape(permutedims(y.ttv_vec[i],(1,3,2)),dims[i]*rks[i+1],rks[i]))
+			y.ttv_vec[i] = permutedims(reshape(Matrix(q),dims[i],rks[i+1],rks[i]),(1,3,2))
+		end
 		end
 	end
 	return y
@@ -153,7 +157,7 @@ end
 """
 Returns a random TTvector with dimensions `dims` and maximal rank `rmax`
 """
-function rand_tt(dims,rmax::Int;T=Float64,normalise=false)
+function rand_tt(dims,rmax::Int;T=Float64,normalise=false,orthogonal=false)
 	d = length(dims)
 	tt_vec = Vector{Array{T,3}}(undef,d)
 	rks = rmax*ones(Int,d+1)
@@ -163,8 +167,20 @@ function rand_tt(dims,rmax::Int;T=Float64,normalise=false)
 		if normalise
 			tt_vec[i] *= 1/sqrt(dims[i]*rks[i+1])
 		end
+		if orthogonal
+			q,_ = qr(reshape(permutedims(tt_vec[i],(1,3,2)),dims[i]*rks[i+1],rks[i]))
+			tt_vec[i] = reshape(permutedims(Matrix(q),(1,2,3)),dims[i],rks[i],rks[i+1])
+		end
 	end
 	return TTvector{T,d}(d,tt_vec,dims,rks,zeros(Int,d))
+end
+
+function rand_tt(x_tt::TTvector{T,N};ε=convert(T,1e-3)) where {T,N}
+	tt_vec = copy(x_tt.ttv_vec)
+	for i in eachindex(x_tt.ttv_vec)
+		tt_vec[i] += ε*randn(x_tt.ttv_dims[i],x_tt.ttv_rks[i],x_tt.ttv_rks[i+1])
+	end
+	return TTvector{T,N}(N,tt_vec,x_tt.ttv_dims,x_tt.ttv_rks,zeros(Int,N))
 end
 
 function Base.copy(x_tt::TTvector{T,N}) where {T<:Number,N}
