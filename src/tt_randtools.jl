@@ -1,8 +1,5 @@
 using TensorOperations
 using LinearAlgebra
-using TimerOutputs
-
-const tmr = TimerOutput()
 
 """
 TT rounding algorithm in https://doi.org/10.1137/21M1451191
