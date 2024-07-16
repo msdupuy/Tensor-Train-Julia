@@ -1,6 +1,7 @@
 using Base.Threads
 using LinearAlgebra
 import LinearAlgebra.norm
+import Base.floor
 
 function r_and_d_to_rks(rks,dims;rmax=1024)
 	new_rks = ones(eltype(rks),length(rks)) 
@@ -119,11 +120,12 @@ end
 """
 returns a TT representation where the singular values lower than tol are discarded
 """
-function tt_rounding(x_tt::TTvector{T,N};tol=1e-12,rmax=max(prod(x_tt.ttv_dims[1:floor(Int,x_tt.N/2)]),prod(x_tt.ttv_dims[ceil(Int,x_tt.N/2):end]))) where {T<:Number,N}
+function tt_rounding(x_tt::TTvector{T,N};tol=1e-12,rmax=2^14) where {T<:Number,N}
 	y_tt = orthogonalize(x_tt;i=x_tt.N)
 	for j in x_tt.N:-1:2
 		u,s,v = svd(reshape(permutedims(y_tt.ttv_vec[j],[2 1 3]),y_tt.ttv_rks[j],:),full=false)
-		k = min(cut_off_index(s,tol),rmax)
+		_,k = floor(s,tol)
+		k = min(k,rmax)
 		y_tt.ttv_vec[j] = permutedims(reshape(v'[1:k,:],:,x_tt.ttv_dims[j],y_tt.ttv_rks[j+1]),[2 1 3])
 		y_tt.ttv_vec[j-1] = reshape(reshape(y_tt.ttv_vec[j-1],y_tt.ttv_dims[j-1]*y_tt.ttv_rks[j-1],:)*u[:,1:k]*Diagonal(s[1:k]),y_tt.ttv_dims[j-1],y_tt.ttv_rks[j-1],:)
 		y_tt.ttv_rks[j] = k
@@ -136,7 +138,7 @@ end
 """
 returns the rounding of the TT operator
 """
-function tt_rounding(A_tto::TToperator{T,N};tol=1e-12,rmax=prod(A_tto.tto_dims)) where {T,N}
+function tt_rounding(A_tto::TToperator{T,N};tol=1e-12,rmax=2^14) where {T,N}
 	return ttv_to_tto(tt_rounding(tto_to_ttv(A_tto);tol=tol,rmax=rmax))
 end
 
@@ -152,14 +154,13 @@ function tt_svdvals(x_tt::TTvector{T,N};tol=1e-14) where {T<:Number,N}
 		A = zeros(y_tt.ttv_dims[j],y_rks[j],y_tt.ttv_dims[j+1],y_rks[j+2])
 		@tensor A[a,b,c,d] = y_tt.ttv_vec[j][a,b,z]*y_tt.ttv_vec[j+1][c,z,d]
 		u,s,v = svd(reshape(A,size(A,1)*size(A,2),:),alg=LinearAlgebra.QRIteration())
-		Σ[j] = s[s.>tol]
-		y_rks[j+1] = length(Σ[j])
+		Σ[j],y_rks[j+1] = floor(s,tol)
 		y_tt.ttv_vec[j+1] = permutedims(reshape(Diagonal(Σ[j])*v'[s.>tol,:],:,y_tt.ttv_dims[j+1],y_rks[j+2]),[2 1 3])
 	end
 	return Σ
 end
 
-function sv_trunc(s::Array{Float64},tol)
+function floor(s::Array{Float64},tol;degen_tol=1e-14)
 	if tol==0.0
 		return s
 	else
@@ -171,7 +172,10 @@ function sv_trunc(s::Array{Float64},tol)
 			weight+=s[d-i]^2
 			i+=1
 		end
-		return s[1:(d-i+1)]
+		while (i<d) && isapprox(s[d-i+1],s[d-i];rtol=degen_tol, atol=degen_tol)
+			i+=1
+		end
+		return s[1:(d-i+1)],d-i+1
 	end
 end
 
@@ -182,7 +186,7 @@ function left_compression(A,B;tol=1e-12)
     B = permutedims(B, [2,1,3]) #B r_1 x n_2 x r_2
     U = reshape(A,:,dim_A[3])
     u,s,v = svd(U*reshape(B, dim_B[2],:),full=false) #u is the new A, dim(u) = n_1r_0 x tilde(r)_1
-    s_trunc = sv_trunc(s,tol)
+    s_trunc,_ = floor(s,tol)
     dim_B[2] = length(s_trunc)
     U = reshape(u[:,1:dim_B[2]],dim_A[1],dim_A[2],dim_B[2])
     B = reshape(Diagonal(s_trunc)*v[:,1:dim_B[2]]',dim_B[2],dim_B[1],dim_B[3])
