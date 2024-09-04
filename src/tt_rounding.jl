@@ -160,7 +160,7 @@ function tt_svdvals(x_tt::TTvector{T,N};tol=1e-14) where {T<:Number,N}
 	return Σ
 end
 
-function floor(s::Array{Float64},tol;degen_tol=1e-1)
+function floor(s::Array{Float64},tol;degen_tol=1e-5)
 	if tol==0.0
 		return s,length(s)
 	else
