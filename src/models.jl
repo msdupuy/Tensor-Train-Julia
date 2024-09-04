@@ -173,11 +173,11 @@ end
 
 """
 returns an MPO version of 
-H = Σ_{ij} h_ij a_i† a_j + Σ_{ijkl} V_{ijkl} a_i†a_j†a_ka_l 
+- H = Σ_{ij} h_ij a_i† a_j + Σ_{ijkl} V_{ijkl} a_i†a_j†a_ka_l, if not chemistry 
+- H = Σ_{ij} h_ij a_i† a_j + Σ_{ijkl} V_{ijkl} a_i†a_j†a_ka_l, if chemistry
 h and V have to be Symmetric 
 """
-#assuming diagonal terms are divided by 2 in the h and V matrix
-function hV_to_mpo(h::Array{T,2},V,dims::NTuple{N,Int64};tol=1e-8::Float64,n_rnd=20::Int) where {T,N}
+function hV_to_mpo(h::Array{T,2},V,dims::NTuple{N,Int64};tol=1e-8::Float64,n_rnd=20::Int,chemistry=false) where {T,N}
     L = size(h,1)
     @assert issymmetric(h)
 #    @assert isapprox(V,permutedims(V,(2,1,4,3)))
@@ -202,12 +202,22 @@ function hV_to_mpo(h::Array{T,2},V,dims::NTuple{N,Int64};tol=1e-8::Float64,n_rnd
         end
     end
     for i in findall(x->!isapprox(x,0.0,atol=1e-12),V)
-        if (i[1],i[2])<(i[4],i[3]) 
-            H = (tto_crea[i[1]]*tto_crea[i[2]]*tto_anni[i[3]]*tto_anni[i[4]])+(tto_crea[i[4]]*tto_crea[i[3]]*tto_anni[i[2]]*tto_anni[i[1]])
-            A = A+V[i]*H
-        elseif (i[1],i[2])==(i[4],i[3])
-            H = tto_crea[i[1]]*tto_crea[i[2]]*tto_anni[i[3]]*tto_anni[i[4]]
-            A = A+V[i]*H
+        if chemistry
+            if (i[1],i[3])<(i[2],i[4]) 
+                H = (tto_crea[i[1]]*tto_crea[i[3]]*tto_anni[i[4]]*tto_anni[i[2]])+(tto_crea[i[2]]*tto_crea[i[4]]*tto_anni[i[3]]*tto_anni[i[1]])
+                A = A+0.5V[i]*H
+            elseif (i[1],i[3])==(i[2],i[4])
+                H = tto_crea[i[1]]*tto_crea[i[3]]*tto_anni[i[4]]*tto_anni[i[2]]
+                A = A+0.5V[i]*H
+            end
+        else
+            if (i[1],i[2])<(i[4],i[3]) 
+                H = (tto_crea[i[1]]*tto_crea[i[2]]*tto_anni[i[3]]*tto_anni[i[4]])+(tto_crea[i[4]]*tto_crea[i[3]]*tto_anni[i[2]]*tto_anni[i[1]])
+                A = A+V[i]*H
+            elseif (i[1],i[2])==(i[4],i[3])
+                H = tto_crea[i[1]]*tto_crea[i[2]]*tto_anni[i[3]]*tto_anni[i[4]]
+                A = A+V[i]*H
+            end
         end
         if i_rnd > n_rnd 
             A = tt_rounding(A,tol=tol)
@@ -409,8 +419,9 @@ end
 
 """
 1e and 2e integrals coefficients to h,V coefficients of the second quantized Hamiltonian in the spin orbital basis
+tested and works fine
 """
-function one_e_two_e_integrals_to_hV(int1e,int2e)
+function one_e_two_e_integrals_to_hV(int1e,int2e;fcidump=true)
     L = size(int1e,1)
     h = zeros(2L,2L)
     V = zeros(2L,2L,2L,2L)
@@ -420,15 +431,15 @@ function one_e_two_e_integrals_to_hV(int1e,int2e)
             h[2i,2j] = int1e[i,j]
             for k in 1:L
                 for l in 1:L
-                    V[2i-1,2j-1,2l-1,2k-1] = int2e[i,k,j,l]
-                    V[2i,2j-1,2l-1,2k] = int2e[i,k,j,l]
-                    V[2i-1,2j,2l,2k-1] = int2e[i,k,j,l]
-                    V[2i,2j,2l,2k] = int2e[i,k,j,l]
+                    V[2i-1,2j-1,2l-1,2k-1] = int2e[i,j,l,k]
+                    V[2i,2j,2l,2k] = int2e[i,j,l,k]
+                    V[2i,2j,2l-1,2k-1] = int2e[i,j,l,k]
+                    V[2i-1,2j-1,2l,2k] = int2e[i,j,l,k]
                 end
             end
         end
     end
-    return h,0.5*V
+    return h,V
 end
 
 """

@@ -124,7 +124,7 @@ function tt_rounding(x_tt::TTvector{T,N};tol=1e-12,rmax=2^14) where {T<:Number,N
 	y_tt = orthogonalize(x_tt;i=x_tt.N)
 	for j in x_tt.N:-1:2
 		u,s,v = svd(reshape(permutedims(y_tt.ttv_vec[j],[2 1 3]),y_tt.ttv_rks[j],:),full=false)
-		_,k = floor(s,tol)
+		_,k = floor(s[s.>0],tol)
 		k = min(k,rmax)
 		y_tt.ttv_vec[j] = permutedims(reshape(v'[1:k,:],:,x_tt.ttv_dims[j],y_tt.ttv_rks[j+1]),[2 1 3])
 		y_tt.ttv_vec[j-1] = reshape(reshape(y_tt.ttv_vec[j-1],y_tt.ttv_dims[j-1]*y_tt.ttv_rks[j-1],:)*u[:,1:k]*Diagonal(s[1:k]),y_tt.ttv_dims[j-1],y_tt.ttv_rks[j-1],:)
@@ -160,22 +160,23 @@ function tt_svdvals(x_tt::TTvector{T,N};tol=1e-14) where {T<:Number,N}
 	return Σ
 end
 
-function floor(s::Array{Float64},tol;degen_tol=1e-14)
+function floor(s::Array{Float64},tol;degen_tol=1e-1)
 	if tol==0.0
-		return s
+		return s,length(s)
 	else
 		d = length(s)
-		i=0
+		i=d
 		weight = 0.0
 		norm2 = dot(s,s)
-		while (i<d) && weight<tol^2*norm2
-			weight+=s[d-i]^2
+		while (i>0) && weight<tol^2*norm2
+			weight+=s[i]^2
+			i-=1
+		end
+		i+=1
+		while (i<d) && isapprox(1.,s[i+1]/s[i];atol=degen_tol)
 			i+=1
 		end
-		while (i<d) && isapprox(s[d-i+1],s[d-i];rtol=degen_tol, atol=degen_tol)
-			i+=1
-		end
-		return s[1:(d-i+1)],d-i+1
+		return s[1:i],i
 	end
 end
 

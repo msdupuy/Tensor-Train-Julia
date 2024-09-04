@@ -90,7 +90,7 @@ end
 function Ksolve(Gi::AbstractArray{T,3},G_bi::AbstractArray{T,2},Hi::AbstractArray{T,3},H_bi::AbstractArray{T,2},Amid_tensor::AbstractArray{T,4},Bmid::AbstractArray{T,3},V0::AbstractArray{T,3};it_solver=false,maxiter=200,tol=1e-6,itslv_thresh=256) where T<:Number
 	K_dims = (size(Gi,2),size(Amid_tensor,2),size(Hi,2))
 	@tensor Pb[α1,i,α2] := G_bi[α1,β1]*Bmid[β1,i,β2]*H_bi[α2,β2] #size (r^X_{i-1},n_i⋯n_j,r^X_j)
-	if it_solver || prod(K_dims) > itslv_thresh
+	if it_solver && prod(K_dims) > itslv_thresh
 		Gtemp = @view(Gi[:,1:K_dims[1],1:K_dims[1]])
 		Htemp = @view(Hi[:,1:K_dims[3],1:K_dims[3]])
 		Vout = zeros(T,prod(K_dims))
@@ -143,7 +143,7 @@ function K_eigmin(Gi::AbstractArray{T,3},Hi::AbstractArray{T,3},V0::AbstractArra
 	K_dims = size(V0)
 	Gtemp = @view(Gi[:,1:K_dims[1],1:K_dims[1]])
 	Htemp = @view(Hi[:,1:K_dims[3],1:K_dims[3]])
-	if it_solver || prod(K_dims) > itslv_thresh
+	if it_solver && prod(K_dims) > itslv_thresh
 		Vout = zeros(T,prod(K_dims))
 		function K_matfree(V::AbstractArray{S,1};Gi=Gtemp::AbstractArray{S,3},Hi=Htemp::AbstractArray{S,3},K_dims=K_dims::NTuple{3,Int},Amid_tensor=Amid_tensor::AbstractArray{S,4},Vout=Vout::AbstractArray{S,1}) where S<:Number
 			Hrshp = reshape(Vout,K_dims)
