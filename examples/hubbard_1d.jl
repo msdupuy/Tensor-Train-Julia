@@ -1,6 +1,6 @@
 using TensorTrains
 
-L=10
+L=6
 dims = ntuple(x->2,2L)
 h,V = hubbard_1D(L)
 H_tto = hV_to_mpo(Matrix(h),V,dims,tol=1e-5)
