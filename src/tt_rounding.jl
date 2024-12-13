@@ -146,16 +146,16 @@ end
 returns the singular values of the reshaped tensor x[μ_1⋯μ_k;μ_{k+1}⋯μ_d] for all 1≤ k ≤ d
 """
 function tt_svdvals(x_tt::TTvector{T,N};tol=1e-14) where {T<:Number,N}
-	d = x_tt.N
-	Σ = Array{Array{Float64,1},1}(undef,d-1)
+	Σ = Array{Array{Float64,1},1}(undef,N-1)
 	y_tt = orthogonalize(x_tt)
 	y_rks = y_tt.ttv_rks
-	for j in 1:d-1
-		A = zeros(y_tt.ttv_dims[j],y_rks[j],y_tt.ttv_dims[j+1],y_rks[j+2])
-		@tensor A[a,b,c,d] = y_tt.ttv_vec[j][a,b,z]*y_tt.ttv_vec[j+1][c,z,d]
-		u,s,v = svd(reshape(A,size(A,1)*size(A,2),:),alg=LinearAlgebra.QRIteration())
-		Σ[j],y_rks[j+1] = floor(s,tol)
-		y_tt.ttv_vec[j+1] = permutedims(reshape(Diagonal(Σ[j])*v'[s.>tol,:],:,y_tt.ttv_dims[j+1],y_rks[j+2]),[2 1 3])
+	core_temp = zeros(T,maximum(y_tt.ttv_dims.*y_tt.ttv_rks[1:end-1]),maximum(y_tt.ttv_rks))
+	core_temp[1:y_tt.ttv_dims[1]*y_rks[1],1:y_rks[2]] = reshape(y_tt.ttv_vec[1],y_tt.ttv_dims[1]*y_rks[1],y_rks[2])
+	for j in 1:N-1
+		u,s,v = svd(@view(core_temp[1:y_tt.ttv_dims[j]*y_rks[j],1:y_rks[j+1]]))
+		Σ[j],_ = floor(s,tol)
+		core_view = reshape(view(core_temp,1:y_tt.ttv_dims[j+1]*y_rks[j+1],1:y_rks[j+2]),y_tt.ttv_dims[j+1],y_rks[j+1],y_rks[j+2])
+		@tensor core_view[i2,α,β] = (Diagonal(s)*v')[α,z]*y_tt.ttv_vec[j+1][i2,z,β]
 	end
 	return Σ
 end
