@@ -87,9 +87,9 @@ function b_mid(b_tt::TTvector{T},i::Integer,j::Integer) where {T<:Number}
 	return b_out
 end
 
-function Ksolve!(Gi::AbstractArray{T,3},G_bi::AbstractArray{T,2},Hi::AbstractArray{T,3},H_bi::AbstractArray{T,2},Amid_tensor::AbstractArray{T,4},Bmid::AbstractArray{T,3},V0::AbstractArray{T,3},Vapp::AbstractArray{T,3};it_solver=false,maxiter=200,tol=1e-6,itslv_thresh=256) where T<:Number
+function Ksolve!(Gi::AbstractArray{T,3},G_bi::AbstractArray{T,2},Hi::AbstractArray{T,3},H_bi::AbstractArray{T,2},Amid_tensor::AbstractArray{T,4},Bmid::AbstractArray{T,3},Pb,V0::AbstractArray{T,3},Vapp::AbstractArray{T,3};it_solver=false,maxiter=200,tol=1e-6,itslv_thresh=256) where T<:Number
 	K_dims = (size(Gi,2),size(Amid_tensor,2),size(Hi,2))
-	@tensor Pb[α1,i,α2] := G_bi[α1,β1]*Bmid[β1,i,β2]*H_bi[α2,β2] #size (r^X_{i-1},n_i⋯n_j,r^X_j)
+	@tensoropt Pb[α1,i,α2] = G_bi[α1,β1]*Bmid[β1,i,β2]*H_bi[α2,β2] #size (r^X_{i-1},n_i⋯n_j,r^X_j)
 
 	if it_solver && prod(K_dims) > itslv_thresh
 		Gtemp = @view(Gi[:,1:K_dims[1],1:K_dims[1]])
@@ -251,7 +251,7 @@ function dmrg_linsolv(A :: TToperator{T}, b :: TTvector{T}, tt_start :: TTvector
 	V = zeros(T,rmax,maximum(tt_opt.ttv_dims)^N,rmax)
 	V_move = zeros(T,rmax,maximum(tt_opt.ttv_dims),rmax)
 	V_temp = zeros(T,rmax,maximum(tt_opt.ttv_dims),maximum(tt_opt.ttv_dims),rmax)
-	
+	Pb_temp = zeros(T,rmax,maximum(tt_opt.ttv_dims)^N,rmax)
 
 	nsweeps = 0 #sweeps counter
 	i_schedule = 1
@@ -268,7 +268,8 @@ function dmrg_linsolv(A :: TToperator{T}, b :: TTvector{T}, tt_start :: TTvector
 				H_bi = @view(H_b[1][1:tt_opt.ttv_rks[1+N],:])
 				# Define V as solution of K*x=Pb in x
 				V_view = @view(V[1:tt_opt.ttv_rks[1],1:prod(tt_opt.ttv_dims[1:N]),1:tt_opt.ttv_rks[1+N]])
-				Ksolve!(Gi,G_bi,Hi,H_bi,Amid_list[1],bmid_list[1],V0_view, V_view;it_solver=it_solver,maxiter=linsolv_maxiter,tol=linsolv_tol,itslv_thresh=itslv_thresh)
+				Pb_view = @view(Pb_temp[1:tt_opt.ttv_rks[1],1:prod(tt_opt.ttv_dims[1:N]),1:tt_opt.ttv_rks[1+N]])
+				Ksolve!(Gi,G_bi,Hi,H_bi,Amid_list[1],bmid_list[1],Pb_view,V0_view, V_view;it_solver=it_solver,maxiter=linsolv_maxiter,tol=linsolv_tol,itslv_thresh=itslv_thresh)
 				for i in N:-1:2
 					V_view = @view(V[1:tt_opt.ttv_rks[i-N+1],1:prod(tt_opt.ttv_dims[i-N+1:i]),1:tt_opt.ttv_rks[i+1]])
 					left_core_move!(tt_opt,V_view,V_move,i,tol,rmax_schedule[end])
@@ -287,8 +288,9 @@ function dmrg_linsolv(A :: TToperator{T}, b :: TTvector{T}, tt_start :: TTvector
 			Hi = @view(H[i][:,1:tt_opt.ttv_rks[i+N],1:tt_opt.ttv_rks[i+N]])
 			H_bi = @view(H_b[i][1:tt_opt.ttv_rks[i+N],:])
 			V_view = @view(V[1:tt_opt.ttv_rks[i],1:prod(tt_opt.ttv_dims[i:i+N-1]),1:tt_opt.ttv_rks[i+N]])
+			Pb_view = @view(Pb_temp[1:tt_opt.ttv_rks[i],1:prod(tt_opt.ttv_dims[i:i+N-1]),1:tt_opt.ttv_rks[i+N]])
 			# Define V as solution of K*x=Pb in x
-			Ksolve!(Gi,G_bi,Hi,H_bi,Amid_list[i],bmid_list[i],V0_view, V_view;it_solver=it_solver,maxiter=linsolv_maxiter,tol=linsolv_tol,itslv_thresh=itslv_thresh)
+			Ksolve!(Gi,G_bi,Hi,H_bi,Amid_list[i],bmid_list[i],Pb_view,V0_view, V_view;it_solver=it_solver,maxiter=linsolv_maxiter,tol=linsolv_tol,itslv_thresh=itslv_thresh)
 			println("solved")
 			right_core_move!(tt_opt,V_view,V_move,i,tol,rmax)
 
@@ -315,9 +317,9 @@ function dmrg_linsolv(A :: TToperator{T}, b :: TTvector{T}, tt_start :: TTvector
 			Hi = @view(H[i][:,1:tt_opt.ttv_rks[i+N],1:tt_opt.ttv_rks[i+N]])
 			H_bi = @view(H_b[i][1:tt_opt.ttv_rks[i+N],:])
 			V_view = @view(V[1:tt_opt.ttv_rks[i],1:prod(tt_opt.ttv_dims[i:i+N-1]),1:tt_opt.ttv_rks[i+N]])
+			Pb_view = @view(Pb_temp[1:tt_opt.ttv_rks[i],1:prod(tt_opt.ttv_dims[i:i+N-1]),1:tt_opt.ttv_rks[i+N]])
 			# Define V as solution of K*x=Pb in x
-			Ksolve!(Gi,G_bi,Hi,H_bi,Amid_list[i],bmid_list[i],V0_view, V_view;it_solver=it_solver,maxiter=linsolv_maxiter,tol=linsolv_tol,itslv_thresh=itslv_thresh)
-			println(size(V_view))
+			Ksolve!(Gi,G_bi,Hi,H_bi,Amid_list[i],bmid_list[i],Pb_view,V0_view, V_view;it_solver=it_solver,maxiter=linsolv_maxiter,tol=linsolv_tol,itslv_thresh=itslv_thresh)
 			left_core_move!(tt_opt,V_view,V_move,i+N-1,tol,rmax_schedule[i_schedule])
 
 			#update the initialization
