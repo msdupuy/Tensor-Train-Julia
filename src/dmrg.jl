@@ -14,11 +14,11 @@ function init_H(x_tt::TTvector{T},A_tto::TToperator{T},N::Int,rmax) where {T<:Nu
 	rks = r_and_d_to_rks(vcat(1,rmax*ones(Int,d-1),1),x_tt.ttv_dims;rmax=rmax)
 	for i = d+1-N:-1:2
 		H[i-1] = zeros(T,A_tto.tto_rks[i+N-1],rks[i+N-1],rks[i+N-1])
-		Hi = @view(H[i][:,1:x_tt.ttv_rks[i+N],1:x_tt.ttv_rks[i+N]])
+		Hi_view = @view(H[i][:,1:x_tt.ttv_rks[i+N],1:x_tt.ttv_rks[i+N]])
 		Him = @view(H[i-1][:,1:x_tt.ttv_rks[i+N-1],1:x_tt.ttv_rks[i+N-1]])
 		x_vec = x_tt.ttv_vec[i+N-1]
 		A_vec = A_tto.tto_vec[i+N-1]
-		update_H!(x_vec,A_vec,Hi,Him)
+		update_H!(x_vec,A_vec,Hi_view,Him)
 	end
 	return H
 end
@@ -179,6 +179,54 @@ function K_eigmin(Gi::AbstractArray{T,3},Hi::AbstractArray{T,3},V0::AbstractArra
 	return λ
 end
 
+function init_dmrg(A::TToperator{T,d},tt_opt::TTvector{T,d},rks,N::Integer) where {T<:Number,d}
+	rmax = maximum(rks)
+	G = Array{Array{T,3},1}(undef, d+1-N)
+	Amid_list = Array{Array{T,4},1}(undef, d+1-N)
+	for i in 1:d+1-N
+		G[i] = zeros(T,A.tto_rks[i],rks[i],rks[i])
+		Amid_list[i] = Amid(A,i,i+N-1)
+	end
+	G[1] = ones(T,size(G[1]))
+	H = init_H(tt_opt,A,N,rmax)
+
+	V0 = zeros(T,rmax,maximum(tt_opt.ttv_dims)^N,rmax)
+	V0_view = @view(V0[1:tt_opt.ttv_rks[1],1:prod(tt_opt.ttv_dims[1:N]),1:tt_opt.ttv_rks[1+N]])
+	V0_view = b_mid(tt_opt,1,N)
+	V = zeros(T,rmax,maximum(tt_opt.ttv_dims)^N,rmax)
+	V_move = zeros(T,rmax,maximum(tt_opt.ttv_dims),rmax)
+	V_temp = zeros(T,rmax,maximum(tt_opt.ttv_dims),maximum(tt_opt.ttv_dims),rmax)
+	return G,Amid_list,H,V0,V,V_move,V_temp,V0_view
+end
+
+function init_dmrg_b(b::TTvector{T,d},tt_opt::TTvector{T,d},rks,N) where {T<:Number,d}
+	rmax = maximum(rks)
+	G_b = Array{Array{T,2},1}(undef, d+1-N)
+	bmid_list = Array{Array{T,3},1}(undef, d+1-N)
+	for i in 1:d+1-N
+		G_b[i] = zeros(T,rks[i],b.ttv_rks[i])
+		bmid_list[i] = b_mid(b,i,i+N-1)
+	end
+	G_b[1] = ones(T,size(G_b[1]))
+	Pb_temp = zeros(T,rmax,maximum(tt_opt.ttv_dims)^N,rmax)
+	H_b = init_Hb(tt_opt,b,N,rmax)
+	return G_b,bmid_list,H_b,Pb_temp
+end
+
+function update_G_H_V(Gi,Hi,V,tt_dims,tt_rks,i,N)
+	Gi_view = @view(Gi[:,1:tt_rks[i],1:tt_rks[i]])
+	Hi_view = @view(Hi[:,1:tt_rks[i+N],1:tt_rks[i+N]])
+	V_view = @view(V[1:tt_rks[i],1:prod(tt_dims[i:i+N-1]),1:tt_rks[i+N]])
+	return Gi_view,Hi_view,V_view
+end
+
+function update_G_H_V_b(Gbi,Hbi,Pb_temp,tt_dims,tt_rks,i,N)
+	G_bi_view = @view(Gbi[1:tt_rks[i],:])
+	H_bi_view = @view(Hbi[1:tt_rks[i+N],:])
+	Pb_view = @view(Pb_temp[1:tt_rks[i],1:prod(tt_dims[i:i+N-1]),1:tt_rks[i+N]])
+	return G_bi_view,H_bi_view,Pb_view
+end
+
 #function K_eiggenmin(Gi,Hi,Ki,Li,ttv_vec;it_solver=false,itslv_thresh=2500)
 #	@tensor begin
 #		K[a,b,c,d,e,f] := Gi[d,e,a,b,z]*Hi[z,f,c] #size (ni,rim,ri,ni,rim,ri)	
@@ -222,36 +270,11 @@ function dmrg_linsolv(A :: TToperator{T}, b :: TTvector{T}, tt_start :: TTvector
 	tt_opt = orthogonalize(tt_start)
 	dims = tt_start.ttv_dims
 	rmax = maximum(rmax_schedule)
-
-	# Initialize the arrays of G and G_b
-	G = Array{Array{T,3},1}(undef, d+1-N)
-	G_b = Array{Array{T,2},1}(undef, d+1-N)
-	Amid_list = Array{Array{T,4},1}(undef, d+1-N)
-	bmid_list = Array{Array{T,3},1}(undef, d+1-N)
-
 	rks = r_and_d_to_rks(vcat(1,rmax*ones(Int,d-1),1),dims;rmax=rmax)
-	# Initialize G[1], G_b[1], H[d] and H_b[d]
-	for i in 1:d+1-N
-		G[i] = zeros(T,A.tto_rks[i],rks[i],rks[i])
-		G_b[i] = zeros(T,rks[i],b.ttv_rks[i])
-		Amid_list[i] = Amid(A,i,i+N-1)
-		bmid_list[i] = b_mid(b,i,i+N-1)
-	end
-	G[1] = ones(T,size(G[1]))
-	G_b[1] = ones(T,size(G_b[1]))
 
-	#Initialize H and H_b
-	H = init_H(tt_opt,A,N,rmax)
-	H_b = init_Hb(tt_opt,b,N,rmax)
-
-	#Initialize V0
-	V0 = zeros(T,rmax,maximum(tt_opt.ttv_dims)^N,rmax)
-	V0_view = @view(V0[1:tt_opt.ttv_rks[1],1:prod(tt_opt.ttv_dims[1:N]),1:tt_opt.ttv_rks[1+N]])
-	V0_view = b_mid(tt_opt,1,N)
-	V = zeros(T,rmax,maximum(tt_opt.ttv_dims)^N,rmax)
-	V_move = zeros(T,rmax,maximum(tt_opt.ttv_dims),rmax)
-	V_temp = zeros(T,rmax,maximum(tt_opt.ttv_dims),maximum(tt_opt.ttv_dims),rmax)
-	Pb_temp = zeros(T,rmax,maximum(tt_opt.ttv_dims)^N,rmax)
+	#Initialize DMRG 
+	G,Amid_list,H,V0,V,V_move,V_temp,V0_view = init_dmrg(A,tt_opt,rks,N)
+	G_b,bmid_list,H_b,Pb_temp = init_dmrg_b(b,tt_opt,rks,N)
 
 	nsweeps = 0 #sweeps counter
 	i_schedule = 1
@@ -262,14 +285,9 @@ function dmrg_linsolv(A :: TToperator{T}, b :: TTvector{T}, tt_start :: TTvector
 			i_schedule+=1
 			if i_schedule > length(sweep_schedule)
 				#last step to complete the sweep
-				Gi = @view(G[1][:,1:tt_opt.ttv_rks[1],1:tt_opt.ttv_rks[1]])
-				G_bi = @view(G_b[1][1:tt_opt.ttv_rks[1],:])
-				Hi = @view(H[1][:,1:tt_opt.ttv_rks[1+N],1:tt_opt.ttv_rks[1+N]])
-				H_bi = @view(H_b[1][1:tt_opt.ttv_rks[1+N],:])
-				# Define V as solution of K*x=Pb in x
-				V_view = @view(V[1:tt_opt.ttv_rks[1],1:prod(tt_opt.ttv_dims[1:N]),1:tt_opt.ttv_rks[1+N]])
-				Pb_view = @view(Pb_temp[1:tt_opt.ttv_rks[1],1:prod(tt_opt.ttv_dims[1:N]),1:tt_opt.ttv_rks[1+N]])
-				Ksolve!(Gi,G_bi,Hi,H_bi,Amid_list[1],bmid_list[1],Pb_view,V0_view, V_view;it_solver=it_solver,maxiter=linsolv_maxiter,tol=linsolv_tol,itslv_thresh=itslv_thresh)
+				Gi_view,Hi_view,V_view = update_G_H_V(G[1],H[1],V,tt_opt.ttv_dims,tt_opt.ttv_rks,1,N)
+				G_bi_view, H_bi_view, Pb_view = update_G_H_V_b(G_b[1],H_b[1],Pb_temp,tt_opt.ttv_dims,tt_opt.ttv_rks,1,N)
+				Ksolve!(Gi_view,G_bi_view,Hi_view,H_bi_view,Amid_list[1],bmid_list[1],Pb_view,V0_view, V_view;it_solver=it_solver,maxiter=linsolv_maxiter,tol=linsolv_tol,itslv_thresh=itslv_thresh)
 				for i in N:-1:2
 					V_view = @view(V[1:tt_opt.ttv_rks[i-N+1],1:prod(tt_opt.ttv_dims[i-N+1:i]),1:tt_opt.ttv_rks[i+1]])
 					left_core_move!(tt_opt,V_view,V_move,i,tol,rmax_schedule[end])
@@ -283,14 +301,10 @@ function dmrg_linsolv(A :: TToperator{T}, b :: TTvector{T}, tt_start :: TTvector
 		# First half sweep
 		for i = 1:d-N
 			println("Forward sweep: core optimization $i out of $(d+1-N)")
-			Gi = @view(G[i][:,1:tt_opt.ttv_rks[i],1:tt_opt.ttv_rks[i]])
-			G_bi = @view(G_b[i][1:tt_opt.ttv_rks[i],:])
-			Hi = @view(H[i][:,1:tt_opt.ttv_rks[i+N],1:tt_opt.ttv_rks[i+N]])
-			H_bi = @view(H_b[i][1:tt_opt.ttv_rks[i+N],:])
-			V_view = @view(V[1:tt_opt.ttv_rks[i],1:prod(tt_opt.ttv_dims[i:i+N-1]),1:tt_opt.ttv_rks[i+N]])
-			Pb_view = @view(Pb_temp[1:tt_opt.ttv_rks[i],1:prod(tt_opt.ttv_dims[i:i+N-1]),1:tt_opt.ttv_rks[i+N]])
+			Gi_view,Hi_view,V_view = update_G_H_V(G[i],H[i],V,tt_opt.ttv_dims,tt_opt.ttv_rks,i,N)
+			G_bi_view, H_bi_view, Pb_view = update_G_H_V_b(G_b[i],H_b[i],Pb_temp,tt_opt.ttv_dims,tt_opt.ttv_rks,i,N)
 			# Define V as solution of K*x=Pb in x
-			Ksolve!(Gi,G_bi,Hi,H_bi,Amid_list[i],bmid_list[i],Pb_view,V0_view, V_view;it_solver=it_solver,maxiter=linsolv_maxiter,tol=linsolv_tol,itslv_thresh=itslv_thresh)
+			Ksolve!(Gi_view,G_bi_view,Hi_view,H_bi_view,Amid_list[i],bmid_list[i],Pb_view,V0_view, V_view;it_solver=it_solver,maxiter=linsolv_maxiter,tol=linsolv_tol,itslv_thresh=itslv_thresh)
 			println("solved")
 			right_core_move!(tt_opt,V_view,V_move,i,tol,rmax)
 
@@ -304,22 +318,18 @@ function dmrg_linsolv(A :: TToperator{T}, b :: TTvector{T}, tt_start :: TTvector
 			#update G,G_b
 			Gip = @view(G[i+1][:,1:tt_opt.ttv_rks[i+1],1:tt_opt.ttv_rks[i+1]])
 			G_bip = @view(G_b[i+1][1:tt_opt.ttv_rks[i+1],:])
-			update_G!(tt_opt.ttv_vec[i],A.tto_vec[i],Gi,Gip)
-			update_Gb!(tt_opt.ttv_vec[i],b.ttv_vec[i],G_bi,G_bip)
+			update_G!(tt_opt.ttv_vec[i],A.tto_vec[i],Gi_view,Gip)
+			update_Gb!(tt_opt.ttv_vec[i],b.ttv_vec[i],G_bi_view,G_bip)
 		end
 
 		# Second half sweep
 		for i = (d+1-N):(-1):2
 			println("Backward sweep: core optimization $i out of $(d+1-N)")
 			# Define V as solution of K*x=Pb in x
-			Gi = @view(G[i][:,1:tt_opt.ttv_rks[i],1:tt_opt.ttv_rks[i]])
-			G_bi = @view(G_b[i][1:tt_opt.ttv_rks[i],:])
-			Hi = @view(H[i][:,1:tt_opt.ttv_rks[i+N],1:tt_opt.ttv_rks[i+N]])
-			H_bi = @view(H_b[i][1:tt_opt.ttv_rks[i+N],:])
-			V_view = @view(V[1:tt_opt.ttv_rks[i],1:prod(tt_opt.ttv_dims[i:i+N-1]),1:tt_opt.ttv_rks[i+N]])
-			Pb_view = @view(Pb_temp[1:tt_opt.ttv_rks[i],1:prod(tt_opt.ttv_dims[i:i+N-1]),1:tt_opt.ttv_rks[i+N]])
+			Gi_view,Hi_view,V_view = update_G_H_V(G[i],H[i],V,tt_opt.ttv_dims,tt_opt.ttv_rks,i,N)
+			G_bi_view, H_bi_view, Pb_view = update_G_H_V_b(G_b[i],H_b[i],Pb_temp,tt_opt.ttv_dims,tt_opt.ttv_rks,i,N)
 			# Define V as solution of K*x=Pb in x
-			Ksolve!(Gi,G_bi,Hi,H_bi,Amid_list[i],bmid_list[i],Pb_view,V0_view, V_view;it_solver=it_solver,maxiter=linsolv_maxiter,tol=linsolv_tol,itslv_thresh=itslv_thresh)
+			Ksolve!(Gi_view,G_bi_view,Hi_view,H_bi_view,Amid_list[i],bmid_list[i],Pb_view,V0_view, V_view;it_solver=it_solver,maxiter=linsolv_maxiter,tol=linsolv_tol,itslv_thresh=itslv_thresh)
 			left_core_move!(tt_opt,V_view,V_move,i+N-1,tol,rmax_schedule[i_schedule])
 
 			#update the initialization
@@ -332,8 +342,8 @@ function dmrg_linsolv(A :: TToperator{T}, b :: TTvector{T}, tt_start :: TTvector
 			#update H[i-1]
 			Him = @view(H[i-1][:,1:tt_opt.ttv_rks[i+N-1],1:tt_opt.ttv_rks[i+N-1]])
 			H_bim = @view(H_b[i-1][1:tt_opt.ttv_rks[i+N-1],:])
-			update_H!(tt_opt.ttv_vec[i+N-1],A.tto_vec[i+N-1],Hi,Him)
-			update_Hb!(tt_opt.ttv_vec[i+N-1],b.ttv_vec[i+N-1],H_bi,H_bim)
+			update_H!(tt_opt.ttv_vec[i+N-1],A.tto_vec[i+N-1],Hi_view,Him)
+			update_Hb!(tt_opt.ttv_vec[i+N-1],b.ttv_vec[i+N-1],H_bi_view,H_bim)
 		end
 	end
 	return tt_opt
@@ -367,25 +377,8 @@ function dmrg_eigsolv(A :: TToperator{T},
 	E = Float64[]
 	r_hist = Int64[]
 
-	# Initialize the arrays of G
-	G = Array{Array{T,3},1}(undef, d+1-N)
-	Amid_list = Array{Array{T,4},1}(undef, d+1-N)
-
-	# Initialize G
-	for i in 1:d+1-N
-		G[i] = zeros(T,A.tto_rks[i],rks[i],rks[i])
-		Amid_list[i] = Amid(A,i,i+N-1)
-	end
-	G[1] = ones(T,size(G[1]))
-	#Initialize H
-	H = init_H(tt_opt,A,N,rmax)
-	#Initialize V0
-	V0 = zeros(T,rmax,maximum(tt_opt.ttv_dims)^N,rmax)
-	V0_view = @view(V0[1:tt_opt.ttv_rks[1],1:prod(tt_opt.ttv_dims[1:N]),1:tt_opt.ttv_rks[1+N]])
-	V0_view = b_mid(tt_opt,1,N)
-	V = zeros(T,rmax,maximum(tt_opt.ttv_dims)^N,rmax)
-	V_move = zeros(T,rmax,maximum(tt_opt.ttv_dims),rmax)
-	V_temp = zeros(T,rmax,maximum(tt_opt.ttv_dims),maximum(tt_opt.ttv_dims),rmax)
+	#Initialize DMRG 
+	G,Amid_list,H,V0,V,V_move,V_temp,V0_view = init_dmrg(A,tt_opt,rks,N)
 
 	nsweeps = 0 #sweeps counter
 	i_schedule = 1
@@ -421,7 +414,6 @@ function dmrg_eigsolv(A :: TToperator{T},
 			println("Eigenvalue: $λ")
 			push!(E,λ)
 			right_core_move!(tt_opt,V_view,V_move,i,tol,rmax_schedule[i_schedule])
-			push!(r_hist,maximum(tt_opt.ttv_rks))
 			#Update the next initialization
 			V_moveview = @view(V_move[1:tt_opt.ttv_rks[i+1],1:prod(tt_opt.ttv_dims[i+1:i+N-1]),1:tt_opt.ttv_rks[i+N]])
 			V_tempview = @view(V_temp[1:size(V_moveview,1),1:size(V_moveview,2),1:tt_opt.ttv_dims[i+N],1:tt_opt.ttv_rks[i+1+N]])
@@ -429,9 +421,10 @@ function dmrg_eigsolv(A :: TToperator{T},
 			V0_view = @view(V0[1:tt_opt.ttv_rks[i+1],1:prod(tt_opt.ttv_dims[i+1:i+N-1]),1:tt_opt.ttv_rks[i+N]])
 			V0_view = reshape(V_tempview,size(V_tempview,1),:,size(V_tempview,4))
 			# Update G[i+1],G_b[i+1]
-			Gi = @view(G[i][:,1:tt_opt.ttv_rks[i],1:tt_opt.ttv_rks[i]])
+			Gi_view = @view(G[i][:,1:tt_opt.ttv_rks[i],1:tt_opt.ttv_rks[i]])
 			Gip = @view(G[i+1][:,1:tt_opt.ttv_rks[i+1],1:tt_opt.ttv_rks[i+1]])
-			update_G!(tt_opt.ttv_vec[i],A.tto_vec[i],Gi,Gip)
+			update_G!(tt_opt.ttv_vec[i],A.tto_vec[i],Gi_view,Gip)
+			push!(r_hist,maximum(tt_opt.ttv_rks))
 		end
 
 		# Second half sweep
@@ -451,9 +444,9 @@ function dmrg_eigsolv(A :: TToperator{T},
 			V0_view = @view(V0[1:tt_opt.ttv_rks[i],1:prod(tt_opt.ttv_dims[i:i+N-2]),1:tt_opt.ttv_rks[i+N-1]])
 			V0_view = reshape(V_tempview,size(V_tempview,1),:,size(V_tempview,4))
 			# Update H[i-1]
-			Hi = @view(H[i][:,1:tt_opt.ttv_rks[i+N],1:tt_opt.ttv_rks[i+N]])
+			Hi_view = @view(H[i][:,1:tt_opt.ttv_rks[i+N],1:tt_opt.ttv_rks[i+N]])
 			Him = @view(H[i-1][:,1:tt_opt.ttv_rks[i+N-1],1:tt_opt.ttv_rks[i+N-1]])
-			update_H!(tt_opt.ttv_vec[i+N-1],A.tto_vec[i+N-1],Hi,Him)
+			update_H!(tt_opt.ttv_vec[i+N-1],A.tto_vec[i+N-1],Hi_view,Him)
 		end
 	end
 	return E::Array{Float64,1}, tt_opt::TTvector{T}, r_hist::Array{Int,1}
