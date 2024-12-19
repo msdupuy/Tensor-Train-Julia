@@ -87,15 +87,12 @@ function b_mid(b_tt::TTvector{T},i::Integer,j::Integer) where {T<:Number}
 	return b_out
 end
 
-function Ksolve!(Gi::AbstractArray{T,3},G_bi::AbstractArray{T,2},Hi::AbstractArray{T,3},H_bi::AbstractArray{T,2},Amid_tensor::AbstractArray{T,4},Bmid::AbstractArray{T,3},Pb,V0::AbstractArray{T,3},Vapp::AbstractArray{T,3};it_solver=false,maxiter=200,tol=1e-6,itslv_thresh=256) where T<:Number
-	K_dims = (size(Gi,2),size(Amid_tensor,2),size(Hi,2))
+function Ksolve!(Gi_view::AbstractArray{T,3},G_bi::AbstractArray{T,2},Hi_view::AbstractArray{T,3},H_bi::AbstractArray{T,2},Amid_tensor::AbstractArray{T,4},Bmid::AbstractArray{T,3},Pb,V0::AbstractArray{T,3},Vapp::AbstractArray{T,3};it_solver=false,maxiter=200,tol=1e-6,itslv_thresh=256) where T<:Number
+	K_dims = (size(Gi_view,2),size(Amid_tensor,2),size(Hi_view,2))
 	@tensoropt Pb[α1,i,α2] = G_bi[α1,β1]*Bmid[β1,i,β2]*H_bi[α2,β2] #size (r^X_{i-1},n_i⋯n_j,r^X_j)
 
-	if it_solver && prod(K_dims) > itslv_thresh
-		Gtemp = @view(Gi[:,1:K_dims[1],1:K_dims[1]])
-		Htemp = @view(Hi[:,1:K_dims[3],1:K_dims[3]])
-
-		function K_matfree(Vout,V::AbstractArray{S,1};Gi=Gtemp::AbstractArray{S,3},Hi=Htemp::AbstractArray{S,3},K_dims=K_dims::NTuple{3,Int},Amid_tensor=Amid_tensor::AbstractArray{S,4}) where S<:Number
+	if it_solver && prod(K_dims) > itslv_thresh	
+		function K_matfree(Vout,V::AbstractArray{S,1};Gi=Gi_view::AbstractArray{S,3},Hi=Hi_view::AbstractArray{S,3},K_dims=K_dims::NTuple{3,Int},Amid_tensor=Amid_tensor::AbstractArray{S,4}) where S<:Number
 			Hrshp = reshape(Vout,K_dims)
 			@tensoropt((a,c,d,f), Hrshp[a,b,c] = Gi[y,a,d]*Hi[z,c,f]*Amid_tensor[y,b,e,z]*reshape(V,K_dims)[d,e,f] + Gi[y,d,a]*Hi[z,f,c]*Amid_tensor[y,e,b,z]*reshape(V,K_dims)[d,e,f])
 			Hrshp .= 0.5*Hrshp
@@ -105,7 +102,7 @@ function Ksolve!(Gi::AbstractArray{T,3},G_bi::AbstractArray{T,2},Hi::AbstractArr
 		Vapp[:],_ = linsolve(LinearMap{T}(K_matfree,prod(K_dims);issymmetric = true,ismutating=true),Pb[:], V0[:];issymmetric=true,tol=tol,maxiter=maxiter)
 		return nothing
 	else
-		K = K_full(Gi,Hi,Amid_tensor)
+		K = K_full(Gi_view,Hi_view,Amid_tensor)
 		Vapp[:] = K\Pb[:]
 		return nothing
 	end
@@ -151,15 +148,13 @@ function left_core_move!(x_tt::TTvector{T},V,V_move,j::Int,tol::Float64,r_max::I
 end
 
 
-function K_eigmin(Gi::AbstractArray{T,3},Hi::AbstractArray{T,3},V0::AbstractArray{T,3},Amid_tensor::AbstractArray{T,4},V;it_solver=false::Bool,itslv_thresh=256::Int64,maxiter=200::Int64,tol=1e-6::Float64) where T<:Number
+function K_eigmin(Gi_view::AbstractArray{T,3},Hi_view::AbstractArray{T,3},V0::AbstractArray{T,3},Amid_tensor::AbstractArray{T,4},V;it_solver=false::Bool,itslv_thresh=256::Int64,maxiter=200::Int64,tol=1e-6::Float64) where T<:Number
 	K_dims = size(V0)
-	Gtemp = @view(Gi[:,1:K_dims[1],1:K_dims[1]])
-	Htemp = @view(Hi[:,1:K_dims[3],1:K_dims[3]])
 	λ = zero(T)
 	if it_solver || prod(K_dims) > itslv_thresh
-		function K_matfree(Vout,V::AbstractArray{S,1};Gi=Gtemp::AbstractArray{S,3},Hi=Htemp::AbstractArray{S,3},K_dims=K_dims::NTuple{3,Int},Amid_tensor=Amid_tensor::AbstractArray{S,4}) where S<:Number
+		function K_matfree(Vout,V::AbstractArray{S,1};Gi=Gi_view::AbstractArray{S,3},Hi=Hi_view::AbstractArray{S,3},K_dims=K_dims::NTuple{3,Int},Amid_tensor=Amid_tensor::AbstractArray{S,4}) where S<:Number
 			Hrshp = reshape(Vout,K_dims)
-			@tensoropt((a,c,d,f), Hrshp[a,b,c] = Gi[y,a,d]*Hi[z,c,f]*Amid_tensor[y,b,e,z]*reshape(V,K_dims)[d,e,f] + Gi[y,d,a]*Hi[z,f,c]*Amid_tensor[y,e,b,z]*reshape(V,K_dims)[d,e,f])
+			@tensoropt((a,c,d,f), Hrshp[a,b,c] = Gi[y,a,d]*Amid_tensor[y,b,e,z]*reshape(V,K_dims)[d,e,f]*Hi[z,c,f] + Gi[y,d,a]*Hi[z,f,c]*Amid_tensor[y,e,b,z]*reshape(V,K_dims)[d,e,f])
 			Hrshp .= 0.5*Hrshp
 			return nothing
 		end
@@ -169,7 +164,7 @@ function K_eigmin(Gi::AbstractArray{T,3},Hi::AbstractArray{T,3},V0::AbstractArra
 		end
 		λ = real(r[1][1])
 	else
-		K = K_full(Gtemp,Htemp,Amid_tensor)
+		K = K_full(Gi_view,Hi_view,Amid_tensor)
 		F = eigen(K,1:1)
 		for i in eachindex(V)
 			V[i] = reshape(F.vectors[:,1],K_dims)[i]
@@ -201,10 +196,9 @@ end
 
 function init_dmrg_b(b::TTvector{T,d},tt_opt::TTvector{T,d},rks,N) where {T<:Number,d}
 	rmax = maximum(rks)
-	G_b = Array{Array{T,2},1}(undef, d+1-N)
+	G_b = zeros.(T,rks[1:d+1-N],b.ttv_rks[1:d+1-N]) #Array{Array{T,2},1}(undef, d+1-N)
 	bmid_list = Array{Array{T,3},1}(undef, d+1-N)
 	for i in 1:d+1-N
-		G_b[i] = zeros(T,rks[i],b.ttv_rks[i])
 		bmid_list[i] = b_mid(b,i,i+N-1)
 	end
 	G_b[1] = ones(T,size(G_b[1]))
@@ -225,6 +219,38 @@ function update_G_H_V_b(Gbi,Hbi,Pb_temp,tt_dims,tt_rks,i,N)
 	H_bi_view = @view(Hbi[1:tt_rks[i+N],:])
 	Pb_view = @view(Pb_temp[1:tt_rks[i],1:prod(tt_dims[i:i+N-1]),1:tt_rks[i+N]])
 	return G_bi_view,H_bi_view,Pb_view
+end
+
+function update_right(tt_opt,V0,V_view,V_move,V_temp,i,N,tol,rmax,Ai,Gi_view,Gip)
+	#update tt_opt
+	right_core_move!(tt_opt,V_view,V_move,i,tol,rmax)
+
+	V_moveview = @view(V_move[1:tt_opt.ttv_rks[i+1],1:prod(tt_opt.ttv_dims[i+1:i+N-1]),1:tt_opt.ttv_rks[i+N]])
+	V_tempview = @view(V_temp[1:size(V_moveview,1),1:size(V_moveview,2),1:tt_opt.ttv_dims[i+N],1:tt_opt.ttv_rks[i+1+N]])
+	@tensor V_tempview[αk,J,ik,γk] = V_moveview[αk,J,βk]*tt_opt.ttv_vec[i+N][ik,βk,γk]
+	V0_view = @view(V0[1:tt_opt.ttv_rks[i+1],1:prod(tt_opt.ttv_dims[i+1:i+N-1]),1:tt_opt.ttv_rks[i+N]])
+	V0_view = reshape(V_tempview,size(V_tempview,1),:,size(V_tempview,4))
+
+	#update G[i+1]
+	Gip_view = @view(Gip[:,1:tt_opt.ttv_rks[i+1],1:tt_opt.ttv_rks[i+1]])
+	update_G!(tt_opt.ttv_vec[i],Ai,Gi_view,Gip_view)
+	return V0_view
+end
+
+function update_left(tt_opt,V0,V_view,V_move,V_temp,i,N,tol,rmax,Aip,Hi_view,Him)
+	left_core_move!(tt_opt,V_view,V_move,i+N-1,tol,rmax)
+
+	#update the initialization
+	V_moveview = @view(V_move[1:tt_opt.ttv_rks[i],1:prod(tt_opt.ttv_dims[i:i+N-2]),1:tt_opt.ttv_rks[i+N-1]])
+	V_tempview = @view(V_temp[1:tt_opt.ttv_rks[i-1],1:tt_opt.ttv_dims[i-1],1:size(V_moveview,2),1:size(V_moveview,3)])
+	@tensor V_tempview[αk,J,ik,γk] =  V_moveview[βk,J,γk]*tt_opt.ttv_vec[i-1][ik,αk,βk]
+	V0_view = @view(V0[1:tt_opt.ttv_rks[i],1:prod(tt_opt.ttv_dims[i:i+N-2]),1:tt_opt.ttv_rks[i+N-1]])
+	V0_view = reshape(V_tempview,size(V_tempview,1),:,size(V_tempview,4))
+
+	#update H[i-1]
+	Him_view = @view(Him[:,1:tt_opt.ttv_rks[i+N-1],1:tt_opt.ttv_rks[i+N-1]])
+	update_H!(tt_opt.ttv_vec[i+N-1],Aip,Hi_view,Him_view)
+	return V0_view
 end
 
 #function K_eiggenmin(Gi,Hi,Ki,Li,ttv_vec;it_solver=false,itslv_thresh=2500)
@@ -306,19 +332,11 @@ function dmrg_linsolv(A :: TToperator{T}, b :: TTvector{T}, tt_start :: TTvector
 			# Define V as solution of K*x=Pb in x
 			Ksolve!(Gi_view,G_bi_view,Hi_view,H_bi_view,Amid_list[i],bmid_list[i],Pb_view,V0_view, V_view;it_solver=it_solver,maxiter=linsolv_maxiter,tol=linsolv_tol,itslv_thresh=itslv_thresh)
 			println("solved")
-			right_core_move!(tt_opt,V_view,V_move,i,tol,rmax)
 
-			#Update the next initialization
-			V_moveview = @view(V_move[1:tt_opt.ttv_rks[i+1],1:prod(tt_opt.ttv_dims[i+1:i+N-1]),1:tt_opt.ttv_rks[i+N]])
-			V_tempview = @view(V_temp[1:size(V_moveview,1),1:size(V_moveview,2),1:tt_opt.ttv_dims[i+N],1:tt_opt.ttv_rks[i+1+N]])
-			@tensor V_tempview[αk,J,ik,γk] = V_moveview[αk,J,βk]*tt_opt.ttv_vec[i+N][ik,βk,γk]
-			V0_view = @view(V0[1:tt_opt.ttv_rks[i+1],1:prod(tt_opt.ttv_dims[i+1:i+N-1]),1:tt_opt.ttv_rks[i+N]])
-			V0_view = reshape(V_tempview,size(V_tempview,1),:,size(V_tempview,4))
+			#Update TT core i and the next initialization
+			V0_view = update_right(tt_opt,V0,V_view,V_move,V_temp,i,N,tol,rmax_schedule[i_schedule],A.tto_vec[i],Gi_view,G[i+1])
 
-			#update G,G_b
-			Gip = @view(G[i+1][:,1:tt_opt.ttv_rks[i+1],1:tt_opt.ttv_rks[i+1]])
 			G_bip = @view(G_b[i+1][1:tt_opt.ttv_rks[i+1],:])
-			update_G!(tt_opt.ttv_vec[i],A.tto_vec[i],Gi_view,Gip)
 			update_Gb!(tt_opt.ttv_vec[i],b.ttv_vec[i],G_bi_view,G_bip)
 		end
 
@@ -330,19 +348,10 @@ function dmrg_linsolv(A :: TToperator{T}, b :: TTvector{T}, tt_start :: TTvector
 			G_bi_view, H_bi_view, Pb_view = update_G_H_V_b(G_b[i],H_b[i],Pb_temp,tt_opt.ttv_dims,tt_opt.ttv_rks,i,N)
 			# Define V as solution of K*x=Pb in x
 			Ksolve!(Gi_view,G_bi_view,Hi_view,H_bi_view,Amid_list[i],bmid_list[i],Pb_view,V0_view, V_view;it_solver=it_solver,maxiter=linsolv_maxiter,tol=linsolv_tol,itslv_thresh=itslv_thresh)
-			left_core_move!(tt_opt,V_view,V_move,i+N-1,tol,rmax_schedule[i_schedule])
 
-			#update the initialization
-			V_moveview = @view(V_move[1:tt_opt.ttv_rks[i],1:prod(tt_opt.ttv_dims[i:i+N-2]),1:tt_opt.ttv_rks[i+N-1]])
-			V_tempview = @view(V_temp[1:tt_opt.ttv_rks[i-1],1:tt_opt.ttv_dims[i-1],1:size(V_moveview,2),1:size(V_moveview,3)])
-			@tensor V_tempview[αk,J,ik,γk] =  V_moveview[βk,J,γk]*tt_opt.ttv_vec[i-1][ik,αk,βk]
-			V0_view = @view(V0[1:tt_opt.ttv_rks[i],1:prod(tt_opt.ttv_dims[i:i+N-2]),1:tt_opt.ttv_rks[i+N-1]])
-			V0_view = reshape(V_tempview,size(V_tempview,1),:,size(V_tempview,4))
+			V0_view = update_left(tt_opt,V0,V_view,V_move,V_temp,i,N,tol,rmax_schedule[i_schedule],A.tto_vec[i+N-1],Hi_view,H[i-1])
 
-			#update H[i-1]
-			Him = @view(H[i-1][:,1:tt_opt.ttv_rks[i+N-1],1:tt_opt.ttv_rks[i+N-1]])
 			H_bim = @view(H_b[i-1][1:tt_opt.ttv_rks[i+N-1],:])
-			update_H!(tt_opt.ttv_vec[i+N-1],A.tto_vec[i+N-1],Hi_view,Him)
 			update_Hb!(tt_opt.ttv_vec[i+N-1],b.ttv_vec[i+N-1],H_bi_view,H_bim)
 		end
 	end
@@ -390,7 +399,7 @@ function dmrg_eigsolv(A :: TToperator{T},
 			i_schedule+=1
 			if i_schedule > length(sweep_schedule)
 				#last step to complete the sweep
-				V_view = @view(V[1:tt_opt.ttv_rks[1],1:prod(tt_opt.ttv_dims[1:N]),1:tt_opt.ttv_rks[1+N]])
+				Gi_view,Hi_view,V_view = update_G_H_V(G[1],H[1],V,tt_opt.ttv_dims,tt_opt.ttv_rks,1,N)
 				λ = K_eigmin(G[1],H[1],V0_view ,Amid_list[1], V_view ;it_solver=it_solver,maxiter=linsolv_maxiter,tol=linsolv_tol,itslv_thresh=itslv_thresh)
 				println("Eigenvalue: $λ")
 				push!(E,λ)
@@ -409,21 +418,12 @@ function dmrg_eigsolv(A :: TToperator{T},
 		for i = 1:(d-N)
 			println("Forward sweep: core optimization $i out of $(d-N)")
 			# Define V as solution of K V= λ V for smallest λ
-			V_view = @view(V[1:tt_opt.ttv_rks[i],1:prod(tt_opt.ttv_dims[i:i+N-1]),1:tt_opt.ttv_rks[i+N]])
-			λ = K_eigmin(G[i],H[i],V0_view, Amid_list[i],V_view; it_solver=it_solver, maxiter=linsolv_maxiter,tol=linsolv_tol,itslv_thresh=itslv_thresh)
+			Gi_view,Hi_view,V_view = update_G_H_V(G[i],H[i],V,tt_opt.ttv_dims,tt_opt.ttv_rks,i,N)
+			λ = K_eigmin(Gi_view,Hi_view,V0_view, Amid_list[i],V_view; it_solver=it_solver, maxiter=linsolv_maxiter,tol=linsolv_tol,itslv_thresh=itslv_thresh)
 			println("Eigenvalue: $λ")
 			push!(E,λ)
-			right_core_move!(tt_opt,V_view,V_move,i,tol,rmax_schedule[i_schedule])
-			#Update the next initialization
-			V_moveview = @view(V_move[1:tt_opt.ttv_rks[i+1],1:prod(tt_opt.ttv_dims[i+1:i+N-1]),1:tt_opt.ttv_rks[i+N]])
-			V_tempview = @view(V_temp[1:size(V_moveview,1),1:size(V_moveview,2),1:tt_opt.ttv_dims[i+N],1:tt_opt.ttv_rks[i+1+N]])
-			@tensor V_tempview[αk,J,ik,γk] = V_moveview[αk,J,βk]*tt_opt.ttv_vec[i+N][ik,βk,γk]
-			V0_view = @view(V0[1:tt_opt.ttv_rks[i+1],1:prod(tt_opt.ttv_dims[i+1:i+N-1]),1:tt_opt.ttv_rks[i+N]])
-			V0_view = reshape(V_tempview,size(V_tempview,1),:,size(V_tempview,4))
-			# Update G[i+1],G_b[i+1]
-			Gi_view = @view(G[i][:,1:tt_opt.ttv_rks[i],1:tt_opt.ttv_rks[i]])
-			Gip = @view(G[i+1][:,1:tt_opt.ttv_rks[i+1],1:tt_opt.ttv_rks[i+1]])
-			update_G!(tt_opt.ttv_vec[i],A.tto_vec[i],Gi_view,Gip)
+			#Update TT core i and the next initialization
+			V0_view = update_right(tt_opt,V0,V_view,V_move,V_temp,i,N,tol,rmax_schedule[i_schedule],A.tto_vec[i],Gi_view,G[i+1])
 			push!(r_hist,maximum(tt_opt.ttv_rks))
 		end
 
@@ -431,22 +431,13 @@ function dmrg_eigsolv(A :: TToperator{T},
 		for i = d-N+1:(-1):2
 			println("Backward sweep: core optimization $(i-1) out of $(d-N)")
 			# Define V as solution of K*x=P2b in x
-			V_view = @view(V[1:tt_opt.ttv_rks[i],1:prod(tt_opt.ttv_dims[i:i+N-1]),1:tt_opt.ttv_rks[i+N]])
-			λ = K_eigmin(G[i],H[i],V0_view,Amid_list[i],V_view ;it_solver=it_solver,maxiter=linsolv_maxiter,tol=linsolv_tol,itslv_thresh=itslv_thresh)
+			Gi_view,Hi_view,V_view = update_G_H_V(G[i],H[i],V,tt_opt.ttv_dims,tt_opt.ttv_rks,i,N)
+			λ = K_eigmin(Gi_view,Hi_view,V0_view,Amid_list[i],V_view ;it_solver=it_solver,maxiter=linsolv_maxiter,tol=linsolv_tol,itslv_thresh=itslv_thresh)
 			println("Eigenvalue: $λ")
 			push!(E,λ)
-			left_core_move!(tt_opt,V_view,V_move,i+N-1,tol,rmax_schedule[i_schedule])
-			push!(r_hist,maximum(tt_opt.ttv_rks))
 			#update the initialization
-			V_moveview = @view(V_move[1:tt_opt.ttv_rks[i],1:prod(tt_opt.ttv_dims[i:i+N-2]),1:tt_opt.ttv_rks[i+N-1]])
-			V_tempview = @view(V_temp[1:tt_opt.ttv_rks[i-1],1:tt_opt.ttv_dims[i-1],1:size(V_moveview,2),1:size(V_moveview,3)])
-			@tensor V_tempview[αk,J,ik,γk] =  V_moveview[βk,J,γk]*tt_opt.ttv_vec[i-1][ik,αk,βk]
-			V0_view = @view(V0[1:tt_opt.ttv_rks[i],1:prod(tt_opt.ttv_dims[i:i+N-2]),1:tt_opt.ttv_rks[i+N-1]])
-			V0_view = reshape(V_tempview,size(V_tempview,1),:,size(V_tempview,4))
-			# Update H[i-1]
-			Hi_view = @view(H[i][:,1:tt_opt.ttv_rks[i+N],1:tt_opt.ttv_rks[i+N]])
-			Him = @view(H[i-1][:,1:tt_opt.ttv_rks[i+N-1],1:tt_opt.ttv_rks[i+N-1]])
-			update_H!(tt_opt.ttv_vec[i+N-1],A.tto_vec[i+N-1],Hi_view,Him)
+			V0_view = update_left(tt_opt,V0,V_view,V_move,V_temp,i,N,tol,rmax_schedule[i_schedule],A.tto_vec[i+N-1],Hi_view,H[i-1])
+			push!(r_hist,maximum(tt_opt.ttv_rks))
 		end
 	end
 	return E::Array{Float64,1}, tt_opt::TTvector{T}, r_hist::Array{Int,1}
