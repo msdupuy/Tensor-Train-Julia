@@ -21,6 +21,17 @@ end
   @test isapprox(A,A_rand)
 end
 
+@testset "STTA" begin
+  dims = (2,2,2,2,2,2,2,2)
+  rks = [1,2,4,4,4,4,4,2,1]
+  A_tt = rand_tt(dims,rks)
+  A_pert = tt_up_rks(A_tt,20,ϵ_wn=1e-8)
+  A = ttv_to_tensor(A_pert)
+  A_ttrand = stta(A_pert;rks=[1,2,4,6,6,6,4,2,1])
+  A_rand = ttv_to_tensor(A_ttrand)
+  @test isapprox(A,A_rand)
+end
+
 @testset "TT sum rand_rounding" begin
   d = 10
   n = 50
