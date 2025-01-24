@@ -29,8 +29,8 @@ end
 TT rounding algorithm in https://doi.org/10.1137/21M1451191
 Algorithm 3.2 "Randomize then Orthogonalize"
 """
-function ttrand_rounding(y_tt::TTvector{T,N};rks=vcat(1,round.(Int,1.5*y_tt.ttv_rks[2:end-1]),1),rmax=prod(y_tt.ttv_dims),orthogonal=true) where {T,N}
-  rks = r_and_d_to_rks(rks,y_tt.ttv_dims;rmax=rmax)
+function ttrand_rounding(y_tt::TTvector{T,N};rks=y_tt.ttv_rks,rmax=prod(y_tt.ttv_dims),orthogonal=true,ℓ=round(Int,0.5*maximum(rks))) where {T,N}
+  rks = r_and_d_to_rks(rks.+ℓ,y_tt.ttv_dims;rmax=rmax+ℓ) #rks with oversampling
   L = length(y_tt.ttv_dims)
   x_tt = zeros_tt(T,y_tt.ttv_dims,rks)
   ℜ_tt = rand_tt(T,y_tt.ttv_dims,rks;normalise=true,orthogonal=orthogonal)
@@ -84,9 +84,9 @@ function stable_inverse(A;ε=1e-12)
   return v[:,s.>maximum(s)*ε]*Diagonal(1 ./s[s.>maximum(s)*ε])*u[:,s.>maximum(s)*ε]'
 end
 
-function stta(y_tt::TTvector{T,N};rks=vcat(1,round.(Int,1.5*y_tt.ttv_rks[2:end-1]),1),rmax=prod(y_tt.ttv_dims)) where {T,N}
-  r_rks = r_and_d_to_rks(rks,y_tt.ttv_dims;rmax=rmax)
-  l_rks = r_and_d_to_rks(round.(Int,1.5*rks),y_tt.ttv_dims;rmax=round(Int,1.5*rmax))
+function stta(y_tt::TTvector{T,N};rks=vcat(1,round.(Int,1.5*y_tt.ttv_rks[2:end-1]),1),rmax=prod(y_tt.ttv_dims),ℓ=round(Int,maximum(rks))) where {T,N}
+  r_rks = r_and_d_to_rks(rks.+ℓ,y_tt.ttv_dims;rmax=rmax+ℓ)
+  l_rks = r_and_d_to_rks(round.(Int,1.5*rks).+ℓ,y_tt.ttv_dims;rmax=round(Int,1.5*rmax)+ℓ)
   L = rand_tt(y_tt.ttv_dims,l_rks,normalise=true,orthogonal=true)
   R = rand_tt(y_tt.ttv_dims,r_rks,normalise=true,orthogonal=true)
   Ω,Ψ = stta_sketch(y_tt,L,R)
