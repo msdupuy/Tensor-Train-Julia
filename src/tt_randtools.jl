@@ -7,10 +7,8 @@ Partial contraction defined in Definition 3.1
 """
 function partial_contraction(A::TTvector{T,N},B::TTvector{T,N};reverse=true) where {T,N}
   @assert A.ttv_dims==B.ttv_dims "TT dimensions are not compatible"
-  A_rks = A.ttv_rks
-  B_rks = B.ttv_rks
   L = length(A.ttv_dims)
-  W = zeros.(T,A_rks,B_rks)
+  W = zeros.(T,A.ttv_rks,B.ttv_rks)
   if reverse
     W[L+1] = ones(T,1,1)
     @inbounds for k in L:-1:1
@@ -37,7 +35,7 @@ function ttrand_rounding(y_tt::TTvector{T,N};rks=y_tt.ttv_rks,rmax=prod(y_tt.ttv
   W = partial_contraction(y_tt,ℜ_tt)
   A_temp = zeros(T,maximum(rks),maximum(y_tt.ttv_rks))
   Y_temp = zeros(T,maximum(y_tt.ttv_dims),maximum(rks),maximum(y_tt.ttv_rks))
-  Y_temp[1:y_tt.ttv_dims[1],1:1,1:y_tt.ttv_rks[2]] = y_tt.ttv_vec[1]
+  Y_temp[1:y_tt.ttv_dims[1],1:1,1:y_tt.ttv_rks[2]] = copy(y_tt.ttv_vec[1])
   Z_temp = zeros(T,maximum(y_tt.ttv_dims),maximum(rks),maximum(rks))
   @inbounds begin
     for k in 1:L-1
