@@ -34,7 +34,7 @@ include("pde_models.jl")
 export Δ, Δ_tto, perturbed_Δ_tto
 
 include("tt_randtools.jl")
-export ttrand_rounding, stta
+export ttrand_rounding, stta, tt_hmt
 
 include("FCIDUMP.jl")
 export read_electron_integral_tensors,read_electron_integral_tensors_nosymmetry

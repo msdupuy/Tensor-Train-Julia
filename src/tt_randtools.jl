@@ -29,7 +29,6 @@ Algorithm 3.2 "Randomize then Orthogonalize"
 """
 function ttrand_rounding(y_tt::TTvector{T,N};rks=y_tt.ttv_rks,rmax=prod(y_tt.ttv_dims),orthogonal=true,ℓ=round(Int,0.5*maximum(rks))) where {T,N}
   rks = r_and_d_to_rks(rks.+ℓ,y_tt.ttv_dims;rmax=rmax+ℓ) #rks with oversampling
-  L = length(y_tt.ttv_dims)
   x_tt = zeros_tt(T,y_tt.ttv_dims,rks)
   ℜ_tt = rand_tt(T,y_tt.ttv_dims,rks;normalise=true,orthogonal=orthogonal)
   W = partial_contraction(y_tt,ℜ_tt)
@@ -38,14 +37,14 @@ function ttrand_rounding(y_tt::TTvector{T,N};rks=y_tt.ttv_rks,rmax=prod(y_tt.ttv
   Y_temp[1:y_tt.ttv_dims[1],1:1,1:y_tt.ttv_rks[2]] = copy(y_tt.ttv_vec[1])
   Z_temp = zeros(T,maximum(y_tt.ttv_dims),maximum(rks),maximum(rks))
   @inbounds begin
-    for k in 1:L-1
+    for k in 1:N-1
       @tensoropt((βₖ,αₖ₋₁,αₖ), Z_temp[1:y_tt.ttv_dims[k],1:rks[k],1:rks[k+1]][iₖ,αₖ₋₁,αₖ] = @view(Y_temp[1:y_tt.ttv_dims[k],1:rks[k],1:y_tt.ttv_rks[k+1]])[iₖ,αₖ₋₁,βₖ]*W[k+1][βₖ,αₖ]) # nₖ × ℓₖ₋₁ × ℓₖ
       @views Qₖ_temp,Rₖ = qr(reshape(Z_temp[1:y_tt.ttv_dims[k],1:rks[k],1:rks[k+1]],x_tt.ttv_dims[k]*rks[k],:))
       x_tt.ttv_vec[k] = reshape(Matrix(Qₖ_temp),y_tt.ttv_dims[k],rks[k],:)
       @views A_temp[1:rks[k+1],1:y_tt.ttv_rks[k+1]] = Matrix(Qₖ_temp)'*reshape(Y_temp[1:x_tt.ttv_dims[k],1:rks[k],1:y_tt.ttv_rks[k+1]],x_tt.ttv_dims[k]*rks[k],:) # × Rˣₖ
       @tensoropt((βₖ,αₖ₊₁), Y_temp[1:y_tt.ttv_dims[k+1],1:rks[k+1],1:y_tt.ttv_rks[k+2]][iₖ₊₁,αₖ,αₖ₊₁] = @view(A_temp[1:rks[k+1],1:y_tt.ttv_rks[k+1]])[αₖ,βₖ]*y_tt.ttv_vec[k+1][iₖ₊₁,βₖ,αₖ₊₁])
     end
-    x_tt.ttv_vec[L] = Y_temp[1:y_tt.ttv_dims[L],1:rks[L],1:1]
+    x_tt.ttv_vec[N] = Y_temp[1:y_tt.ttv_dims[N],1:rks[N],1:1]
   end
   return x_tt
 end
@@ -82,10 +81,10 @@ function stable_inverse(A;ε=1e-12)
   return v[:,s.>maximum(s)*ε]*Diagonal(1 ./s[s.>maximum(s)*ε])*u[:,s.>maximum(s)*ε]'
 end
 
-function stta(y_tt::TTvector{T,N};rks=vcat(1,round.(Int,1.5*y_tt.ttv_rks[2:end-1]),1),rmax=prod(y_tt.ttv_dims),ℓ=round(Int,maximum(rks))) where {T,N}
+function stta(y_tt::TTvector{T,N};rks=vcat(1,round.(Int,1.5*y_tt.ttv_rks[2:end-1]),1),rmax=maximum(rks),ℓ=round(Int,maximum(rks))) where {T,N}
   r_rks = r_and_d_to_rks(rks.+ℓ,y_tt.ttv_dims;rmax=rmax+ℓ)
-  l_rks = r_and_d_to_rks(round.(Int,1.5*rks).+ℓ,y_tt.ttv_dims;rmax=round(Int,1.5*rmax)+ℓ)
-  L = rand_tt(y_tt.ttv_dims,l_rks,normalise=true,orthogonal=true)
+  l_rks = r_and_d_to_rks(round.(Int,1.5*(rks.+ℓ)),y_tt.ttv_dims;rmax=round(Int,1.5*(rmax+ℓ)))
+  L = rand_tt(y_tt.ttv_dims,l_rks,normalise=true,orthogonal=true,right=false)
   R = rand_tt(y_tt.ttv_dims,r_rks,normalise=true,orthogonal=true)
   Ω,Ψ = stta_sketch(y_tt,L,R)
   rks = ones(N+1)
@@ -101,4 +100,25 @@ function stta(y_tt::TTvector{T,N};rks=vcat(1,round.(Int,1.5*y_tt.ttv_rks[2:end-1
     end
   end
   return TTvector{T,N}(N,Ψ,y_tt.ttv_dims,rks,zeros(N))
+end
+
+"""
+Wrong algorithm
+"""
+function tt_hmt(y_tt::TTvector{T,N};rks=y_tt.ttv_rks,rmax=maximum(rks),ℓ=round(Int,maximum(rks))) where {T,N}
+  rks = r_and_d_to_rks(rks.+ℓ,y_tt.ttv_dims;rmax=rmax+ℓ)
+  Ω = randn.(y_tt.ttv_rks[2:end],rks[2:end])
+  x_tt = zeros_tt(y_tt.ttv_dims,rks)
+  y_temp = zeros(maximum(y_tt.ttv_dims),maximum(rks),maximum(y_tt.ttv_rks))
+  y_temp[1:y_tt.ttv_dims[1],1:rks[1],1:y_tt.ttv_rks[2]] = copy(y_tt.ttv_vec[1])
+  for k in 1:N-1
+    @tensor A_temp[iₖ,αₖ₋₁,βₖ] := @view(y_temp[1:y_tt.ttv_dims[k],1:rks[k],1:y_tt.ttv_rks[k+1]])[iₖ,αₖ₋₁,αₖ]*Ω[k][αₖ,βₖ]
+    q,_ = qr(reshape(A_temp,y_tt.ttv_dims[k]*rks[k],:))
+    x_tt.ttv_vec[k] = reshape(Matrix(q),y_tt.ttv_dims[k],rks[k],:)
+    rks[k+1] = size(x_tt.ttv_vec[k],3)
+    R_temp = q'[1:rks[k+1],:]*reshape(y_temp[1:y_tt.ttv_dims[k],1:rks[k],1:y_tt.ttv_rks[k+1]],y_tt.ttv_dims[k]*rks[k],:) #size rks[k+1] × y_tt.ttv_rks[k+1]
+    @tensor (y_temp[1:y_tt.ttv_dims[k+1],1:rks[k+1],1:y_tt.ttv_rks[k+2]])[iₖ₊₁,αₖ,αₖ₊₁] = R_temp[αₖ,βₖ]*y_tt.ttv_vec[k+1][iₖ₊₁,βₖ,αₖ₊₁]
+  end
+  x_tt.ttv_vec[N] = y_temp[1:y_tt.ttv_dims[N],1:rks[N],1:1]
+  return TTvector{T,N}(N,x_tt.ttv_vec,y_tt.ttv_dims,rks,zeros(N))
 end

@@ -135,20 +135,28 @@ end
 """
 Returns a random TTvector with dimensions `dims` and ranks `rks`
 """
-function rand_tt(dims,rks;normalise=false,orthogonal=false)
-	return rand_tt(Float64,dims,rks;normalise=normalise,orthogonal=orthogonal)
+function rand_tt(dims,rks;normalise=false,orthogonal=false, right=true)
+	return rand_tt(Float64,dims,rks;normalise=normalise,orthogonal=orthogonal,right=right)
 end
 
-function rand_tt(::Type{T},dims,rks;normalise=false,orthogonal=false) where T
+function rand_tt(::Type{T},dims,rks;normalise=false,orthogonal=false,right=true) where T
 	y = zeros_tt(T,dims,rks)
 	@simd for i in eachindex(y.ttv_vec)
 		y.ttv_vec[i] = randn(T,dims[i],rks[i],rks[i+1])
 		if normalise
-			y.ttv_vec[i] *= 1/sqrt(dims[i]*rks[i+1])
-		if orthogonal
-			q,_ = qr(reshape(permutedims(y.ttv_vec[i],(1,3,2)),dims[i]*rks[i+1],rks[i]))
-			y.ttv_vec[i] = permutedims(reshape(Matrix(q),dims[i],rks[i+1],rks[i]),(1,3,2))
-		end
+			if right
+				y.ttv_vec[i] *= 1/sqrt(dims[i]*rks[i+1])
+				if orthogonal
+					q,_ = qr(reshape(permutedims(y.ttv_vec[i],(1,3,2)),dims[i]*rks[i+1],rks[i]))
+					y.ttv_vec[i] = permutedims(reshape(Matrix(q),dims[i],rks[i+1],rks[i]),(1,3,2))
+				end
+			else
+				y.ttv_vec[i] *= 1/sqrt(dims[i]*rks[i])
+				if orthogonal
+					q,_ = qr(reshape(y.ttv_vec[i],dims[i]*rks[i],rks[i+1]))
+					y.ttv_vec[i] = reshape(Matrix(q),dims[i],rks[i],rks[i+1])
+				end
+			end
 		end
 	end
 	return y
@@ -157,22 +165,11 @@ end
 """
 Returns a random TTvector with dimensions `dims` and maximal rank `rmax`
 """
-function rand_tt(dims,rmax::Int;T=Float64,normalise=false,orthogonal=false)
+function rand_tt(dims,rmax::Int;normalise=false,orthogonal=false,right=true)
 	d = length(dims)
-	tt_vec = Vector{Array{T,3}}(undef,d)
 	rks = rmax*ones(Int,d+1)
 	rks = r_and_d_to_rks(rks,dims;rmax=rmax)
-	for i in eachindex(tt_vec) 
-		tt_vec[i] = randn(T,dims[i],rks[i],rks[i+1])
-		if normalise
-			tt_vec[i] *= 1/sqrt(dims[i]*rks[i+1])
-		end
-		if orthogonal
-			q,_ = qr(reshape(permutedims(tt_vec[i],(1,3,2)),dims[i]*rks[i+1],rks[i]))
-			tt_vec[i] = reshape(permutedims(Matrix(q),(1,2,3)),dims[i],rks[i],rks[i+1])
-		end
-	end
-	return TTvector{T,d}(d,tt_vec,dims,rks,zeros(Int,d))
+	return rand_tt(dims,rks;normalise=normalise,orthogonal=orthogonal,right=right)
 end
 
 function rand_tt(x_tt::TTvector{T,N};ε=convert(T,1e-3)) where {T,N}

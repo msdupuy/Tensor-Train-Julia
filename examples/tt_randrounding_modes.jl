@@ -1,15 +1,12 @@
 include("tt_randrounding.jl")
-using JSON3
 
-out = modes_sensitivity()
-data = Dict{String,Any}()
-data["N_list"] = 4:2:10
-data["rks_list"] = -10:10 .+40
-data["n"] = 50
-data["ε"] = 1e-2
-data["exact_error"] = out[1]
-data["randrounding_error"] = out[2]
-data["randorth_error"] = out[3]
-data["stta_error"] = out[4]
-data["n_samples"] = 10
-open(io -> JSON3.write(io, data, allow_inf=true), "out/rand-rounding/perturbed_ℓ=0.5rmax.json", "w")
+d_list = 4:2:10
+rks = 30
+δrks_list = -10:10
+ℓ_list = [0,5,10]
+ε_list = [1e-1,1e-2,1e-3]
+for ℓ in ℓ_list
+  for ε in ε_list
+    modes_sensitivity(d_list=d_list,δrks_list=δrks_list,ℓ=ℓ,ε=ε)
+  end
+end
