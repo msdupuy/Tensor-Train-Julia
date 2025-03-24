@@ -1,7 +1,7 @@
 module TensorTrains
 
 include("tt_tools.jl")
-export TTvector,TToperator,ttv_decomp,tto_decomp,ttv_to_tensor,tto_to_tensor,zeros_tt,zeros_tto,rand_tt,rand_tto,tt_to_vidal,vidal_to_tensor,vidal_to_left_canonical, json_to_mps, json_to_mpo
+export TTvector,TToperator,ttv_decomp,tto_decomp,ttv_to_tensor,tto_to_tensor,ones_tt,zeros_tt,zeros_tto,rand_tt,rand_tto,tt_to_vidal,vidal_to_tensor,vidal_to_left_canonical, json_to_mps, json_to_mpo
 
 include("tt_operations.jl")
 export *, +, dot, -, /, outer_product
@@ -31,7 +31,7 @@ include("particular_states.jl")
 export random_slater, random_prime_tensor, random_static_correlation_tensor
 
 include("pde_models.jl")
-export Δ, Δ_tto, perturbed_Δ_tto
+export Δ, Δ_tto, perturbed_Δ_tto, potential
 
 include("tt_randtools.jl")
 export ttrand_rounding, stta, tt_hmt

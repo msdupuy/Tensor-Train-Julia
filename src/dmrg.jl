@@ -290,6 +290,7 @@ function dmrg_linsolv(A :: TToperator{T}, b :: TTvector{T}, tt_start :: TTvector
 
 	# Initialize the to be returned tensor in its tensor train format
 	d = b.N
+	rmax = maximum(rmax_schedule)
 	if N==1
 		tt_start = tt_up_rks(tt_start,rmax)
 	end
