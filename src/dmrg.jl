@@ -61,8 +61,8 @@ function init_Hb(x_tt::TTvector{T},b_tt::TTvector{T},N::Integer,rmax) where {T<:
 		H_b[i-1] = zeros(T,rks[i+N-1],b_tt.ttv_rks[i+N-1])
 		b_vec = b_tt.ttv_vec[i+N-1]
 		x_vec = x_tt.ttv_vec[i+N-1]
-		Hbi = @view(H_b[i][1:rks[i+N],:])
-		Hbim = @view(H_b[i-1][1:rks[i+N-1],:])
+		Hbi = @view(H_b[i][1:x_tt.ttv_rks[i+N],:])
+		Hbim = @view(H_b[i-1][1:x_tt.ttv_rks[i+N-1],:])
 		update_Hb!(x_vec,b_vec,Hbi,Hbim) #size(r^X_{i-1},r^b_{i-1}) 
 	end
 	return H_b
@@ -91,15 +91,81 @@ function Ksolve!(Gi_view::AbstractArray{T,3},G_bi::AbstractArray{T,2},Hi_view::A
 	K_dims = (size(Gi_view,2),size(Amid_tensor,2),size(Hi_view,2))
 	@tensoropt Pb[α1,i,α2] = G_bi[α1,β1]*Bmid[β1,i,β2]*H_bi[α2,β2] #size (r^X_{i-1},n_i⋯n_j,r^X_j)
 
-	if it_solver && prod(K_dims) > itslv_thresh	
+	if it_solver || prod(K_dims) > itslv_thresh	
+		VG_temp = zeros(T,size(Gi_view,1),size(Gi_view,2),size(Amid_tensor,2),size(Hi_view,2))
+		VGA_temp = zeros(T,size(Hi_view,1),size(Gi_view,2),size(Amid_tensor,2),size(Hi_view,2))
 		function K_matfree(Vout,V::AbstractArray{S,1};Gi=Gi_view::AbstractArray{S,3},Hi=Hi_view::AbstractArray{S,3},K_dims=K_dims::NTuple{3,Int},Amid_tensor=Amid_tensor::AbstractArray{S,4}) where S<:Number
 			Hrshp = reshape(Vout,K_dims)
-			@tensoropt((a,c,d,f), Hrshp[a,b,c] = Gi[y,a,d]*Hi[z,c,f]*Amid_tensor[y,b,e,z]*reshape(V,K_dims)[d,e,f] + Gi[y,d,a]*Hi[z,f,c]*Amid_tensor[y,e,b,z]*reshape(V,K_dims)[d,e,f])
+			fill!(Hrshp,0)
+			for β in axes(Hrshp,3)
+				for i in axes(Hrshp,2)
+					for α in axes(Hrshp,1)
+						#VG
+						fill!(VG_temp,0)
+						for j in axes(VG_temp,3)
+							for β1 in axes(VG_temp,4)
+								for a in axes(VG_temp,1)
+									for α1 in axes(VG_temp,2)
+										VG_temp[a,α,j,β1] += Gi[a,α,α1]*reshape(V,K_dims)[α1,j,β1]
+									end 
+								end 
+							end 
+						end
+						#VGA
+						fill!(VGA_temp,0)
+						for b in axes(VGA_temp,1)
+							for β1 in axes(VGA_temp,4)
+								for j in axes(VG_temp,3)
+									for a in axes(VG_temp,1)
+										VGA_temp[b,α,i,β1] += Amid_tensor[a,i,j,b]*VG_temp[a,α,j,β1]
+									end
+								end
+							end
+						end
+						#out 
+						for b in axes(VGA_temp,1)
+							for β1 in axes(VGA_temp,4)
+								Hrshp[α,i,β] += VGA_temp[b,α,i,β1]*Hi[b,β,β1]
+							end
+						end
+						#symmetrisation
+						fill!(VG_temp,0)
+						#VG
+						for j in axes(VG_temp,3)
+							for β1 in axes(VG_temp,4)
+								for a in axes(VG_temp,1)
+									for α1 in axes(VG_temp,2)
+										VG_temp[a,α,j,β1] += Gi[a,α1,α]*reshape(V,K_dims)[α1,j,β1]
+									end 
+								end 
+							end 
+						end
+						#VGA
+						fill!(VGA_temp,0)
+						for b in axes(VGA_temp,1)
+							for β1 in axes(VGA_temp,4)
+								for j in axes(VG_temp,3)
+									for a in axes(VG_temp,1)
+										VGA_temp[b,α,i,β1] += Amid_tensor[a,j,i,b]*VG_temp[a,α,j,β1]
+									end
+								end
+							end
+						end
+						#out 
+						for b in axes(VGA_temp,1)
+							for β1 in axes(VGA_temp,4)
+								Hrshp[α,i,β] += VGA_temp[b,α,i,β1]*Hi[b,β1,β]
+							end
+						end
+					end
+				end
+			end
+			#@tensoropt((a,c,d,f), Hrshp[a,b,c] = Gi[y,a,d]*Hi[z,c,f]*Amid_tensor[y,b,e,z]*reshape(V,K_dims)[d,e,f] + Gi[y,d,a]*Hi[z,f,c]*Amid_tensor[y,e,b,z]*reshape(V,K_dims)[d,e,f])
 			Hrshp .= 0.5*Hrshp
 			return nothing
 		end
 
-		Vapp[:],_ = linsolve(LinearMap{T}(K_matfree,prod(K_dims);issymmetric = true,ismutating=true),Pb[:], V0[:];issymmetric=true,tol=tol,maxiter=maxiter)
+		Vapp[:],_ = linsolve(LinearMap{T}(K_matfree,prod(K_dims);issymmetric = true,ismutating=true),Pb[:], V0[:];issymmetric=true,tol=tol,maxiter=maxiter,isposdef=true)
 		return nothing
 	else
 		K = K_full(Gi_view,Hi_view,Amid_tensor)
@@ -275,7 +341,7 @@ The ranks of the solution is the same as `tt_start`.
 function dmrg_linsolv(A :: TToperator{T}, b :: TTvector{T}, tt_start :: TTvector{T};sweep_count=2,N=2,tol=1e-12::Float64,
 	sweep_schedule=[2]::Array{Int64,1}, #Number of sweeps for each bond dimension in rmax_schedule
 	rmax_schedule=[isqrt(prod(tt_start.ttv_dims))]::Array{Int64,1}, #maximum rank in sweep_schedule
-	it_solver=false,
+	it_solver=true,
 	linsolv_maxiter=200::Int64, #maximum of iterations for the iterative solver
 	linsolv_tol=max(sqrt(tol),1e-8)::Float64, #tolerance of the iterative linear solver
 	itslv_thresh=256::Int #switch from full to iterative
