@@ -7,6 +7,27 @@ import Base./
 import LinearAlgebra.dot
 
 """
+TTvector + constant
+"""
+function +(x::TTvector{T,N},y::S) where {T<:Number,S<:Number,N}
+    R = typejoin(T,S)
+    rks = x.ttv_rks .+ 1
+    rks[1],rks[end] = 1,1
+    out = zeros_tt(R,x.ttv_dims,rks)
+    out.ttv_vec[1][:,:,1:x.ttv_rks[2]] = x.ttv_vec[1]
+    out.ttv_vec[1][:,:,rks[2]] .= y
+    for k in 2:N-1
+        out.ttv_vec[k][:,1:x.ttv_rks[k],1:x.ttv_rks[k+1]] = x.ttv_vec[k]
+        out.ttv_vec[k][:,rks[k],rks[k+1]] .= 1
+    end
+    out.ttv_vec[N][:,1:x.ttv_rks[N],1:x.ttv_rks[N+1]] = x.ttv_vec[N]
+    out.ttv_vec[N][:,rks[N],rks[N+1]] .= 1
+    return out
+end
+
++(y::S,x::TTvector{T,N}) where {T<:Number,S<:Number,N} = x+y
+
+"""
 Addition of two TTvector
 """
 function +(x::TTvector{T,N},y::TTvector{T,N}) where {T<:Number,N}

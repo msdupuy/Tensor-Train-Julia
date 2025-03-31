@@ -92,6 +92,17 @@ function zeros_tt(::Type{T},dims::NTuple{N,Int64},rks;ot=zeros(Int64,length(dims
 	return TTvector{T,N}(N,tt_vec,dims,deepcopy(rks),deepcopy(ot))
 end
 
+function zeros_tt(n::Integer,d::Integer,r;ot=zeros(Int64,d),r_and_d=true)
+	dims = ntuple(x->n,d)
+	if r_and_d
+		rks = r_and_d_to_rks(r*ones(Int64,d+1),dims)
+	else 
+		rks = r*ones(Int64,d+1)
+		rks[1],rks[end] = 1,1
+	end
+	return zeros_tt(Float64,dims,rks;ot=ot)
+end
+
 """
 returns the ones tensor in TT format
 """
@@ -116,6 +127,13 @@ end
 returns a zero TToperator with dimensions `dims` and ranks `rks`
 """
 function zeros_tto(dims,rks)
+	return zeros_tto(Float64,dims,rks)
+end
+
+function zeros_tto(n,d,r)
+	dims = ntuple(x->n,d)
+	rks = r*ones(Int64,d+1)
+	rks = r_and_d_to_rks(rks,dims.^2;rmax=r)
 	return zeros_tto(Float64,dims,rks)
 end
 
