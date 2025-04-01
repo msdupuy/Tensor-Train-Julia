@@ -65,22 +65,22 @@ function qtt_polynom(coef,d;a=0.0,b=1.0)
 end
 
 """
-QTT of cos(λ*π*x/(b-a))
+QTT of cos(λ*π*x)
 """
 function qtt_cos(d;a=0.0,b=1.0,λ=1.0)
   out = zeros_tt(2,d,2)
   h = (b-a)/(2^d-1)
   t₁ = a
-  out.ttv_vec[1][1,1,:] = [cos(λ*π*t₁/(b-a)); -sin(λ*π*t₁/(b-a))] 
+  out.ttv_vec[1][1,1,:] = [cos(λ*π*t₁); -sin(λ*π*t₁)] 
   t₁ = a+h*2^(d-1) #convention : coarsest first
-  out.ttv_vec[1][2,1,:] = [cos(λ*π*t₁/(b-a)); -sin(λ*π*t₁/(b-a))] 
+  out.ttv_vec[1][2,1,:] = [cos(λ*π*t₁); -sin(λ*π*t₁)] 
   for k in 2:d-1
     out.ttv_vec[k][1,:,:] = [1 0;0 1]
-    tₖ = h*2^(d-k)/(b-a)
+    tₖ = h*2^(d-k)
     out.ttv_vec[k][2,:,:] = [cos(λ*π*tₖ) -sin(λ*π*tₖ); sin(λ*π*tₖ) cos(λ*π*tₖ)]
   end
   out.ttv_vec[d][1,1,1] = 1.0
-  td = h/(b-a)
+  td = h
   out.ttv_vec[d][2,:,1] = [cos(λ*π*td); sin(λ*π*td)]
   return out
 end
@@ -92,16 +92,16 @@ function qtt_sin(d;a=0.0,b=1.0,λ=1.0)
   out = zeros_tt(2,d,2)
   h = (b-a)/(2^d-1)
   t₁ = a
-  out.ttv_vec[1][1,1,:] = [sin(λ*π*t₁/(b-a)); cos(λ*π*t₁/(b-a))] 
+  out.ttv_vec[1][1,1,:] = [sin(λ*π*t₁); cos(λ*π*t₁)] 
   t₁ = a+h*2^(d-1) #convention : coarsest first
-  out.ttv_vec[1][2,1,:] = [sin(λ*π*t₁/(b-a)); cos(λ*π*t₁/(b-a))] 
+  out.ttv_vec[1][2,1,:] = [sin(λ*π*t₁); cos(λ*π*t₁)] 
   for k in 2:d-1
     out.ttv_vec[k][1,:,:] = [1 0;0 1]
-    tₖ = h*2^(d-k)/(b-a)
+    tₖ = h*2^(d-k)
     out.ttv_vec[k][2,:,:] = [cos(λ*π*tₖ) -sin(λ*π*tₖ); sin(λ*π*tₖ) cos(λ*π*tₖ)]
   end
   out.ttv_vec[d][1,1,1] = 1.0
-  td = h/(b-a)
+  td = h
   out.ttv_vec[d][2,:,1] = [cos(λ*π*td); sin(λ*π*td)]
   return out
 end

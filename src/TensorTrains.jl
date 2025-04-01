@@ -27,6 +27,9 @@ export hubbard_1D, hubbard_2D, PPP_C_NH_N, hV_to_mpo, site_switch, half_filling,
 include("ordering_schemes.jl")
 export entropy, fiedler_order, bwpo_order, bwpo_order_sites, N_rdm, one_prdm, CAS_generator
 
+include("qtt.jl")
+export function_to_tensor, function_to_qtt, tensor_to_grid, function_to_qtt, function_to_tensor, qtt_to_function, qtt_polynom, qtt_cos, qtt_sin, toeplitz_to_qtto, qtto_to_matrix
+  
 include("particular_states.jl")
 export random_slater, random_prime_tensor, random_static_correlation_tensor
 
