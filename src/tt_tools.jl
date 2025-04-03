@@ -92,7 +92,7 @@ function zeros_tt(::Type{T},dims::NTuple{N,Int64},rks;ot=zeros(Int64,length(dims
 	return TTvector{T,N}(N,tt_vec,dims,deepcopy(rks),deepcopy(ot))
 end
 
-function zeros_tt(n::Integer,d::Integer,r;ot=zeros(Int64,d),r_and_d=true)
+function zeros_tt(n::Integer,d::Integer,r::Integer;ot=zeros(Int64,d),r_and_d=true)
 	dims = ntuple(x->n,d)
 	if r_and_d
 		rks = r_and_d_to_rks(r*ones(Int64,d+1),dims)
@@ -100,6 +100,11 @@ function zeros_tt(n::Integer,d::Integer,r;ot=zeros(Int64,d),r_and_d=true)
 		rks = r*ones(Int64,d+1)
 		rks[1],rks[end] = 1,1
 	end
+	return zeros_tt(Float64,dims,rks;ot=ot)
+end
+
+function zeros_tt(n::Integer,d::Integer,rks;ot=zeros(Int64,d))
+	dims = ntuple(x->n,d)
 	return zeros_tt(Float64,dims,rks;ot=ot)
 end
 
@@ -121,6 +126,17 @@ end
 function ones_tt(n::Integer,d::Integer)
 	dims = ntuple(x->n,d)
 	return ones_tt(dims)
+end
+
+function ones_tt(n,d,rks)
+	dims = ntuple(x->n,d)
+	vec = zeros.([(dims[k],rks[k],rks[k+1]) for k in eachindex(dims)])
+	for k in eachindex(dims)
+		for iₖ in 1:dims[k]
+			vec[k][iₖ,1,1] = 1
+		end
+	end
+	return TTvector{Float64,d}(d,vec,dims,rks,zeros(Int64,d))
 end
 
 """

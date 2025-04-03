@@ -127,6 +127,16 @@ function *(A::Array{TTvector{T,N},1},x::Vector{T}) where {T,N}
     return out
 end
 
+function *(x::TTvector{T,N},y::TTvector{T,N}) where {T<:Number,N}
+    out = zeros_tt(T,x.ttv_dims,x.ttv_rks.*y.ttv_rks) 
+    for k in 1:N 
+        for iₖ in 1:x.ttv_dims[k]
+            out.ttv_vec[k][iₖ,:,:] =  kron(x.ttv_vec[k][iₖ,:,:],y.ttv_vec[k][iₖ,:,:])
+        end
+    end
+    return out
+end
+
 #dot returns the dot product of two TTvector
 function dot(A::TTvector{T,N},B::TTvector{T,N}) where {T<:Number,N}
     @assert A.ttv_dims==B.ttv_dims "TT dimensions are not compatible"
