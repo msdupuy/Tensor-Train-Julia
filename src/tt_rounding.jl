@@ -51,7 +51,7 @@ function tt_up_rks(x_tt::TTvector{T,N},rk_max::Int;rks=vcat(1,rk_max*ones(Int,le
 	d = x_tt.N
 	vec_out = Array{Array{T}}(undef,d)
 	out_ot = zeros(Int64,d)
-	@assert(rk_max > maximum(x_tt.ttv_rks),"New bond dimension too low")
+	@assert(rk_max >= maximum(x_tt.ttv_rks),"New bond dimension too low")
 	rks = r_and_d_to_rks(rks,x_tt.ttv_dims;rmax=rk_max)
 	for i in 1:d
 		vec_out[i] = tt_up_rks_noise(x_tt.ttv_vec[i],x_tt.ttv_ot[i],rks[i],rks[i+1],ϵ_wn)

@@ -15,6 +15,11 @@ using Test
     ytt = dmrg_linsolv(Atto,btt,btt,sweep_count=2,N=2,it_solver=true)
     ydmrg = ttv_to_tensor(ytt)[:]
     @test isapprox(ysol,ydmrg,rtol=1e-5)
+    btt = rand_tt(Atto.tto_dims,[1,5,25,5,1])
+    ysol = A\(ttv_to_tensor(btt)[:])
+    ytt = dmrg_linsolv(Atto,btt,btt,sweep_schedule=[2],N=1,it_solver=true)
+    ydmrg = ttv_to_tensor(ytt)[:]
+    @test isapprox(ysol,ydmrg,rtol=1e-5)
 end
 
 @testset "DMRG eigsolv" begin

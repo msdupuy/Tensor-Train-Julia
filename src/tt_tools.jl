@@ -174,19 +174,20 @@ function rand_tt(dims,rks;normalise=false,orthogonal=false, right=true,stable=fa
 end
 
 function rand_tt(::Type{T},dims,rks;normalise=false,orthogonal=false,right=true,stable=false) where T
+	rks = r_and_d_to_rks(rks,dims;rmax = maximum(rks))
 	y = zeros_tt(T,dims,rks)
 	@simd for i in eachindex(y.ttv_vec)
 		y.ttv_vec[i] = randn(T,dims[i],rks[i],rks[i+1])
 		if normalise
 			if right
 				y.ttv_vec[i] *= 1/sqrt(dims[i]*rks[i+1])
-				if orthogonal || (stable && rks[i]>=dims[i]*rks[i+1])
+				if orthogonal || (stable && (rks[i] >= dims[i]*rks[i+1]))
 					q,_ = qr(reshape(permutedims(y.ttv_vec[i],(1,3,2)),dims[i]*rks[i+1],rks[i]))
 					y.ttv_vec[i] = permutedims(reshape(Matrix(q),dims[i],rks[i+1],rks[i]),(1,3,2))
 				end
 			else
 				y.ttv_vec[i] *= 1/sqrt(dims[i]*rks[i])
-				if orthogonal || (stable && rks[i+1]>=dims[i]*rks[i])
+				if orthogonal || (stable && (dims[i]*rks[i] <= rks[i+1]))
 					q,_ = qr(reshape(y.ttv_vec[i],dims[i]*rks[i],rks[i+1]))
 					y.ttv_vec[i] = reshape(Matrix(q),dims[i],rks[i],rks[i+1])
 				end
