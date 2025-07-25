@@ -351,6 +351,16 @@ function dmrg_linsolv(A :: TToperator{T}, b :: TTvector{T}, tt_start :: TTvector
 
 	nsweeps = 0 #sweeps counter
 	i_schedule = 1
+
+	#1st step of the sweep
+	Gi_view,Hi_view,V_view = update_G_H_V(G[1],H[1],V,tt_opt.ttv_dims,tt_opt.ttv_rks,1,N)
+	G_bi_view, H_bi_view, Pb_view = update_G_H_V_b(G_b[1],H_b[1],Pb_temp,tt_opt.ttv_dims,tt_opt.ttv_rks,1,N)
+	Ksolve!(Gi_view,G_bi_view,Hi_view,H_bi_view,Amid_list[1],bmid_list[1],Pb_view,V0_view, V_view;it_solver=it_solver,maxiter=linsolv_maxiter,tol=linsolv_tol,itslv_thresh=itslv_thresh)
+	V0_view = update_right(tt_opt,V0,V_view,V_move,V_temp,1,N,tol,rmax_schedule[i_schedule],A.tto_vec[1],Gi_view,G[2];verbose,dmrg_info)
+
+	G_bip = @view(G_b[2][1:tt_opt.ttv_rks[2],:])
+	update_Gb!(tt_opt.ttv_vec[1],b.ttv_vec[1],G_bi_view,G_bip)
+
 	while i_schedule <= length(sweep_schedule) 
 		nsweeps+=1
 		println("---------------------------")
@@ -364,7 +374,7 @@ function dmrg_linsolv(A :: TToperator{T}, b :: TTvector{T}, tt_start :: TTvector
 			end
 		end
 		# First half sweep
-		for i = 1:d-N+1
+		for i = 2:d-N+1
 			println("Forward sweep: core optimization $i out of $(d+1-N)")
 			Gi_view,Hi_view,V_view = update_G_H_V(G[i],H[i],V,tt_opt.ttv_dims,tt_opt.ttv_rks,i,N)
 			G_bi_view, H_bi_view, Pb_view = update_G_H_V_b(G_b[i],H_b[i],Pb_temp,tt_opt.ttv_dims,tt_opt.ttv_rks,i,N)
@@ -396,7 +406,7 @@ function dmrg_linsolv(A :: TToperator{T}, b :: TTvector{T}, tt_start :: TTvector
 		update_Hb!(tt_opt.ttv_vec[d],b.ttv_vec[d],H_bi_view,H_bim)
 		Him_view = @view(H[d-N][:,1:tt_opt.ttv_rks[d],1:tt_opt.ttv_rks[d]])
 		Hi_view = @view(H[d-N+1][:,1:tt_opt.ttv_rks[d+1],1:tt_opt.ttv_rks[d+1]])
-		@tensor Him_view[αd,βd,γd] = conj.(tt_opt.ttv_vec[d])[id,βd,βdp]*Amid_list[d-N+1][αd,id,jd,αdp]*(tt_opt.ttv_vec[d])[jd,γd,γdp]*Hi_view[αdp,βdp,γdp]
+		@tensor Him_view[αd,βd,γd] = conj.(tt_opt.ttv_vec[d])[id,βd,βdp]*(A.tto_vec[d])[id,jd,αd,αdp]*(tt_opt.ttv_vec[d])[jd,γd,γdp]*Hi_view[αdp,βdp,γdp]
 		if verbose
 			push!(dmrg_info.TTvs,copy(tt_opt))
 		end
@@ -430,6 +440,14 @@ function dmrg_linsolv(A :: TToperator{T}, b :: TTvector{T}, tt_start :: TTvector
 		else #N=1
 			tt_opt.ttv_vec[1] = reshape(V_view,tt_opt.ttv_dims[1],tt_opt.ttv_rks[1],tt_opt.ttv_rks[2])
 		end
+
+		#update G[2],G_b[2]
+		Gi_view = @view(G[1][1:1,1:1,1:1])
+		Gip_view = @view(G[2][:,1:tt_opt.ttv_rks[2],1:tt_opt.ttv_rks[2]])
+		update_G!(tt_opt.ttv_vec[1],A.tto_vec[1],Gi_view,Gip_view)
+
+		G_bip = @view(G_b[2][1:tt_opt.ttv_rks[2],:])
+		update_Gb!(tt_opt.ttv_vec[1],b.ttv_vec[1],G_bi_view,G_bip)
 		if verbose
 			push!(dmrg_info.TTvs,copy(tt_opt))
 		end
