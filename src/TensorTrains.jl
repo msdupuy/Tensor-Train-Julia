@@ -16,7 +16,7 @@ include("mals.jl")
 export mals_eigsolv, mals_linsolv
 
 include("dmrg.jl")
-export dmrg_linsolv, dmrg_eigsolv
+export dmrg_linsolv, dmrg_eigsolv, dmrg_schedule, dmrg_schedule_default
 
 include("tt_solvers.jl")
 export tt_cg, tt_gmres, gradient_fixed_step, eig_arnoldi, davidson

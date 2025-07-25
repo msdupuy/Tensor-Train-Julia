@@ -6,18 +6,18 @@ using Test
     A = Matrix(Lap(5,4))
     Atto = tto_decomp(reshape(A,5,5,5,5,5,5,5,5))
     btt = rand_tt(Atto.tto_dims,[1,5,25,5,1])
-    ytt = dmrg_linsolv(Atto,btt,btt,sweep_count=2,N=2,it_solver=false)
+    ytt,_ = dmrg_linsolv(Atto,btt,btt,schedule=dmrg_schedule_default(rmax=25))
     ysol = A\(ttv_to_tensor(btt)[:])
     ydmrg = ttv_to_tensor(ytt)[:]
     @test isapprox(ysol,ydmrg,rtol=1e-5)
     btt = rand_tt(Atto.tto_dims,[1,5,25,5,1])
     ysol = A\(ttv_to_tensor(btt)[:])
-    ytt = dmrg_linsolv(Atto,btt,btt,sweep_count=2,N=2,it_solver=true)
+    ytt,_ = dmrg_linsolv(Atto,btt,btt,schedule=dmrg_schedule_default(rmax=25))
     ydmrg = ttv_to_tensor(ytt)[:]
     @test isapprox(ysol,ydmrg,rtol=1e-5)
     btt = rand_tt(Atto.tto_dims,[1,5,25,5,1])
     ysol = A\(ttv_to_tensor(btt)[:])
-    ytt = dmrg_linsolv(Atto,btt,btt,sweep_schedule=[2],N=1,it_solver=true)
+    ytt,_ = dmrg_linsolv(Atto,btt,btt,schedule=dmrg_schedule_default(N=1,rmax=25))
     ydmrg = ttv_to_tensor(ytt)[:]
     @test isapprox(ysol,ydmrg,rtol=1e-5)
 end
@@ -27,8 +27,8 @@ end
     H_tto = PPP_C_NH_N(N)
     ψ_0 = tt_up_rks(half_filling(N),32;ϵ_wn=1e-2)
     ψ_0 = orthogonalize(ψ_0)
-    E_dmrg, ψ_tt, r_dmrg = dmrg_eigsolv(H_tto,ψ_0)
-    A = Matrix(Lap(5,4))
+    @show(ψ_0.ttv_rks)
+    E_dmrg, ψ_tt, dmrg_info = dmrg_eigsolv(H_tto,ψ_0;schedule=dmrg_schedule_default(rmax=2^N))
     @test isapprox(norm(H_tto*ψ_tt-E_dmrg[end]*ψ_tt),0.0,atol=1e-5)
 end
 
