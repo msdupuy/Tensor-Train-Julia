@@ -147,7 +147,7 @@ function right_core_move!(x_tt::TTvector{T},V,V_move,i::Int,N,tol::Float64,r_max
 	# Perform the truncated svd
 	u_V, s_V, v_V = svd(reshape(V,x_tt.ttv_rks[i]*x_tt.ttv_dims[i],:))
 	# Update the ranks to the truncated one
-	x_tt.ttv_rks[i+1] = min(cut_off_index(s_V,tol),r_max)
+	x_tt.ttv_rks[i+1] = max(min(cut_off_index(s_V,tol),r_max),x_tt.ttv_rks[i+1])
 	println("Rank: $(x_tt.ttv_rks[i+1]),	Max rank=$r_max")
 	svd_truncation = (norm(s_V)-norm(s_V[1:x_tt.ttv_rks[i+1]]))/norm(s_V)
 	println("Discarded weight: $(svd_truncation)")
@@ -170,7 +170,7 @@ function left_core_move!(x_tt::TTvector{T},V,V_move,j::Int,N,tol::Float64,r_max:
 	# Perform the truncated svd
 	u_V, s_V, v_V = svd(reshape(V,:, x_tt.ttv_dims[j]*x_tt.ttv_rks[j+1]))
 	# Update the ranks to the truncated one
-	x_tt.ttv_rks[j] = min(cut_off_index(s_V,tol),r_max)
+	x_tt.ttv_rks[j] = max(min(cut_off_index(s_V,tol),r_max),x_tt.ttv_rks[j])
 	println("Rank: $(x_tt.ttv_rks[j]),	Max rank=$r_max")
 	svd_truncation = (norm(s_V)-norm(s_V[1:x_tt.ttv_rks[j]]))/norm(s_V)
 	println("Discarded weight: $(svd_truncation)")
@@ -514,12 +514,15 @@ function dmrg_eigsolv(A :: TToperator{T},
 	i_schedule = 1
 
 	#1st step of the sweep
+	println("Macro-iteration 1; bond dimension $(rmax_schedule[1])")
+	println("Forward sweep: core optimization 1 out of $(d-N+1)")
 	Gi_view,Hi_view,V_view = update_G_H_V(G[1],H[1],V,tt_opt.ttv_dims,tt_opt.ttv_rks,1,N)
 	λ = K_eigmin(G[1],H[1],V0_view ,Amid_list[1], V_view ;it_solver,maxiter=linsolv_maxiter,tol=linsolv_tol,itslv_thresh)
 	println("Eigenvalue: $λ")
 	push!(E,λ)
 	push!(r_hist,maximum(tt_opt.ttv_rks))
 	V0_view = update_right(tt_opt,V0,V_view,V_move,V_temp,1,N,tol,rmax_schedule[i_schedule],A.tto_vec[1],Gi_view,G[2];verbose,dmrg_info)
+	println("--------------------------------------------")
 
 	while i_schedule <= length(sweep_schedule) 
 		nsweeps+=1
@@ -533,7 +536,7 @@ function dmrg_eigsolv(A :: TToperator{T},
 		println("Macro-iteration $nsweeps; bond dimension $(rmax_schedule[i_schedule])")
 		# First half sweep
 		for i = 2:(d-N+1)
-			println("Forward sweep: core optimization $i out of $(d-N)")
+			println("Forward sweep: core optimization $i out of $(d-N+1)")
 			# Define V as solution of K V= λ V for smallest λ
 			Gi_view,Hi_view,V_view = update_G_H_V(G[i],H[i],V,tt_opt.ttv_dims,tt_opt.ttv_rks,i,N)
 			λ = K_eigmin(Gi_view,Hi_view,V0_view, Amid_list[i],V_view; it_solver, maxiter=linsolv_maxiter,tol=linsolv_tol,itslv_thresh)
@@ -552,6 +555,7 @@ function dmrg_eigsolv(A :: TToperator{T},
 				Him_view = @view(H[d-N][:,1:tt_opt.ttv_rks[d],1:tt_opt.ttv_rks[d]])
 				update_H!(tt_opt.ttv_vec[d],A.tto_vec[d],Hi_view,Him_view)
 			end
+			println("--------------------------------------------")
 		end
 
 		#update V0_view 
@@ -560,7 +564,7 @@ function dmrg_eigsolv(A :: TToperator{T},
 
 		# Second half sweep
 		for i = (d-N):(-1):2
-			println("Backward sweep: core optimization $(i-1) out of $(d-N)")
+			println("Backward sweep: core optimization $(i) out of $(d-N)")
 			# Define V as solution of K*x=P2b in x
 			Gi_view,Hi_view,V_view = update_G_H_V(G[i],H[i],V,tt_opt.ttv_dims,tt_opt.ttv_rks,i,N)
 			λ = K_eigmin(Gi_view,Hi_view,V0_view,Amid_list[i],V_view ;it_solver=it_solver,maxiter=linsolv_maxiter,tol=linsolv_tol,itslv_thresh=itslv_thresh)
@@ -568,9 +572,11 @@ function dmrg_eigsolv(A :: TToperator{T},
 			push!(E,λ)
 			#update the initialization
 			V0_view = update_left(tt_opt,V0,V_view,V_move,V_temp,i,N,tol,rmax_schedule[i_schedule],A.tto_vec[i+N-1],Hi_view,H[i-1];verbose,dmrg_info)
+			println("--------------------------------------------")
 			push!(r_hist,maximum(tt_opt.ttv_rks))
 		end
 		#last step to complete the sweep
+		println("Backward sweep: core optimization $(1) out of $(d-N)")
 		Gi_view,Hi_view,V_view = update_G_H_V(G[1],H[1],V,tt_opt.ttv_dims,tt_opt.ttv_rks,1,N)
 		λ = K_eigmin(G[1],H[1],V0_view ,Amid_list[1], V_view ;it_solver,maxiter=linsolv_maxiter,tol=linsolv_tol,itslv_thresh)
 		println("Eigenvalue: $λ")
@@ -580,6 +586,7 @@ function dmrg_eigsolv(A :: TToperator{T},
 			push!(dmrg_info.TTvs,tt_opt)
 		end
 		push!(r_hist,maximum(tt_opt.ttv_rks))
+		println("--------------------------------------------")
 
 		#update G[2]
 		Gi_view = @view(G[1][1:1,1:1,1:1])

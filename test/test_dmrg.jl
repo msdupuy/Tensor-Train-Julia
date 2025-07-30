@@ -23,14 +23,15 @@ using Test
 end
 
 @testset "DMRG eigsolv" begin
-    N = 6
-    H_tto = PPP_C_NH_N(N)
-    ψ_0 = tt_up_rks(half_filling(N),32;ϵ_wn=1e-2)
+    Ne = 6
+    H_tto = PPP_C_NH_N(Ne)
+    ψ_0 = tt_up_rks(half_filling(Ne),32;ϵ_wn=1e-2)
     ψ_0 = orthogonalize(ψ_0)
-    @show(ψ_0.ttv_rks)
-    E_dmrg, ψ_tt, dmrg_info = dmrg_eigsolv(H_tto,ψ_0;schedule=dmrg_schedule_default(rmax=2^N))
+    E_dmrg, ψ_tt, dmrg_info = dmrg_eigsolv(H_tto,ψ_0;schedule=dmrg_schedule_default(rmax=2^Ne))
     @test isapprox(norm(H_tto*ψ_tt-E_dmrg[end]*ψ_tt),0.0,atol=1e-5)
-    E_dmrg, ψ_tt, dmrg_info = dmrg_eigsolv(H_tto,ψ_0;schedule=dmrg_schedule_default(rmax=2^N,N=1))
+    ψ_0 = tt_up_rks(half_filling(Ne),64;ϵ_wn=1e-1)
+    ψ_0 = orthogonalize(ψ_0)
+    E_dmrg, ψ_tt, dmrg_info = dmrg_eigsolv(H_tto,ψ_0;schedule=dmrg_schedule_default(rmax=2^Ne,N=1,nsweeps=4))
     @test isapprox(norm(H_tto*ψ_tt-E_dmrg[end]*ψ_tt),0.0,atol=1e-5)
 end
 
