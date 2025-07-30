@@ -492,8 +492,8 @@ function id_tto(::Type{T},d;n_dim=2) where {T}
 	dims = Tuple(n_dim*ones(Int64,d))
 	A = Array{Array{T,4},1}(undef,d)
 	for j in 1:d
-		A[j] = zeros(T,2,2,1,1)
-		A[j][:,:,1,1] = Matrix{T}(I,2,2)
+		A[j] = zeros(T,n_dim,n_dim,1,1)
+		A[j][:,:,1,1] = Matrix{T}(I,n_dim,n_dim)
 	end
 	return TToperator{T,d}(d,A,dims,ones(Int64,d+1),zeros(d))
 end
