@@ -98,14 +98,14 @@ function init_Hb(x_tt::TTvector{T},b_tt::TTvector{T},N::Integer,rmax) where {T<:
 		b_vec = b_tt.ttv_vec[i+N-1]
 		x_vec = x_tt.ttv_vec[i+N-1]
 		Hbi = @view(H_b[i][1:x_tt.ttv_rks[i+N],:])
-		Hbim = @view(H_b[i-1][1:x_tt.ttv_rks[i+N-1],:])
-		update_Hb!(x_vec,b_vec,Hbi,Hbim) #size(r^X_{i-1},r^b_{i-1}) 
+		update_Hb!(x_vec,b_vec,Hbi,H_b[i-1]) #size(r^X_{i-1},r^b_{i-1}) 
 	end
 	return H_b
 end
 
 function update_Hb!(x_vec::Array{T,3},b_vec::Array{T,3},H_bi::AbstractArray{T,2},H_bim::AbstractArray{T,2}) where T<:Number
-	@tensor H_bim[α,β] = (H_bi[ϕ,χ]*b_vec[i,β,χ])*conj.(x_vec)[i,α,ϕ]
+	H_bimview = @view(H_bim[1:size(x_vec,2),1:size(b_vec,2)])
+	@tensor H_bimview[α,β] = (H_bi[ϕ,χ]*b_vec[i,β,χ])*conj.(x_vec)[i,α,ϕ]
 	nothing
 end
 
@@ -431,23 +431,22 @@ function dmrg_linsolv(A :: TToperator{T}, b :: TTvector{T}, tt_start :: TTvector
 			else #i==d-N+1
 				ttv_after_dmrg_microstep!(tt_opt,rmax_schedule[i_schedule],V_view,schedule;verbose,dmrg_info)
 				if verbose
-					push!(dmrg_info.TTvs,tt_opt)
+					push!(dmrg_info.TTvs,copy(tt_opt))
 				end
 				#update H[d-N],H_b[d-N]
 				Him_view = @view(H[d-N][:,1:tt_opt.ttv_rks[d],1:tt_opt.ttv_rks[d]])
 				update_H!(tt_opt.ttv_vec[d],A.tto_vec[d],Hi_view,Him_view)
+				update_Hb!(tt_opt.ttv_vec[d],b.ttv_vec[d],H_bi_view,H_b[d-N])
 
-				H_bim = @view(H_b[d-N][1:tt_opt.ttv_rks[d],:])
-				update_Hb!(tt_opt.ttv_vec[d],b.ttv_vec[d],H_bi_view,H_bim)
+				#update V0_view 
+				V0_view = @view(V0[1:tt_opt.ttv_rks[d-N],1:prod(tt_opt.ttv_dims[d-N:d-1]),1:tt_opt.ttv_rks[d]])
+				V0_view = b_mid(tt_opt,d-N,d-1)
 			end
+		println("---------------------------")
 		end
 
-		#update V0_view 
-		V0_view = @view(V0[1:tt_opt.ttv_rks[d-N],1:prod(tt_opt.ttv_dims[d-N:d-1]),1:tt_opt.ttv_rks[d]])
-		V0_view = b_mid(tt_opt,d-N,d-1)
-
 		# Second half sweep
-		for i = (d-N):(-1):2
+		for i = (d-N):(-1):1
 			println("Backward sweep: core optimization $i out of $(d+1-N)")
 			# Define V as solution of K*x=Pb in x
 			Gi_view,Hi_view,V_view = update_G_H_V(G[i],H[i],V,tt_opt.ttv_dims,tt_opt.ttv_rks,i,N)
@@ -455,31 +454,29 @@ function dmrg_linsolv(A :: TToperator{T}, b :: TTvector{T}, tt_start :: TTvector
 			# Define V as solution of K*x=Pb in x
 			Ksolve!(Gi_view,G_bi_view,Hi_view,H_bi_view,Amid_list[i],bmid_list[i],Pb_view,V0_view, V_view;it_solver=it_solver,maxiter=linsolv_maxiter,tol=linsolv_tol,itslv_thresh=itslv_thresh)
 
-			V0_view = update_left(tt_opt,V0,V_view,V_move,V_temp,i,N,tol,rmax_schedule[i_schedule],A.tto_vec[i+N-1],Hi_view,H[i-1];verbose,dmrg_info)
+			if i>1 
+				V0_view = update_left(tt_opt,V0,V_view,V_move,V_temp,i,N,tol,rmax_schedule[i_schedule],A.tto_vec[i+N-1],Hi_view,H[i-1];verbose,dmrg_info)
+				update_Hb!(tt_opt.ttv_vec[i+N-1],b.ttv_vec[i+N-1],H_bi_view,H_b[i-1])
+			else 
+				ttv_after_dmrg_microstep!(tt_opt,rmax_schedule[i_schedule],V_view,schedule;verbose,dmrg_info,left_to_right=false,j=N)
+				if verbose
+					push!(dmrg_info.TTvs,copy(tt_opt))
+				end
 
-			H_bim = @view(H_b[i-1][1:tt_opt.ttv_rks[i+N-1],:])
-			update_Hb!(tt_opt.ttv_vec[i+N-1],b.ttv_vec[i+N-1],H_bi_view,H_bim)
+				#update G[2],G_b[2]
+				Gi_view = @view(G[1][1:1,1:1,1:1])
+				Gip_view = @view(G[2][:,1:tt_opt.ttv_rks[2],1:tt_opt.ttv_rks[2]])
+				update_G!(tt_opt.ttv_vec[1],A.tto_vec[1],Gi_view,Gip_view)
+
+				G_bip = @view(G_b[2][1:tt_opt.ttv_rks[2],:])
+				update_Gb!(tt_opt.ttv_vec[1],b.ttv_vec[1],G_bi_view,G_bip)
+
+				#update V0_view 
+				V0_view = @view(V0[1:tt_opt.ttv_rks[2],1:prod(tt_opt.ttv_dims[2:N+1]),1:tt_opt.ttv_rks[N+2]])
+				V0_view = b_mid(tt_opt,2,N+1)
+			end
+		println("---------------------------")
 		end
-		#last step to complete the sweep
-		Gi_view,Hi_view,V_view = update_G_H_V(G[1],H[1],V,tt_opt.ttv_dims,tt_opt.ttv_rks,1,N)
-		G_bi_view, H_bi_view, Pb_view = update_G_H_V_b(G_b[1],H_b[1],Pb_temp,tt_opt.ttv_dims,tt_opt.ttv_rks,1,N)
-		Ksolve!(Gi_view,G_bi_view,Hi_view,H_bi_view,Amid_list[1],bmid_list[1],Pb_view,V0_view, V_view;it_solver=it_solver,maxiter=linsolv_maxiter,tol=linsolv_tol,itslv_thresh=itslv_thresh)
-		ttv_after_dmrg_microstep!(tt_opt,rmax_schedule[i_schedule],V_view,schedule;verbose,dmrg_info,left_to_right=false,j=N)
-		if verbose
-			push!(dmrg_info.TTvs,tt_opt)
-		end
-
-		#update G[2],G_b[2]
-		Gi_view = @view(G[1][1:1,1:1,1:1])
-		Gip_view = @view(G[2][:,1:tt_opt.ttv_rks[2],1:tt_opt.ttv_rks[2]])
-		update_G!(tt_opt.ttv_vec[1],A.tto_vec[1],Gi_view,Gip_view)
-
-		G_bip = @view(G_b[2][1:tt_opt.ttv_rks[2],:])
-		update_Gb!(tt_opt.ttv_vec[1],b.ttv_vec[1],G_bi_view,G_bip)
-
-		#update V0_view 
-		V0_view = @view(V0[1:tt_opt.ttv_rks[2],1:prod(tt_opt.ttv_dims[2:N+1]),1:tt_opt.ttv_rks[N+2]])
-		V0_view = b_mid(tt_opt,2,N+1)
 	end
 	return tt_opt, dmrg_info
 end
@@ -549,7 +546,7 @@ function dmrg_eigsolv(A :: TToperator{T},
 			else #i==d-N+1
 				ttv_after_dmrg_microstep!(tt_opt,rmax_schedule[i_schedule],V_view,schedule;verbose,dmrg_info)
 				if verbose
-					push!(dmrg_info.TTvs,tt_opt)
+					push!(dmrg_info.TTvs,copy(tt_opt))
 				end
 				#update H[d-N],H_b[d-N]
 				Him_view = @view(H[d-N][:,1:tt_opt.ttv_rks[d],1:tt_opt.ttv_rks[d]])
@@ -583,7 +580,7 @@ function dmrg_eigsolv(A :: TToperator{T},
 		push!(E,λ)
 		ttv_after_dmrg_microstep!(tt_opt,rmax_schedule[i_schedule],V_view,schedule;verbose,dmrg_info,left_to_right=false,j=N)
 		if verbose
-			push!(dmrg_info.TTvs,tt_opt)
+			push!(dmrg_info.TTvs,copy(tt_opt))
 		end
 		push!(r_hist,maximum(tt_opt.ttv_rks))
 		println("--------------------------------------------")
