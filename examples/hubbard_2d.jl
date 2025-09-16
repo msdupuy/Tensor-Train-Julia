@@ -5,6 +5,7 @@ function hubbard_2D_dmrg(w,L;rmax=64)
   dims = ntuple(x->2,2w*L)
   H_tto = hV_to_mpo(Matrix(h),V,dims,tol=1e-5)
   ψ_0 = tt_up_rks(half_filling(w*L),16;ϵ_wn = 1e-1)
-  E,ψ_tt,r_dmrg = dmrg_eigsolv(H_tto,ψ_0,sweep_schedule=[2,4,7],rmax_schedule=[ceil(Int64,rmax/4),ceil(Int64,rmax/2),rmax])
-  return  E,ψ_tt,r_dmrg
+  schedule = dmrg_schedule(2,ceil(Int64,rmax/4),rmax,3;N=2)
+  E,ψ_tt,dmrg_info = dmrg_eigsolv(H_tto,ψ_0;schedule)
+  return  E,ψ_tt,dmrg_info,H_tto
 end
