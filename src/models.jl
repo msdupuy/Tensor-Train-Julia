@@ -449,3 +449,74 @@ function one_body_diagonal(h::Vector{T};σ=zero(T)) where T
     a⁺a = mpo_core_creation(T)[:,:,1,1]* mpo_core_annihilation(T)[:,:,1,1]
     return Δ_tto(2,length(h);h=[h[i]*a⁺a+σ*I for i in eachindex(h)])
 end
+
+"""
+    Construction of quantum chemistry Hamiltonians 
+    H = ∑ᵢⱼ hᵢⱼ aᵢ⁺ aⱼ + Σ_{ijkl} V_{ijkl} a_i†a_j†a_ka_l
+"""
+
+function qc_hV_to_mpo(h::Matrix{T},V::Array{T,4}) where T
+    d = size(h,1)
+    rks = ones(Int64,d+1)
+    A = [0.0 1.0; 0.0 0.0]
+    I2 = [1.0 0.0 ; 0.0 1.0] 
+    S = [1.0 0.0 ; 0.0 -1.0] 
+    H = Array{Array{T,4}}(undef,d)
+    H[1] = zeros(2,2,1,4)
+    H[1][:,:,1,1] = I2
+    H[1][:,:,1,2] = A
+    H[1][:,:,1,3] = A'
+    H[1][:,:,1,4] = h[1,1]*A'*A
+    H[d] = zeros(2,2,4,1)
+    H[d][:,:,1,1] = I2
+    H[d][:,:,2,1] = A
+    H[d][:,:,3,1] = A'
+    H[d][:,:,4,1] = h[d,d]*A'*A 
+    rks[d] = 4
+    for k in 2:Int(d/2)
+        rks[k] = 2k
+        H[k] = zeros(2,2,2k,2k+2)
+        H[k][:,:,1,1] = I2
+        H[k][:,:,1,k+1] = A 
+        H[k][:,:,1,2k+1] = A'
+        H[k][:,:,1,2k+2] = h[k,k]*A'*A
+        for j in 2:k 
+            H[k][:,:,j,j] = S
+            H[k][:,:,j,2k+2] = h[j-1,k]*A'
+        end
+        for j in 1:k-1 
+            H[k][:,:,j+k,j+k+1] = S
+            H[k][:,:,j+k,2k+2] = h[k,j]*A
+        end
+        H[k][:,:,2k,2k+2] = I2
+    end
+    M = zeros(d+2,d+2)
+    M[1,d+2],M[d+2,1] = 1,1
+    M[2:Int(d/2)+1,Int(d/2)+2:d+1] = reverse(h[1:Int(d/2),Int(d/2)+1:d],dims=2)
+    M[Int(d/2)+2:d+1,2:Int(d/2)+1] = reverse(h[1:Int(d/2),Int(d/2)+1:d],dims=2)
+    for i in 1:2 
+        for j in 1:2 
+            H[Int(d/2)][i,j,:,:] = H[Int(d/2)][i,j,:,:]*M
+        end
+    end
+    for k in Int(d/2)+1:d-1
+        rks[k] = 2(d-k)+4
+        H[k] = zeros(2,2,2(d-k)+4,2(d-k)+2)
+        H[k][:,:,1,1] = I2
+        for i in 1:d-k 
+            H[k][:,:,2,i+1] = S 
+        end
+        H[k][:,:,d-k+2,1] = A 
+        for i in 1:d-k 
+            H[k][:,:,d-k+3,d-k+1+i] = S
+        end
+        H[k][:,:,2(d-k)+3,1] = A'
+        H[k][:,:,2(d-k)+4,1] = h[k,k]*A'*A
+        for i in 1:d-k 
+            H[k][:,:,2(d-k)+4,i+1] = h[k,d+1-i]*A'
+            H[k][:,:,2(d-k)+4,d-k+i+1] = h[d+1-i,k]*A
+        end
+        H[k][:,:,2(d-k)+4,2(d-k)+2] = I2
+    end
+    return TToperator{Float64,d}(d,H,ntuple(x->2,d),rks,zeros(Int64,d))
+end
