@@ -454,6 +454,147 @@ end
     Construction of quantum chemistry Hamiltonians 
     H = ∑ᵢⱼ hᵢⱼ aᵢ⁺ aⱼ + Σ_{ijkl} V_{ijkl} a_i†a_j†a_ka_l
 """
+function no_V(V,i,j,k,l)
+    @assert i<j && k<l
+    return V[i,j,k,l] + V[j,i,l,k] - V[i,j,l,k] - V[j,i,k,l]
+end
+
+function V¹¹(k)
+    A = [0.0 1.0; 0.0 0.0]
+    I2 = [1.0 0.0 ; 0.0 1.0] 
+    S = [1.0 0.0 ; 0.0 -1.0] 
+    Vk = zeros(2,2,1+(k-1)^2+2(k-1)+2binomial(k-1,2),4+(k-1)^2+2(k-1)+2binomial(k-1,2))
+    Vk[:,:,1,1] = I2
+    Vk[:,:,k+1,1] = A'
+    Vk[:,:,2k+1,1] = A
+    Vk[:,:,2k+2+(k-1)^2,1] = A'*A 
+    for i in 1:k-1 
+        Vk[:,:,i+1,i+1] = S 
+        Vk[:,:,i+1,4+(k-1)^2+2(k-1)+i] = A
+        Vk[:,:,i+1,4+(k-1)^2+3(k-1)+binomial(k-1,2)+i] = A' 
+        Vk[:,:,k+i,k+i+1] = S
+        Vk[:,:,k+i,3k+1+(k-1)^2+i] = A'
+        Vk[:,:,k+i,5k-1+(k-1)^2+2binomial(k-1,2)+i] = A
+    end
+    for i in 1:(k-1)^2
+        Vk[:,:,2k-1+i,2k+1+i] = I2
+    end
+    for i in 1:binomial(k-1,2)
+        Vk[:,:,2k-1+(k-1)^2+i,4k+(k-1)^2+i] = I2
+        Vk[:,:,2k-1+(k-1)^2+binomial(k-1,2)+i,5k-1+binomial(k-1,2)+(k-1)^2+i] = I2
+    end
+    return Vk
+end
+
+function V¹²˱(k,d,V)
+    A = [0.0 1.0; 0.0 0.0]
+    Vk = zeros(2,2,1+(k-1)^2+2(k-1)+2binomial(k-1,2),2(d-k)+1) 
+    for i in 1:k-1 
+        for j in 1:d-k
+            Vk[:,:,1+i,j] = no_V(V,i,k,k,j)*A'*A
+            Vk[:,:,k+i,j+d-k] = no_V(V,k,i,k,j)*A'*A
+        end
+    end
+    for i1 in 1:k-1
+        for j1 in 1:k-1 
+            for j2 in 1:d-k
+                Vk[:,:,2k-1+i1+(j1-1)*(k-1),j2] = no_V(V,i1,k,j1,j2)*A'
+                Vk[:,:,2k-1+i1+(j1-1)*(k-1),j2+d-k] = no_V(V,i1,j2,j1,k)*A'
+            end
+            Vk[:,:,2k-1+i1+(j1-1)*(k-1),2(d-k)+1] = no_V(V,i1,k,j1,k)*A'*A
+        end
+    end
+    for i2 in 2:k-1
+        for i1 in 1:i2-1
+            for j2 in 1:d-k
+                Vk[:,:,2k-1+(k-1)^2+(i2-1)*(i2-2)/2+i1,j2] = no_V(V,i1,i2,k,j2)*A
+                Vk[:,:,2k-1+(k-1)^2+binomial(k-1,2)+(i2-1)*(i2-2)/2+i1,d-k+j2] = no_V(V,k,j2,i1,i2)*A'
+            end
+        end
+    end
+    return Vk
+end
+
+function V¹²˲(k,d,V)
+    A = [0.0 1.0; 0.0 0.0]
+    Vk = zeros(2,2,1+(k-1)^2+2(k-1)+2binomial(k-1,2),2(d-k)+1) 
+    for i in 1:k-1 
+        for j in 1:d-k
+            Vk[:,:,1+i,j] = no_V(V,i,k,k,j)*A'*A
+            Vk[:,:,k+i,j+d-k] = no_V(V,k,i,k,j)*A'*A
+        end
+    end
+    for i1 in 1:k-1
+        for j1 in 1:k-1 
+            for j2 in 1:d-k
+                Vk[:,:,2k-1+i1+(j1-1)*(k-1),j2] = no_V(V,i1,k,j1,j2)*A'
+                Vk[:,:,2k-1+i1+(j1-1)*(k-1),j2+d-k] = no_V(V,i1,j2,j1,k)*A'
+            end
+            Vk[:,:,2k-1+i1+(j1-1)*(k-1),2(d-k)+1] = no_V(V,i1,k,j1,k)*A'*A
+        end
+    end
+    for i2 in 2:k-1
+        for i1 in 1:i2-1
+            for j2 in 1:d-k
+                Vk[:,:,2k-1+(k-1)^2+(i2-1)*(i2-2)/2+i1,j2] = no_V(V,i1,i2,k,j2)*A
+                Vk[:,:,2k-1+(k-1)^2+binomial(k-1,2)+(i2-1)*(i2-2)/2+i1,d-k+j2] = no_V(V,k,j2,i1,i2)*A'
+            end
+        end
+    end
+    return Vk
+end
+
+function V²²(k,d)
+    A = [0.0 1.0; 0.0 0.0]
+    I2 = [1.0 0.0 ; 0.0 1.0] 
+    S = [1.0 0.0 ; 0.0 -1.0] 
+    Vk = zeros(2,2,2(d-k)+3,2(d-k)+1)
+    Vk[:,:,1,2(d-k)+1] = A 
+    for i in 1:d-k 
+        Vk[:,:,i+1,i] = S
+        Vk[:,:,d-k+2+i,d-k+i] = S
+    end
+    Vk[:,:,d-k+2,2(d-k)+1] = A'
+    Vk[:,:,2(d-k)+3,2(d-k)+1] = I2
+    return Vk
+end
+
+function Mᵥ(d,V)
+    k = Int(d/2)
+    MV = zeros(4+(k-1)^2+2(k-1)+2binomial(k-1,2),4+(k-1)^2+2(k-1)+2binomial(k-1,2)) 
+    V_mid = zeros(k^2+2binomial(k,2),k^2+2binomial(k,2))
+    for i1 in 1:k 
+        for j1 in 1:k 
+            for i2 in d:-1:k+1 
+                for j2 in d:-1:k+1 
+                    V_mid[i1+k*(j1-1),(d+1-i2)+k*(d-j2)] = no_V(V,i1,i2,j1,j2)
+                end
+            end
+        end
+    end
+    for i2 in 2:k 
+        for i1 in 1:i2-1
+            for j1 in d-1:-1:k+1
+                for j2 in d:-1:j1+1
+                    V_mid[k^2+i1+(i2-1)*(i2-2)/2,k^2+binomial(k,2)+(d-j2+1)+(d-j1)*(d-j1-1)/2] = no_V(V,i1,i2,j1,j2)
+                end
+            end
+        end
+    end
+    for j1 in 2:k 
+        for j2 in 1:i2-1
+            for i2 in d-1:-1:k+1
+                for i1 in d:-1:j1+1
+                    V_mid[k^2+j2+(j1-1)*(j1-2)/2+binomial(k,2),k^2+(d-i1+1)+(d-i2)*(d-i2-1)/2] = no_V(V,i1,i2,j1,j2)
+                end
+            end
+        end
+    end
+    MV[1:k,4+(k-1)^2+2(k-1)+2binomial(k-1,2)-k+1:end] = reverse(Matrix{Float64}(I,k,k))
+    MV[4+(k-1)^2+2(k-1)+2binomial(k-1,2)-k+1:end,1:k] = reverse(Matrix{Float64}(I,k,k))
+    MV[k+1:4+(k-1)^2+2(k-1)+2binomial(k-1,2)-k,k+1:4+(k-1)^2+2(k-1)+2binomial(k-1,2)-k] = V_mid
+    return MV
+end
 
 function qc_hV_to_mpo(h::Matrix{T},V::Array{T,4}) where T
     d = size(h,1)
@@ -462,16 +603,17 @@ function qc_hV_to_mpo(h::Matrix{T},V::Array{T,4}) where T
     I2 = [1.0 0.0 ; 0.0 1.0] 
     S = [1.0 0.0 ; 0.0 -1.0] 
     H = Array{Array{T,4}}(undef,d)
+    # one-body terms
     H[1] = zeros(2,2,1,4)
     H[1][:,:,1,1] = I2
     H[1][:,:,1,2] = A
     H[1][:,:,1,3] = A'
     H[1][:,:,1,4] = h[1,1]*A'*A
     H[d] = zeros(2,2,4,1)
-    H[d][:,:,1,1] = I2
-    H[d][:,:,2,1] = A
-    H[d][:,:,3,1] = A'
-    H[d][:,:,4,1] = h[d,d]*A'*A 
+    H[d][:,:,1,1] = h[d,d]*A'*A
+    H[d][:,:,2,1] = A'
+    H[d][:,:,3,1] = A
+    H[d][:,:,4,1] = I2
     rks[d] = 4
     for k in 2:Int(d/2)
         rks[k] = 2k
@@ -482,18 +624,18 @@ function qc_hV_to_mpo(h::Matrix{T},V::Array{T,4}) where T
         H[k][:,:,1,2k+2] = h[k,k]*A'*A
         for j in 2:k 
             H[k][:,:,j,j] = S
-            H[k][:,:,j,2k+2] = h[j-1,k]*A'
+            H[k][:,:,j,2k+2] = h[k,j-1]*A'
         end
         for j in 1:k-1 
             H[k][:,:,j+k,j+k+1] = S
-            H[k][:,:,j+k,2k+2] = h[k,j]*A
+            H[k][:,:,j+k,2k+2] = h[j,k]*A
         end
         H[k][:,:,2k,2k+2] = I2
     end
     M = zeros(d+2,d+2)
-    M[1,d+2],M[d+2,1] = 1,1
-    M[2:Int(d/2)+1,Int(d/2)+2:d+1] = reverse(h[1:Int(d/2),Int(d/2)+1:d],dims=2)
-    M[Int(d/2)+2:d+1,2:Int(d/2)+1] = reverse(h[1:Int(d/2),Int(d/2)+1:d],dims=2)
+    M[1,1],M[d+2,d+2] = 1,1
+    M[2:Int(d/2)+1,2:Int(d/2)+1] = transpose(h[Int(d/2)+1:d,1:Int(d/2)]) 
+    M[Int(d/2)+2:d+1,Int(d/2)+2:d+1] = h[1:Int(d/2),Int(d/2)+1:d] 
     for i in 1:2 
         for j in 1:2 
             H[Int(d/2)][i,j,:,:] = H[Int(d/2)][i,j,:,:]*M
@@ -503,20 +645,17 @@ function qc_hV_to_mpo(h::Matrix{T},V::Array{T,4}) where T
         rks[k] = 2(d-k)+4
         H[k] = zeros(2,2,2(d-k)+4,2(d-k)+2)
         H[k][:,:,1,1] = I2
-        for i in 1:d-k 
-            H[k][:,:,2,i+1] = S 
+        for i in k+1:d 
+            H[k][:,:,1,1+i-k] = h[i,k]*A
+            H[k][:,:,1,d-2k+1+i] = h[k,i]*A'
+            H[k][:,:,i-k+2,i-k+1] = S 
+            H[k][:,:,d+i-2k+3,d+i-2k+1] = S 
         end
-        H[k][:,:,d-k+2,1] = A 
-        for i in 1:d-k 
-            H[k][:,:,d-k+3,d-k+1+i] = S
-        end
-        H[k][:,:,2(d-k)+3,1] = A'
-        H[k][:,:,2(d-k)+4,1] = h[k,k]*A'*A
-        for i in 1:d-k 
-            H[k][:,:,2(d-k)+4,i+1] = h[k,d+1-i]*A'
-            H[k][:,:,2(d-k)+4,d-k+i+1] = h[d+1-i,k]*A
-        end
-        H[k][:,:,2(d-k)+4,2(d-k)+2] = I2
+        H[k][:,:,1,end] = h[k,k]*A'*A 
+        H[k][:,:,2,end] = A' 
+        H[k][:,:,d-k+3,end] = A 
+        H[k][:,:,end,end] = I2
     end
-    return TToperator{Float64,d}(d,H,ntuple(x->2,d),rks,zeros(Int64,d))
+    #two-body terms
+    return TToperator{Float64,d}(d,H,ntuple(x->2,d),rks,zeros(Int64,d)) 
 end
