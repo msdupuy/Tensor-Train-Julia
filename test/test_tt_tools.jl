@@ -51,8 +51,8 @@ end
     x_tt = rand_tt(dims,rks)
     y_tt = orthogonalize(x_tt)
     i = rand(2:8)
-    @test(isapprox(sum(y_tt.ttv_vec[i][k,:,:]*y_tt.ttv_vec[i][k,:,:]' for k in 1:dims[i]),Matrix(I,rks[i],rks[i])))
-    @test(size(y_tt.ttv_vec[i])==(dims[i],rks[i],rks[i+1]))
+    @test(isapprox(sum(y_tt.cores[i][k,:,:]*y_tt.cores[i][k,:,:]' for k in 1:dims[i]),Matrix(I,rks[i],rks[i])))
+    @test(size(y_tt.cores[i])==(dims[i],rks[i],rks[i+1]))
     @test(isapprox(ttv_to_tensor(x_tt),ttv_to_tensor(y_tt)))
 end
 
