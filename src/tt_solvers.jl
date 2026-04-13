@@ -5,8 +5,8 @@ Gradient descent with fixed step and periodic TT rounding
 function gradient_fixed_step(A,b,α;x0=copy(b), Imax=100, tol_gd=1e-6, i_trunc = 5, eps_tt = 1e-4, r_tt = 512, rand_rounding=false, verbose=false, ℓ=0)
     i=1
     x=copy(x0)
-    x_rks = x.ttv_rks
-    rmax = min(r_tt,maximum(A.tto_rks .* x.ttv_rks))
+    x_rks = x.rks
+    rmax = min(r_tt,maximum(A.rks .* x.rks))
     p_rks = x_rks
     rand_rounding ? p = ttrand_rounding(A,x,b;rks=x_rks,rmax=r_tt,ℓ) : p = A*x-b
     resid = zeros(Imax)
@@ -18,17 +18,17 @@ function gradient_fixed_step(A,b,α;x0=copy(b), Imax=100, tol_gd=1e-6, i_trunc =
         rand_rounding ? p = ttrand_rounding(A,x,b;rks=p_rks,rmax=r_tt,ℓ) : p = A*x-b
         if verbose
             println("Iteration: "*string(i))
-            println("TT rank p: "*string(maximum(p.ttv_rks)))
-            println("TT rank x: "*string(maximum(x.ttv_rks))*"\n")
+            println("TT rank p: "*string(maximum(p.rks)))
+            println("TT rank x: "*string(maximum(x.rks))*"\n")
         end
-        if (it_trunc == i_trunc) || (max(maximum(p.ttv_rks),maximum(x.ttv_rks)) > r_tt)
+        if (it_trunc == i_trunc) || (max(maximum(p.rks),maximum(x.rks)) > r_tt)
             if rand_rounding
                 x = ttrand_rounding(x;rks=x_rks,rmax=r_tt,ℓ)
             end
             x = tt_rounding(x;tol = eps_tt,rmax=r_tt)
             p = tt_rounding(p;tol = eps_tt,rmax=r_tt)
-            x_rks = x.ttv_rks
-            p_rks = p.ttv_rks
+            x_rks = x.rks
+            p_rks = p.rks
             it_trunc = 1
         else 
             it_trunc +=1 
@@ -176,28 +176,28 @@ function rand_struct_orth(r_A,r_X,r_b)
 end
 
 function init(A::TToperator,b::TTvector,opt_rks)
-    @assert(A.tto_dims == b.ttv_dims,DimensionMismatch)
-    d = length(A.tto_dims)
+    @assert(A.dims == b.dims,DimensionMismatch)
+    d = length(A.dims)
     opt_rks = vcat([1],opt_rks)
     Q_list = Array{Array{Float64},1}(undef,d+1)
     ttvec = Array{Array{Float64},1}(undef,d)
     Q_list[1] = [1]
     Q_list[d+1] = [1]
     for k in 1:(d-1)
-        Q_list[k+1] = rand_struct_orth(A.tto_rks[k],opt_rks[k+1],b.ttv_rks[k])
+        Q_list[k+1] = rand_struct_orth(A.rks[k],opt_rks[k+1],b.rks[k])
     end
     for k in 1:d
-        ttvec[k] = init_core(A.tto_vec[k],[A.tto_dims[k],opt_rks[k],opt_rks[k+1]],b.ttv_vec[k],Q_list[k],Q_list[k+1])
+        ttvec[k] = init_core(A.cores[k],[A.dims[k],opt_rks[k],opt_rks[k+1]],b.cores[k],Q_list[k],Q_list[k+1])
     end
-    return TTvector(ttvec,A.tto_dims,opt_rks[2:(d+1)],ones(Int64,d))
+    return TTvector(ttvec,A.dims,opt_rks[2:(d+1)],ones(Int64,d))
 end
 
 #automatically determines the initial tt ranks
 function init_adapt(A::TToperator,b::TTvector)
-    d = length(A.tto_dims)
+    d = length(A.dims)
     opt_rks = ones(Int64,d)
     for k in 1:(d-1)
-        opt_rks[k] = lcm(A.tto_rks[k],b.ttv_rks[k])/A.tto_rks[k]
+        opt_rks[k] = lcm(A.rks[k],b.rks[k])/A.rks[k]
     end
     println(opt_rks)
     return init(A,b,opt_rks)
@@ -212,11 +212,11 @@ function arnoldi(A::TToperator{T,N},m,V;ε_tt=1e-6,rmax=256) where {T,N}
         H[i,j] = dot(V[i],w) #modified GS
         w = w-H[i,j]*V[i]
       end
-      #println("TT rank: $(maximum(w.ttv_rks))")
+      #println("TT rank: $(maximum(w.rks))")
       w = ttrand_rounding(w)
-      #println("TT rank after rand_rounding: $(maximum(w.ttv_rks))")
+      #println("TT rank after rand_rounding: $(maximum(w.rks))")
       w = tt_rounding(w;tol=ε_tt,rmax=rmax)
-      #println("TT rank after tt_rounding: $(maximum(w.ttv_rks))")
+      #println("TT rank after tt_rounding: $(maximum(w.rks))")
       H[j+1,j] = norm(w)
       V[j+1] = 1/H[j+1,j]*w
     end
@@ -236,7 +236,7 @@ function eig_arnoldi(A::TToperator,m,v::TTvector{T,N};Imax=100,ε=1e-6,ε_tt=1e-
         k = argmin(abs.(F.values))
     end
     λ = F.values[k]
-    v = ttrand_rounding(V[1:m]*F.vectors[:,k];rks=2*v.ttv_rks) #largest eigenvalue
+    v = ttrand_rounding(V[1:m]*F.vectors[:,k];rks=2*v.rks) #largest eigenvalue
     v = tt_rounding(v,tol=ε_tt,rmax=rmax)
     hist = eltype(v)[]
     while (i<Imax) && abs(h)>ε
@@ -252,7 +252,7 @@ function eig_arnoldi(A::TToperator,m,v::TTvector{T,N};Imax=100,ε=1e-6,ε_tt=1e-
         k = argmin(abs.(F.values))
       end
       λ = F.values[k]
-      v = ttrand_rounding(V[1:m]*F.vectors[:,k];rks=2*v.ttv_rks) #largest eigenvalue
+      v = ttrand_rounding(V[1:m]*F.vectors[:,k];rks=2*v.rks) #largest eigenvalue
       v = tt_rounding(v,tol=ε_tt,rmax=rmax)
       if history 
         push!(hist,norm(A*v-(λ-σ)*v))

@@ -12,10 +12,10 @@ abstract type AbstractTRvector end
 
 struct TRvector{T<:Number,M} <:AbstractTRvector
 	N :: Int
-	ttv_vec :: Array{Array{T,3},1}
-	ttv_dims :: NTuple{M,Int64}
-	ttv_rks :: Array{Int64,1}
-	ttv_ot :: Array{Int64,1}
+	cores :: Array{Array{T,3},1}
+	dims :: NTuple{M,Int64}
+	rks :: Array{Int64,1}
+	ot :: Array{Int64,1}
 	function TRvector{T,M}(N,vec,dims,rks,ot) where {T,M}
 		@assert M isa Int64
 		new{T,M}(N,vec,dims,rks,ot)
@@ -28,15 +28,15 @@ Base.eltype(::TRvector{T,N}) where {T<:Number,N} = T
 function tr_to_tensor(x_tr::TRvector{T,N}) where {T<:Number,N}
 	d = x_tr.N
 	# Initialize the to be returned tensor
-	tensor = zeros(T, x_tr.ttv_dims...)
-	rmax = maximum(x_tr.ttv_rks)
+	tensor = zeros(T, x_tr.dims...)
+	rmax = maximum(x_tr.rks)
 	# Fill in the tensor for every t=(x_1,...,x_d)
 	for t in CartesianIndices(tensor)
 		a = collect(Tuple(t))
 		curr = zeros(T,rmax,rmax)
-		curr[1:x_tr.ttv_rks[d],1:x_tr.ttv_rks[d+1]] = copy(x_tr.ttv_vec[d][a[d],:,:])
+		curr[1:x_tr.rks[d],1:x_tr.rks[d+1]] = copy(x_tr.cores[d][a[d],:,:])
 		for i = d-1:-1:1
-			curr[1:x_tr.ttv_rks[i],1:x_tr.ttv_rks[i+1]] = x_tr.ttv_vec[i][a[i],:,:]*curr[1:x_tr.ttv_rks[i+1],1:x_tr.ttv_rks[i+2]]
+			curr[1:x_tr.rks[i],1:x_tr.rks[i+1]] = x_tr.cores[i][a[i],:,:]*curr[1:x_tr.rks[i+1],1:x_tr.rks[i+2]]
 		end
 		tensor[t] = tr(curr)
 	end
@@ -51,7 +51,7 @@ function zeros_tr(::Type{T},dims::NTuple{N,Int64},rks) where {T,N}
 end
 
 function Base.copy(x_tr::TRvector{T,N}) where {T<:Number,N}
-	return TRvector{T,N}(x_tr.N,copy(x_tr.ttv_vec),x_tr.ttv_dims,copy(x_tr.ttv_rks),copy(x_tr.ttv_ot))
+	return TRvector{T,N}(x_tr.N,copy(x_tr.cores),x_tr.dims,copy(x_tr.rks),copy(x_tr.ot))
 end
 
 """

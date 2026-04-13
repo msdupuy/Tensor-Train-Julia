@@ -37,12 +37,12 @@ function perturbed_Δ_tto(n,d;hermitian=true,r=1,rks=ones(Int64,d+1))
   H = Δ_tto(n,d)
   s = randn(r)
   for k in 1:r
-    ϕₖ = rand_tt(H.tto_dims,rks)
+    ϕₖ = rand_tt(H.dims,rks)
     ϕₖ = 1/norm(ϕₖ)*ϕₖ
     if hermitian 
       H = H+s[k]*outer_product(ϕₖ,ϕₖ)
     else 
-      φₖ = rand_tt(H.tto_dims,rks)
+      φₖ = rand_tt(H.dims,rks)
       φₖ = 1/norm(φₖ)*φₖ
       H = H+s[k]*outer_product(ϕₖ,φₖ)
     end
@@ -51,12 +51,12 @@ function perturbed_Δ_tto(n,d;hermitian=true,r=1,rks=ones(Int64,d+1))
 end
 
 function potential(V::TTvector{T,d}) where {T,d}
-  out = zeros_tto(T,V.ttv_dims,V.ttv_rks)
+  out = zeros_tto(T,V.dims,V.rks)
   for k in 1:d
-    for iₖ in 1:V.ttv_dims[k]
-      for jₖ in 1:V.ttv_dims[k]
+    for iₖ in 1:V.dims[k]
+      for jₖ in 1:V.dims[k]
         if iₖ == jₖ
-          out.tto_vec[k][iₖ,iₖ,:,:] = V.ttv_vec[k][iₖ,:,:]
+          out.cores[k][iₖ,iₖ,:,:] = V.cores[k][iₖ,:,:]
         end
       end
     end

@@ -11,10 +11,10 @@ ordering schemes for QC-DMRG or 2D statistical models
 """
 function one_rdm(x_tt::TTvector{T}) where {T<:Number}
     d = x_tt.N
-    @assert(ntuple(x->2,d)==x_tt.ttv_dims)
+    @assert(ntuple(x->2,d)==x_tt.dims)
     γ = zeros(T,d,2,2)
     for i in 1:d
-        y_tt = one_body_mpo(T,i,i,x_tt.ttv_dims)*x_tt
+        y_tt = one_body_mpo(T,i,i,x_tt.dims)*x_tt
         γ[i,2,2] = dot(x_tt,y_tt)
         γ[i,1,1] = 1-γ[i,2,2]
     end
@@ -26,15 +26,15 @@ end
 """
 function two_rdm(x_tt::TTvector{S};fermion=true) where {S<:Number}
     d = x_tt.N
-    @assert(ntuple(x->2,d)==x_tt.ttv_dims)
+    @assert(ntuple(x->2,d)==x_tt.dims)
     γ = zeros(S,d,d,2,2,2,2) #(i,j;i,j) occupancy
     for i in 1:d-1
         for j in i+1:d
-            γ[i,j,2,2,2,2] = -dot(x_tt,two_body_mpo(S,i,j,i,j,x_tt.ttv_dims)*x_tt)
-            γ[i,j,1,2,1,2] = -γ[i,j,2,2,2,2] + dot(x_tt,one_body_mpo(S,j,j,x_tt.ttv_dims)*x_tt)
-            γ[i,j,2,1,2,1] = -γ[i,j,2,2,2,2] + dot(x_tt,one_body_mpo(S,i,i,x_tt.ttv_dims)*x_tt)
+            γ[i,j,2,2,2,2] = -dot(x_tt,two_body_mpo(S,i,j,i,j,x_tt.dims)*x_tt)
+            γ[i,j,1,2,1,2] = -γ[i,j,2,2,2,2] + dot(x_tt,one_body_mpo(S,j,j,x_tt.dims)*x_tt)
+            γ[i,j,2,1,2,1] = -γ[i,j,2,2,2,2] + dot(x_tt,one_body_mpo(S,i,i,x_tt.dims)*x_tt)
             γ[i,j,1,1,1,1] = 1.0 -γ[i,j,2,2,2,2] -γ[i,j,2,1,2,1] -γ[i,j,1,2,1,2] 
-            γ[i,j,2,1,1,2] = dot(x_tt,one_body_mpo(S,i,j,x_tt.ttv_dims;fermion=fermion)*x_tt)
+            γ[i,j,2,1,1,2] = dot(x_tt,one_body_mpo(S,i,j,x_tt.dims;fermion=fermion)*x_tt)
             γ[i,j,1,2,2,1] = γ[i,j,2,1,1,2]
         end
     end
@@ -47,17 +47,17 @@ Returns the orbital reduced density matrix ρ_{i:j}, i<j.
 function N_rdm(x_tt::TTvector{T},i::Integer,j::Integer) where {T<:Number}
     @assert(i<j≤x_tt.N)
     y_tt = orthogonalize(x_tt,i=i)
-    ρ = zeros(T,x_tt.ttv_dims[i:j]...,x_tt.ttv_dims[i:j]...)
-    index = CartesianIndices(Tuple([1:k for k in x_tt.ttv_dims[i:j]]))
+    ρ = zeros(T,x_tt.dims[i:j]...,x_tt.dims[i:j]...)
+    index = CartesianIndices(Tuple([1:k for k in x_tt.dims[i:j]]))
     for J in index
-        M = copy(y_tt.ttv_vec[i][J[1],:,:])
+        M = copy(y_tt.cores[i][J[1],:,:])
         for k in i+1:j
-            M = M*y_tt.ttv_vec[k][J[k-i+1],:,:]
+            M = M*y_tt.cores[k][J[k-i+1],:,:]
         end
         @threads for K in index
-            N = copy(y_tt.ttv_vec[i][K[1],:,:])
+            N = copy(y_tt.cores[i][K[1],:,:])
             for k in i+1:j
-                N = N*y_tt.ttv_vec[k][K[k-i+1],:,:]
+                N = N*y_tt.cores[k][K[k-i+1],:,:]
             end
             ρ[J,K] = tr(M*N')
         end
@@ -179,12 +179,12 @@ function bwpo_order(V,N,L;
     end
 end
 
-function bwpo_order(ψ_tt::TTvector;order = collect(1:length(ψ_tt.ttv_dims)),tol=1e-8,imax=2000,rand_or_full=500,temp=1e-4)
+function bwpo_order(ψ_tt::TTvector;order = collect(1:length(ψ_tt.dims)),tol=1e-8,imax=2000,rand_or_full=500,temp=1e-4)
     γ = one_prdm(ψ_tt)
 	N = round(Int,tr(γ))
     F = eigen(γ)
     V = reverse(F.vectors,dims=2)[:,1:N]'
-    return bwpo_order(V,N,length(ψ_tt.ttv_dims),order=order,tol=tol,imax=imax,rand_or_full=rand_or_full,temp=temp)
+    return bwpo_order(V,N,length(ψ_tt.dims),order=order,tol=tol,imax=imax,rand_or_full=rand_or_full,temp=temp)
 end
 
 function bwpo_order(γ::AbstractArray{Float64,2};order = collect(1:size(γ,1)),CAS=collect(1:round(Int,tr(γ))),tol=1e-8,imax=2000,rand_or_full=500,temp=1e-4)
@@ -244,12 +244,12 @@ function bwpo_order_sites(V,N,L;
     end
 end
 
-function bwpo_order_sites(ψ_tt::TTvector;order = collect(1:length(ψ_tt.ttv_dims)),tol=1e-8,imax=2000,rand_or_full=500,temp=1e-4)
+function bwpo_order_sites(ψ_tt::TTvector;order = collect(1:length(ψ_tt.dims)),tol=1e-8,imax=2000,rand_or_full=500,temp=1e-4)
     γ = one_prdm(ψ_tt)
 	N = round(Int,tr(γ))
     F = eigen(γ)
     V = reverse(F.vectors,dims=2)[:,1:N]'
-    return bwpo_order_sites(V,N,round(Int,length(ψ_tt.ttv_dims)/2),order=order,tol=tol,imax=imax,rand_or_full=rand_or_full,temp=temp)
+    return bwpo_order_sites(V,N,round(Int,length(ψ_tt.dims)/2),order=order,tol=tol,imax=imax,rand_or_full=rand_or_full,temp=temp)
 end
 
 function bwpo_order_sites(γ::AbstractArray{Float64,2};order = collect(1:size(γ,1)),CAS=collect(1:round(Int,tr(γ))),tol=1e-8,imax=2000,rand_or_full=500,temp=1e-4)

@@ -35,3 +35,5 @@ u_dmrg = dmrg_linsolv(A_tto,f_tt,deepcopy(f_tt),schedule=dmrg_schedule)
 
 @time x_tt, res_ϵ = gradient_fixed_step(A_tto,f_tt,α_opt,Imax=50,i_trunc=1,eps_tt=1e-4,rand_rounding=false,r_tt=16,ℓ=8)
 @time x_rr_tt, res_rr_ϵ = gradient_fixed_step(A_tto,f_tt,α_opt,Imax=50,i_trunc=1,eps_tt=1e-4,rand_rounding=true,r_tt=16,ℓ=8)
+scatter(res_ϵ, yscale=:log10, label="TT rounding")
+scatter!(res_rr_ϵ, yscale=:log10, label="Rand TT rounding")

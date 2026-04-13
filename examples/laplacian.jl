@@ -36,7 +36,7 @@ const sol_hsvd = Array{Array{Array{Float64,1}}}(undef,length(eps_list))
 
 for i_ε in eachindex(eps_list)
   @time x_ϵ_tt, res_ϵ = gradient_fixed_step(H2_mpo,b2_tt,α_opt,Imax=Imax,i_trunc=i_trunc,eps_tt=eps_list[i_ε],r_tt=50)
-  println(x_ϵ_tt.ttv_rks)
+  println(x_ϵ_tt.rks)
   Σ = tt_svdvals(x_ϵ_tt)
   sol_hsvd[i_ε] = Σ
   res_list[i_ε,1] = eps_list[i_ε]
@@ -56,7 +56,7 @@ const sol_rand_hsvd = Array{Array{Array{Float64,1}}}(undef,length(eps_list))
 
 for i_ε in eachindex(eps_list)
   @time x_ϵ_tt, res_ϵ = gradient_fixed_step(H2_mpo,b2_tt,α_opt,Imax=Imax,i_trunc=i_trunc,eps_tt=eps_list[i_ε],rand_rounding=true,r_tt=50,ℓ=10)
-  println(x_ϵ_tt.ttv_rks)
+  println(x_ϵ_tt.rks)
   Σ = tt_svdvals(x_ϵ_tt)
   sol_rand_hsvd[i_ε] = Σ
   res_rand_list[i_ε,1] = eps_list[i_ε]

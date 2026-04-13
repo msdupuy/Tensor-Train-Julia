@@ -8,7 +8,7 @@ function lih(;n_cas = 10,canonical=true,fiedler=false,print=true,sweep_schedule=
   int_1e,int_2e = F[4],F[5]
   v = slater(F[3],2n_cas)
   h,V = one_e_two_e_integrals_to_hV(int_1e[1:n_cas,1:n_cas],int_2e[1:n_cas,1:n_cas,1:n_cas,1:n_cas])
-  H_tto = hV_to_mpo(h+μ*I,V,v.ttv_dims;tol=1e-8,chemistry=true) #,n=F[3]
+  H_tto = hV_to_mpo(h+μ*I,V,v.dims;tol=1e-8,chemistry=true) #,n=F[3]
   println(dot(v,H_tto*v)+F[1]-F[3]*μ) # =-7.9836
   if canonical
     v = tt_up_rks(v,rmax_schedule[1];ϵ_wn=1e-2)

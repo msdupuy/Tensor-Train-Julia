@@ -118,18 +118,18 @@ function ttv_spdecomp(spv :: sparsetensor_vec, index;tol=1e-10)
 	dims = spv.dims #dims = [n_1,...,n_d]
 	n_max = maximum(dims)
 	d = length(dims)
-	ttv_vec = Array{Array{Float64}}(undef,d)
-	# ttv_ot[i]= -1 if i < index
-	# ttv_ot[i] = 0 if i = index
-	# ttv_ot[i] = 1 if i > index
-	ttv_ot = -ones(d)
-	ttv_ot[index] = 0
+	cores = Array{Array{Float64}}(undef,d)
+	# ot[i]= -1 if i < index
+	# ot[i] = 0 if i = index
+	# ot[i] = 1 if i > index
+	ot = -ones(d)
+	ot[index] = 0
 	if index < d
-		ttv_ot[index+1:d] = ones(d-index)
+		ot[index+1:d] = ones(d-index)
 	end
-	rks = ones(Int, d+2) # ttv_rks will be rks[2:d+1]
+	rks = ones(Int, d+2) # rks will be rks[2:d+1]
 	tensor_curr = convert(SparseMatrixCSC, reshape(spv.spv, dims[1], :))
-	# Calculate ttv_vec[i] for i < index
+	# Calculate cores[i] for i < index
 	for i = 1 : (index - 1)
 		# Reshape the currently left tensor
 		tensor_curr = convert(SparseMatrixCSC, reshape(tensor_curr, Int(rks[i] * dims[i]), :))
@@ -140,27 +140,27 @@ function ttv_spdecomp(spv :: sparsetensor_vec, index;tol=1e-10)
 		rks[i+1] = sum(diag_R.>tol)
 		Q = qro.Q[invperm(qro.prow),(1:length(diag_R))[diag_R.>tol]]
 		R = qro.R[diag_R.>tol,invperm(qro.pcol)]
-		# Initialize ttv_vec[i]
-		ttv_vec[i] = zeros(dims[i],rks[i],rks[i+1])
-		# Fill in the ttv_vec[i]
+		# Initialize cores[i]
+		cores[i] = zeros(dims[i],rks[i],rks[i+1])
+		# Fill in the cores[i]
 		for x = 1 : dims[i]
-			ttv_vec[i][x, :, :] = Q[(rks[i]*(x-1) + 1):(rks[i]*x), :]
+			cores[i][x, :, :] = Q[(rks[i]*(x-1) + 1):(rks[i]*x), :]
 		end
 		# Update the currently left tensor
 		tensor_curr = R
 	end
-	# Calculate ttv_vec[i] for i = index
+	# Calculate cores[i] for i = index
 	# Reshape the currently left tensor
 	tensor_curr = reshape(tensor_curr, Int(dims[index]*rks[index]),:)
-	# Initialize ttv_vec[i]
-	ttv_vec[index] = zeros(dims[index], rks[index], rks[index+1])
-	# Fill in the ttv_vec[i]
+	# Initialize cores[i]
+	cores[index] = zeros(dims[index], rks[index], rks[index+1])
+	# Fill in the cores[i]
 	for x = 1 : dims[index]
-		ttv_vec[index][x, :, :] =
+		cores[index][x, :, :] =
 		tensor_curr[Int(rks[index]*(x-1) + 1):Int(rks[index]*x), 1:rks[index+1]]
 	end
 	# Define the return value as a TTvector
-	return TTvector(ttv_vec, dims, rks[2:d+1], ttv_ot)
+	return TTvector(cores, dims, rks[2:d+1], ot)
 end
 
 function test_ttv_spdecomp()
@@ -178,35 +178,35 @@ function tto_spdecomp(spm :: sparsetensor_mat, index)
 	# For index < d it doesn't work yet
 	# The tensor has to be given as element of R^[n_1*...*n_d,n_1*...*n_d]
 	d = length(spm.dims1)
-	tto_dims = spm.dims1
-	n_max = maximum(tto_dims)
-	dims_sq = tto_dims.^2
+	dims = spm.dims1
+	n_max = maximum(dims)
+	dims_sq = dims.^2
 	# The matrix is reshaped, reordered and reshaped
 	# into the matrix [(x_1,y_1),((x_2,y_2),...,(x_d,y_d))]
 	# and decomposed into its tensor train with core matrices at i = index
 	index_sorted = vec(reshape(Transpose(reshape(1:(2*d),:,2)),1,:))
 	dims_sorted = zeros(2*d)
-    dims_sorted[1:d] = tto_dims
-	dims_sorted[(d+1):(2*d)] = tto_dims
+    dims_sorted[1:d] = dims
+	dims_sorted[(d+1):(2*d)] = dims
 	dims_sorted = dims_sorted[index_sorted]
 	ttv = ttv_spdecomp(spmat_to_spvec(sparsetensor_mat([dims_sq[1]], dims_sq[2:end], permutedims(spm.spm, index_sorted, spm.dims1, spm.dims2, d))), index)
 	# Define the array of ranks [r_0=1,r_1,...,r_d]
 	rks = ones(Int, d+1)
-	rks[2:(d+1)] = ttv.ttv_rks
+	rks[2:(d+1)] = ttv.rks
 	r_max = maximum(rks)
-	# Initialize tto_vec
-	tto_vec = Array{Array{Float64}}(undef,d)
-	# Fill in tto_vec
+	# Initialize cores
+	cores = Array{Array{Float64}}(undef,d)
+	# Fill in cores
 	for i = 1:d
-		# Initialize tto_vec[i]
-		tto_vec[i] = zeros(tto_dims[i], tto_dims[i], rks[i], rks[i+1])
-		# Fill in tto_vec[i]
-		tto_vec[i][:, :, :, :] =
-		reshape(ttv.ttv_vec[i][1:dims_sq[i], 1:rks[i], 1:rks[i+1]],
-		tto_dims[i], tto_dims[i], rks[i], :)
+		# Initialize cores[i]
+		cores[i] = zeros(dims[i], dims[i], rks[i], rks[i+1])
+		# Fill in cores[i]
+		cores[i][:, :, :, :] =
+		reshape(ttv.cores[i][1:dims_sq[i], 1:rks[i], 1:rks[i+1]],
+		dims[i], dims[i], rks[i], :)
 	end
 	# Define the return value as a TToperator
-	return TToperator(tto_vec, tto_dims, rks[2:(d+1)], ttv.ttv_ot)
+	return TToperator(cores, dims, rks[2:(d+1)], ttv.ot)
 end
 
 function Lap_sp(n::Integer, d::Integer)
@@ -260,5 +260,5 @@ x_s_tt = ttv_decomp(reshape(x_s, n * ones(Int, d)...),d)
 b_tt = ttv_decomp(reshape(b,n*ones(Int,d)...), d)
 L_spm = sparsetensor_mat(n*ones(Int, d), n*ones(Int, d), L)
 L_tt = tto_spdecomp(L_spm, d)
-x_als_tt = als(L_tt, b_tt, x_s_tt, x_o_tt.ttv_rks)
+x_als_tt = als(L_tt, b_tt, x_s_tt, x_o_tt.rks)
 """

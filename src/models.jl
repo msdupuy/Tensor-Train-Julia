@@ -78,10 +78,10 @@ end
 function slater(n,d;σ=1:n)
     x = zeros_tt(ntuple(x->2,d),ones(Int64,d+1))
     for i in σ
-        x.ttv_vec[i][2,1,1] = 1.0
+        x.cores[i][2,1,1] = 1.0
     end
     for i in setdiff(1:d,σ)
-        x.ttv_vec[i][1,1,1] = 1.0
+        x.cores[i][1,1,1] = 1.0
     end
     return x
 end
@@ -128,11 +128,11 @@ end
 function tto_creation(::Type{T},p,dims::NTuple{N,Int64};fermion=true) where {T,N}
     A = zeros_tto(T,dims,ones(Int64,N+1))
     for i in 1:p-1
-        fermion ? (A.tto_vec[i] = mpo_core_ferm_sign(T)) : (A.tto_vec[i] = mpo_core_id(T))
+        fermion ? (A.cores[i] = mpo_core_ferm_sign(T)) : (A.cores[i] = mpo_core_id(T))
     end
-    A.tto_vec[p] = mpo_core_creation(T)
+    A.cores[p] = mpo_core_creation(T)
     for i in p+1:N
-        A.tto_vec[i] = mpo_core_id(T)
+        A.cores[i] = mpo_core_id(T)
     end
     return A
 end
@@ -144,11 +144,11 @@ tto_annihilation(q,dims::NTuple{N,Int64};fermion=true) where N = tto_annihilatio
 function tto_annihilation(::Type{T},q,dims::NTuple{N,Int64};fermion=true) where {T,N}
     A = zeros_tto(T,dims,ones(Int,N+1))
     for i in 1:q-1
-        fermion ? (A.tto_vec[i] = mpo_core_ferm_sign(T)) : (A.tto_vec[i] = mpo_core_id(T))
+        fermion ? (A.cores[i] = mpo_core_ferm_sign(T)) : (A.cores[i] = mpo_core_id(T))
     end
-    A.tto_vec[q] = mpo_core_annihilation(T)
+    A.cores[q] = mpo_core_annihilation(T)
     for i in q+1:N
-        A.tto_vec[i] = mpo_core_id(T)
+        A.cores[i] = mpo_core_id(T)
     end
     return A
 end
@@ -195,7 +195,7 @@ function hV_to_mpo(h::Array{T,2},V,dims::NTuple{N,Int64};tol=1e-8::Float64,n_rnd
             A = A+h[i]*H
         end
         if i_rnd > n_rnd 
-            A = tt_rounding(A,tol=tol)
+            A = tt_rounding(A;tol)
             i_rnd = 1
         else
             i_rnd+=1
@@ -394,9 +394,9 @@ function PPP_C_NH_N(N;β=-2.5/27.2113845,b=1.4*1.8897259886,γ0=10.84/27.2113845
     σ = invperm(order)
     id = -1.0*id_tto(2N)
     for i in 1:N
-        Hi = (one_body_mpo(σ[2i],σ[2i],H_tto.tto_dims)+one_body_mpo(σ[2i-1],σ[2i-1],H_tto.tto_dims))+id
+        Hi = (one_body_mpo(σ[2i],σ[2i],H_tto.dims)+one_body_mpo(σ[2i-1],σ[2i-1],H_tto.dims))+id
         for j in 1:N
-            Hj = (one_body_mpo(σ[2j],σ[2j],H_tto.tto_dims)+one_body_mpo(σ[2j-1],σ[2j-1],H_tto.tto_dims)) + id 
+            Hj = (one_body_mpo(σ[2j],σ[2j],H_tto.dims)+one_body_mpo(σ[2j-1],σ[2j-1],H_tto.dims)) + id 
             Htemp = Hi*Hj
             γij = 1/(1/γ0+b*sin(pi/N*mod(i-j,N))/sin(pi/N))
             H_tto = H_tto + 0.5*γij*Htemp
@@ -657,5 +657,14 @@ function qc_hV_to_mpo(h::Matrix{T},V::Array{T,4}) where T
         H[k][:,:,end,end] = I2
     end
     #two-body terms
+    # ∑ᵢ₁
+    V = Array{Array{T,4}}(undef,d)
+    rks_V = ones(Int64,d+1)
+    V[1] = zeros(2,2,1,4)
+    V[1][:,:,1,1] = I2
+    V[1][:,:,1,2] = A
+    V[1][:,:,1,3] = A'
+    V[1][:,:,1,4] = A'*A
+
     return TToperator{Float64,d}(d,H,ntuple(x->2,d),rks,zeros(Int64,d)) 
 end
