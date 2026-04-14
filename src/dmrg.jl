@@ -270,13 +270,17 @@ function Ksolve!(Gi_view::AbstractArray{T,3},G_bi::AbstractArray{T,2},Hi_view::A
 		rxl, nN, rxr = K_dims
 		rAl = size(Gi_view, 1)
 		rAr = size(Hi_view, 1)
+		# Materialize to contiguous arrays so that reshape → mul! dispatches to BLAS GEMM.
+		# Gi_view and Hi_view are strided SubArrays; reshape on them falls back to scalar iteration.
+		Gi = Base.iscontiguous(Gi_view) ? Gi_view : Array(Gi_view)
+		Hi = Base.iscontiguous(Hi_view) ? Hi_view : Array(Hi_view)
 		# Pre-permute fixed tensors once (not inside the CG loop)
-		Gi_m    = reshape(Gi_view, rAl*rxl, rxl)
-		Gi_m2   = reshape(permutedims(Gi_view, (1,3,2)), rAl*rxl, rxl)
+		Gi_m    = reshape(Gi, rAl*rxl, rxl)
+		Gi_m2   = reshape(permutedims(Gi, (1,3,2)), rAl*rxl, rxl)
 		Amid_p  = reshape(permutedims(Amid_tensor, (1,3,2,4)), rAl*nN, nN*rAr)
 		Amid_p2 = reshape(Amid_tensor, rAl*nN, nN*rAr)
-		Hi_p    = reshape(permutedims(Hi_view, (3,1,2)), rxr*rAr, rxr)
-		Hi_p2   = reshape(permutedims(Hi_view, (2,1,3)), rxr*rAr, rxr)
+		Hi_p    = reshape(permutedims(Hi, (3,1,2)), rxr*rAr, rxr)
+		Hi_p2   = reshape(permutedims(Hi, (2,1,3)), rxr*rAr, rxr)
 		# Views into pre-allocated scratch (no allocation)
 		T1_mat  = @view scratch.Km_T1[1:rAl*rxl,  1:nN*rxr]
 		T1p_mat = @view scratch.Km_T1p[1:rxl*rxr, 1:rAl*nN]
@@ -381,12 +385,14 @@ function K_eigmin(Gi_view::AbstractArray{T,3},Hi_view::AbstractArray{T,3},V0::Ab
 		rAl = size(Gi_view, 1)
 		rAr = size(Hi_view, 1)
 		# Pre-permute fixed tensors once (not inside the eigsolve loop)
-		Gi_m    = reshape(Gi_view, rAl*rxl, rxl)
-		Gi_m2   = reshape(permutedims(Gi_view, (1,3,2)), rAl*rxl, rxl)
+		Gi = Base.iscontiguous(Gi_view) ? Gi_view : Array(Gi_view)
+		Hi = Base.iscontiguous(Hi_view) ? Hi_view : Array(Hi_view)
+		Gi_m    = reshape(Gi, rAl*rxl, rxl)
+		Gi_m2   = reshape(permutedims(Gi, (1,3,2)), rAl*rxl, rxl)
 		Amid_p  = reshape(permutedims(Amid_tensor, (1,3,2,4)), rAl*nN, nN*rAr)
 		Amid_p2 = reshape(Amid_tensor, rAl*nN, nN*rAr)
-		Hi_p    = reshape(permutedims(Hi_view, (3,1,2)), rxr*rAr, rxr)
-		Hi_p2   = reshape(permutedims(Hi_view, (2,1,3)), rxr*rAr, rxr)
+		Hi_p    = reshape(permutedims(Hi, (3,1,2)), rxr*rAr, rxr)
+		Hi_p2   = reshape(permutedims(Hi, (2,1,3)), rxr*rAr, rxr)
 		# Views into pre-allocated scratch (no allocation)
 		T1_mat  = @view scratch.Km_T1[1:rAl*rxl,  1:nN*rxr]
 		T1p_mat = @view scratch.Km_T1p[1:rxl*rxr, 1:rAl*nN]
