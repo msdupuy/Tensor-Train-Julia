@@ -220,11 +220,67 @@ function Amid(A_tto::TToperator{T},i::Int,j::Int) where {T<:Number}
 end
 
 #full assemble of matrix K
-function K_full(Gi::AbstractArray{T,3},Hi::AbstractArray{T,3},Amid_tensor::AbstractArray{T,4}) where {T<:Number,d}
+function K_full(Gi::AbstractArray{T,3},Hi::AbstractArray{T,3},Amid_tensor::AbstractArray{T,4}) where {T<:Number}
 	K_dims = (size(Gi,2),size(Amid_tensor,2),size(Hi,2))
 	K = zeros(T,K_dims...,K_dims...)
 	@tensoropt((a,c,d,f), K[a,b,c,d,e,f] = Gi[y,a,d]*Hi[z,c,f]*Amid_tensor[y,b,e,z]) #size (r^X_{i-1},n_i⋯n_j,r^X_j)
 	return Hermitian(reshape(K,prod(K_dims),prod(K_dims)))
+end
+
+# Builds the K matrix-free linear map for the iterative micro-step solver/eigensolver.
+# K[a,b,c,d,e,f] = Gi[y,a,d]*Amid[y,b,e,z]*Hi[z,c,f] (symmetrized)
+function _make_K_linmap(Gi_view::AbstractArray{T,3}, Hi_view::AbstractArray{T,3}, Amid_tensor::AbstractArray{T,4}, scratch::DMRGScratch{T}) where {T<:Number}
+	rxl = size(Gi_view, 2)
+	nN  = size(Amid_tensor, 2)
+	rxr = size(Hi_view, 2)
+	rAl = size(Gi_view, 1)
+	rAr = size(Hi_view, 1)
+	Gi = Base.iscontiguous(Gi_view) ? Gi_view : Array(Gi_view)
+	Hi = Base.iscontiguous(Hi_view) ? Hi_view : Array(Hi_view)
+	Gi_m    = reshape(Gi, rAl*rxl, rxl)
+	Gi_m2   = reshape(permutedims(Gi, (1,3,2)), rAl*rxl, rxl)
+	Amid_p  = reshape(permutedims(Amid_tensor, (1,3,2,4)), rAl*nN, nN*rAr)
+	Amid_p2 = reshape(Amid_tensor, rAl*nN, nN*rAr)
+	Hi_p    = reshape(permutedims(Hi, (3,1,2)), rxr*rAr, rxr)
+	Hi_p2   = reshape(permutedims(Hi, (2,1,3)), rxr*rAr, rxr)
+	T1_mat  = @view scratch.Km_T1[1:rAl*rxl,  1:nN*rxr]
+	T1p_mat = @view scratch.Km_T1p[1:rxl*rxr, 1:rAl*nN]
+	T2      = @view scratch.Km_T2[1:rxl*rxr,  1:nN*rAr]
+	T2p_mat = @view scratch.Km_T2p[1:rxl*nN,  1:rxr*rAr]
+	T3      = @view scratch.Km_T3[1:rxl*nN,   1:rxr]
+	T1      = reshape(T1_mat, rAl, rxl, nN, rxr)
+	T1_perm = reshape(T1p_mat, rxl, rxr, rAl, nN)
+	T2_4d   = reshape(T2, rxl, rxr, nN, rAr)  # aliases T2; stays valid after mul!(T2,...)
+	T2_perm = reshape(T2p_mat, rxl, nN, rxr, rAr)
+	function K_matfree(Vout, V)
+		V_mat = reshape(V, rxl, nN*rxr)
+		# Term 1: Gi[y,a,d]*V[d,e,f]*Amid[y,b,e,z]*Hi[z,c,f]
+		mul!(T1_mat, Gi_m, V_mat)
+		@inbounds for e in 1:nN, y in 1:rAl, f in 1:rxr, a in 1:rxl
+			T1_perm[a,f,y,e] = T1[y,a,e,f]
+		end
+		mul!(T2, T1p_mat, Amid_p)
+		@inbounds for z in 1:rAr, b in 1:nN, f in 1:rxr, a in 1:rxl
+			T2_perm[a,b,f,z] = T2_4d[a,f,b,z]
+		end
+		mul!(T3, T2p_mat, Hi_p)
+		copyto!(Vout, T3)
+		# Term 2: Gi[y,d,a]*V[d,e,f]*Amid[y,e,b,z]*Hi[z,f,c]
+		mul!(T1_mat, Gi_m2, V_mat)
+		@inbounds for e in 1:nN, y in 1:rAl, f in 1:rxr, a in 1:rxl
+			T1_perm[a,f,y,e] = T1[y,a,e,f]
+		end
+		mul!(T2, T1p_mat, Amid_p2)
+		@inbounds for z in 1:rAr, b in 1:nN, f in 1:rxr, a in 1:rxl
+			T2_perm[a,b,f,z] = T2_4d[a,f,b,z]
+		end
+		mul!(T3, T2p_mat, Hi_p2)
+		@inbounds for i in eachindex(Vout)
+			Vout[i] = 0.5*(Vout[i] + T3[i])
+		end
+		return nothing
+	end
+	return LinearMap{T}(K_matfree, rxl*nN*rxr; issymmetric=true, ismutating=true)
 end
 
 function init_Hb(x_tt::TTvector{T},b_tt::TTvector{T},N::Integer,rmax) where {T<:Number}
@@ -265,69 +321,13 @@ end
 function Ksolve!(Gi_view::AbstractArray{T,3},G_bi::AbstractArray{T,2},Hi_view::AbstractArray{T,3},H_bi::AbstractArray{T,2},Amid_tensor::AbstractArray{T,4},Bmid::AbstractArray{T,3},Pb::AbstractArray{T,3},V0::AbstractArray{T,3},Vapp::AbstractArray{T,3},scratch::DMRGScratch{T};it_solver=false,maxiter=200,tol=1e-6,itslv_thresh=256) where T<:Number
 	K_dims = (size(Gi_view,2),size(Amid_tensor,2),size(Hi_view,2))
 	@tensor (Pb[α1,i,α2] = (G_bi[α1,β1]*Bmid[β1,i,β2])*H_bi[α2,β2]) #size (r^X_{i-1},n_i⋯n_j,r^X_j)
-
 	if it_solver && prod(K_dims) > itslv_thresh
-		rxl, nN, rxr = K_dims
-		rAl = size(Gi_view, 1)
-		rAr = size(Hi_view, 1)
-		# Materialize to contiguous arrays so that reshape → mul! dispatches to BLAS GEMM.
-		# Gi_view and Hi_view are strided SubArrays; reshape on them falls back to scalar iteration.
-		Gi = Base.iscontiguous(Gi_view) ? Gi_view : Array(Gi_view)
-		Hi = Base.iscontiguous(Hi_view) ? Hi_view : Array(Hi_view)
-		# Pre-permute fixed tensors once (not inside the CG loop)
-		Gi_m    = reshape(Gi, rAl*rxl, rxl)
-		Gi_m2   = reshape(permutedims(Gi, (1,3,2)), rAl*rxl, rxl)
-		Amid_p  = reshape(permutedims(Amid_tensor, (1,3,2,4)), rAl*nN, nN*rAr)
-		Amid_p2 = reshape(Amid_tensor, rAl*nN, nN*rAr)
-		Hi_p    = reshape(permutedims(Hi, (3,1,2)), rxr*rAr, rxr)
-		Hi_p2   = reshape(permutedims(Hi, (2,1,3)), rxr*rAr, rxr)
-		# Views into pre-allocated scratch (no allocation)
-		T1_mat  = @view scratch.Km_T1[1:rAl*rxl,  1:nN*rxr]
-		T1p_mat = @view scratch.Km_T1p[1:rxl*rxr, 1:rAl*nN]
-		T2      = @view scratch.Km_T2[1:rxl*rxr, 1:nN*rAr]
-		T2p_mat = @view scratch.Km_T2p[1:rxl*nN,  1:rxr*rAr]
-		T3      = @view scratch.Km_T3[1:rxl*nN,   1:rxr]
-		T1      = reshape(T1_mat, rAl, rxl, nN, rxr)
-		T1_perm = reshape(T1p_mat, rxl, rxr, rAl, nN)
-		T2_perm = reshape(T2p_mat, rxl, nN, rxr, rAr)
-		function K_matfree(Vout, V)
-			V_mat = reshape(V, rxl, nN*rxr)
-			# Term 1: Gi[y,a,d]*V[d,e,f]*Amid[y,b,e,z]*Hi[z,c,f]
-			mul!(T1_mat, Gi_m, V_mat)
-			@inbounds for e in 1:nN, y in 1:rAl, f in 1:rxr, a in 1:rxl
-				T1_perm[a,f,y,e] = T1[y,a,e,f]
-			end
-			mul!(T2, T1p_mat, Amid_p)
-			T2_4d = reshape(T2, rxl, rxr, nN, rAr)
-			@inbounds for z in 1:rAr, b in 1:nN, f in 1:rxr, a in 1:rxl
-				T2_perm[a,b,f,z] = T2_4d[a,f,b,z]
-			end
-			mul!(T3, T2p_mat, Hi_p)
-			copyto!(Vout, T3)
-			# Term 2: Gi[y,d,a]*V[d,e,f]*Amid[y,e,b,z]*Hi[z,f,c]
-			mul!(T1_mat, Gi_m2, V_mat)
-			@inbounds for e in 1:nN, y in 1:rAl, f in 1:rxr, a in 1:rxl
-				T1_perm[a,f,y,e] = T1[y,a,e,f]
-			end
-			mul!(T2, T1p_mat, Amid_p2)
-			T2_4d2 = reshape(T2, rxl, rxr, nN, rAr)
-			@inbounds for z in 1:rAr, b in 1:nN, f in 1:rxr, a in 1:rxl
-				T2_perm[a,b,f,z] = T2_4d2[a,f,b,z]
-			end
-			mul!(T3, T2p_mat, Hi_p2)
-			@inbounds for i in eachindex(Vout)
-				Vout[i] = 0.5*(Vout[i] + T3[i])
-			end
-			return nothing
-		end
-		Vapp[:],top = linsolve(LinearMap{T}(K_matfree,prod(K_dims);ismutating=true), vec(Pb), vec(V0);issymmetric=true,isposdef=true,tol=tol,maxiter=maxiter,verbosity=0)
-		println("Number of matvec: $(top.numops)")
-		return nothing
-	else
-		K = K_full(Gi_view,Hi_view,Amid_tensor)
-		Vapp[:] = K\Pb[:]
-		return nothing
+		Kmap = _make_K_linmap(Gi_view, Hi_view, Amid_tensor, scratch)
+		Vapp[:], top = linsolve(Kmap, vec(Pb), vec(V0); isposdef=true, tol=tol, maxiter=maxiter, verbosity=0)
+		top.converged > 0 && return nothing
 	end
+	Vapp[:] = K_full(Gi_view,Hi_view,Amid_tensor)\Pb[:]
+	return nothing
 end
 
 function right_core_move!(x_tt::TTvector{T},V,V_move,i::Int,N,tol::Float64,r_max::Integer;verbose,dmrg_info) where {T<:Number}
@@ -379,72 +379,18 @@ end
 
 function K_eigmin(Gi_view::AbstractArray{T,3},Hi_view::AbstractArray{T,3},V0::AbstractArray{T,3},Amid_tensor::AbstractArray{T,4},V,scratch::DMRGScratch{T};it_solver=false::Bool,itslv_thresh=256::Int64,maxiter=200::Int64,tol=1e-6::Float64) where T<:Number
 	K_dims = size(V0)
-	λ = zero(T)
 	if it_solver && prod(K_dims) > itslv_thresh
-		rxl, nN, rxr = K_dims
-		rAl = size(Gi_view, 1)
-		rAr = size(Hi_view, 1)
-		# Pre-permute fixed tensors once (not inside the eigsolve loop)
-		Gi = Base.iscontiguous(Gi_view) ? Gi_view : Array(Gi_view)
-		Hi = Base.iscontiguous(Hi_view) ? Hi_view : Array(Hi_view)
-		Gi_m    = reshape(Gi, rAl*rxl, rxl)
-		Gi_m2   = reshape(permutedims(Gi, (1,3,2)), rAl*rxl, rxl)
-		Amid_p  = reshape(permutedims(Amid_tensor, (1,3,2,4)), rAl*nN, nN*rAr)
-		Amid_p2 = reshape(Amid_tensor, rAl*nN, nN*rAr)
-		Hi_p    = reshape(permutedims(Hi, (3,1,2)), rxr*rAr, rxr)
-		Hi_p2   = reshape(permutedims(Hi, (2,1,3)), rxr*rAr, rxr)
-		# Views into pre-allocated scratch (no allocation)
-		T1_mat  = @view scratch.Km_T1[1:rAl*rxl,  1:nN*rxr]
-		T1p_mat = @view scratch.Km_T1p[1:rxl*rxr, 1:rAl*nN]
-		T2      = @view scratch.Km_T2[1:rxl*rxr, 1:nN*rAr]
-		T2p_mat = @view scratch.Km_T2p[1:rxl*nN,  1:rxr*rAr]
-		T3      = @view scratch.Km_T3[1:rxl*nN,   1:rxr]
-		T1      = reshape(T1_mat, rAl, rxl, nN, rxr)
-		T1_perm = reshape(T1p_mat, rxl, rxr, rAl, nN)
-		T2_perm = reshape(T2p_mat, rxl, nN, rxr, rAr)
-		function K_matfree(Vout, V)
-			V_mat = reshape(V, rxl, nN*rxr)
-			# Term 1: Gi[y,a,d]*V[d,e,f]*Amid[y,b,e,z]*Hi[z,c,f]
-			mul!(T1_mat, Gi_m, V_mat)
-			@inbounds for e in 1:nN, y in 1:rAl, f in 1:rxr, a in 1:rxl
-				T1_perm[a,f,y,e] = T1[y,a,e,f]
-			end
-			mul!(T2, T1p_mat, Amid_p)
-			T2_4d = reshape(T2, rxl, rxr, nN, rAr)
-			@inbounds for z in 1:rAr, b in 1:nN, f in 1:rxr, a in 1:rxl
-				T2_perm[a,b,f,z] = T2_4d[a,f,b,z]
-			end
-			mul!(T3, T2p_mat, Hi_p)
-			copyto!(Vout, T3)
-			# Term 2: Gi[y,d,a]*V[d,e,f]*Amid[y,e,b,z]*Hi[z,f,c]
-			mul!(T1_mat, Gi_m2, V_mat)
-			@inbounds for e in 1:nN, y in 1:rAl, f in 1:rxr, a in 1:rxl
-				T1_perm[a,f,y,e] = T1[y,a,e,f]
-			end
-			mul!(T2, T1p_mat, Amid_p2)
-			T2_4d2 = reshape(T2, rxl, rxr, nN, rAr)
-			@inbounds for z in 1:rAr, b in 1:nN, f in 1:rxr, a in 1:rxl
-				T2_perm[a,b,f,z] = T2_4d2[a,f,b,z]
-			end
-			mul!(T3, T2p_mat, Hi_p2)
-			@inbounds for i in eachindex(Vout)
-				Vout[i] = 0.5*(Vout[i] + T3[i])
-			end
-			return nothing
+		Kmap = _make_K_linmap(Gi_view, Hi_view, Amid_tensor, scratch)
+		r = eigsolve(Kmap, copy(vec(V0)), 1, :SR; issymmetric=true, tol=tol, maxiter=maxiter)
+		if r[3].converged >= 1
+			V[:] = r[2][1][:]
+			return real(r[1][1])
 		end
-		r = eigsolve(LinearMap{T}(K_matfree,prod(K_dims);issymmetric = true,ismutating=true),copy(vec(V0)),1,:SR,issymmetric=true,tol=tol,maxiter=maxiter)
-		println("Number of matvec: $(r[3].numops)")
-		V[:] = r[2][1][:]
-		λ = real(r[1][1])
-	else
-		K = K_full(Gi_view,Hi_view,Amid_tensor)
-		F = eigen(K,1:1)
-		for i in eachindex(V)
-			V[i] = reshape(F.vectors[:,1],K_dims)[i]
-		end
-		λ = F.values[1]
 	end
-	return λ
+	K = K_full(Gi_view,Hi_view,Amid_tensor)
+	F = eigen(K,1:1)
+	V[:] = reshape(F.vectors[:,1],K_dims)
+	return F.values[1]
 end
 
 function init_dmrg(A::TToperator{T,d},tt_opt::TTvector{T,d},rks,N::Integer) where {T<:Number,d}
@@ -593,6 +539,31 @@ function ttv_after_dmrg_microstep!(tt_opt,rmax,V,schedule;j=tt_opt.N,verbose,dmr
 	return nothing 
 end
 
+# Forward turnaround: SVD the super-core, update H[d-N], return new V0_view.
+# Called when the forward sweep reaches the last site (i == d-N+1).
+# linsolv additionally calls update_Hb! on the same core afterward.
+function _dmrg_turnaround_fwd!(tt_opt::TTvector{T}, A::TToperator{T}, H, V_view, Hi_view, schedule, rmax, scratch::DMRGScratch{T}; verbose, dmrg_info) where {T<:Number}
+	d, N = tt_opt.N, schedule.N
+	ttv_after_dmrg_microstep!(tt_opt, rmax, V_view, schedule; verbose, dmrg_info)
+	verbose && push!(dmrg_info.TTvs, copy(tt_opt))
+	Him_view = @view(H[d-N][:,1:tt_opt.rks[d],1:tt_opt.rks[d]])
+	update_H!(tt_opt.cores[d], A.cores[d], Hi_view, Him_view, scratch)
+	return b_mid(tt_opt, d-N, d-1)
+end
+
+# Backward turnaround: SVD the super-core, update G[2], return new V0_view.
+# Called when the backward sweep reaches the first site (i == 1).
+# linsolv additionally calls update_Gb! on the same core afterward.
+function _dmrg_turnaround_bwd!(tt_opt::TTvector{T}, A::TToperator{T}, G, V_view, schedule, rmax, scratch::DMRGScratch{T}; verbose, dmrg_info) where {T<:Number}
+	N = schedule.N
+	ttv_after_dmrg_microstep!(tt_opt, rmax, V_view, schedule; verbose, dmrg_info, left_to_right=false, j=N)
+	verbose && push!(dmrg_info.TTvs, copy(tt_opt))
+	Gi_view_1 = @view(G[1][1:1,1:1,1:1])
+	Gip_view  = @view(G[2][:,1:tt_opt.rks[2],1:tt_opt.rks[2]])
+	update_G!(tt_opt.cores[1], A.cores[1], Gi_view_1, Gip_view, scratch)
+	return b_mid(tt_opt, 2, N+1)
+end
+
 """
 Solve Ax=b using the ALS algorithm where A is given as `TToperator` and `b`, `tt_start` are `TTvector`.
 The ranks of the solution is the same as `tt_start`.
@@ -665,54 +636,31 @@ function dmrg_linsolv(A :: TToperator{T}, b :: TTvector{T}, tt_start :: TTvector
 				G_bip = @view(G_b[i+1][1:tt_opt.rks[i+1],:])
 				update_Gb!(tt_opt.cores[i],b.cores[i],G_bi_view,G_bip)
 			else #i==d-N+1
-				ttv_after_dmrg_microstep!(tt_opt,rmax_schedule[i_schedule],V_view,schedule;verbose,dmrg_info)
-				if verbose
-					push!(dmrg_info.TTvs,copy(tt_opt))
-				end
-				#update H[d-N],H_b[d-N]
-				Him_view = @view(H[d-N][:,1:tt_opt.rks[d],1:tt_opt.rks[d]])
-				update_H!(tt_opt.cores[d],A.cores[d],Hi_view,Him_view,scratch)
-				update_Hb!(tt_opt.cores[d],b.cores[d],H_bi_view,H_b[d-N])
-
-				#update V0_view 
-				V0_view = @view(V0[1:tt_opt.rks[d-N],1:prod(tt_opt.dims[d-N:d-1]),1:tt_opt.rks[d]])
-				V0_view = b_mid(tt_opt,d-N,d-1)
+				V0_view = _dmrg_turnaround_fwd!(tt_opt, A, H, V_view, Hi_view, schedule, rmax_schedule[i_schedule], scratch; verbose, dmrg_info)
+				update_Hb!(tt_opt.cores[d], b.cores[d], H_bi_view, H_b[d-N])
 			end
 		println("---------------------------")
 		end
 
 		# Second half sweep
-		for i = (d-N):(-1):1
+		for i = (d-N):(-1):2
 			println("Backward sweep: core optimization $i out of $(d+1-N)")
-			# Define V as solution of K*x=Pb in x
 			Gi_view,Hi_view,V_view = update_G_H_V(G[i],H[i],V,tt_opt.dims,tt_opt.rks,i,N)
 			G_bi_view, H_bi_view, Pb_view = update_G_H_V_b(G_b[i],H_b[i],Pb_temp,tt_opt.dims,tt_opt.rks,i,N)
-			# Define V as solution of K*x=Pb in x
-			Ksolve!(Gi_view,G_bi_view,Hi_view,H_bi_view,Amid_list[i],bmid_list[i],Pb_view,V0_view, V_view,scratch;it_solver=it_solver,maxiter=linsolv_maxiter,tol=linsolv_tol,itslv_thresh=itslv_thresh)
-
-			if i>1
-				V0_view = update_left(tt_opt,V0,V_view,V_move,V_temp,i,N,tol,rmax_schedule[i_schedule],A.cores[i+N-1],Hi_view,H[i-1],scratch;verbose,dmrg_info)
-				update_Hb!(tt_opt.cores[i+N-1],b.cores[i+N-1],H_bi_view,H_b[i-1])
-			else
-				ttv_after_dmrg_microstep!(tt_opt,rmax_schedule[i_schedule],V_view,schedule;verbose,dmrg_info,left_to_right=false,j=N)
-				if verbose
-					push!(dmrg_info.TTvs,copy(tt_opt))
-				end
-
-				#update G[2],G_b[2]
-				Gi_view = @view(G[1][1:1,1:1,1:1])
-				Gip_view = @view(G[2][:,1:tt_opt.rks[2],1:tt_opt.rks[2]])
-				update_G!(tt_opt.cores[1],A.cores[1],Gi_view,Gip_view,scratch)
-
-				G_bip = @view(G_b[2][1:tt_opt.rks[2],:])
-				update_Gb!(tt_opt.cores[1],b.cores[1],G_bi_view,G_bip)
-
-				#update V0_view 
-				V0_view = @view(V0[1:tt_opt.rks[2],1:prod(tt_opt.dims[2:N+1]),1:tt_opt.rks[N+2]])
-				V0_view = b_mid(tt_opt,2,N+1)
-			end
+			Ksolve!(Gi_view,G_bi_view,Hi_view,H_bi_view,Amid_list[i],bmid_list[i],Pb_view,V0_view,V_view,scratch;it_solver=it_solver,maxiter=linsolv_maxiter,tol=linsolv_tol,itslv_thresh=itslv_thresh)
+			V0_view = update_left(tt_opt,V0,V_view,V_move,V_temp,i,N,tol,rmax_schedule[i_schedule],A.cores[i+N-1],Hi_view,H[i-1],scratch;verbose,dmrg_info)
+			update_Hb!(tt_opt.cores[i+N-1],b.cores[i+N-1],H_bi_view,H_b[i-1])
 		println("---------------------------")
 		end
+		# Last backward step: turnaround at i=1
+		println("Backward sweep: core optimization 1 out of $(d+1-N)")
+		Gi_view,Hi_view,V_view = update_G_H_V(G[1],H[1],V,tt_opt.dims,tt_opt.rks,1,N)
+		G_bi_view, H_bi_view, Pb_view = update_G_H_V_b(G_b[1],H_b[1],Pb_temp,tt_opt.dims,tt_opt.rks,1,N)
+		Ksolve!(Gi_view,G_bi_view,Hi_view,H_bi_view,Amid_list[1],bmid_list[1],Pb_view,V0_view,V_view,scratch;it_solver=it_solver,maxiter=linsolv_maxiter,tol=linsolv_tol,itslv_thresh=itslv_thresh)
+		V0_view = _dmrg_turnaround_bwd!(tt_opt, A, G, V_view, schedule, rmax_schedule[i_schedule], scratch; verbose, dmrg_info)
+		G_bip = @view(G_b[2][1:tt_opt.rks[2],:])
+		update_Gb!(tt_opt.cores[1], b.cores[1], G_bi_view, G_bip)
+		println("---------------------------")
 	end
 	return tt_opt, dmrg_info
 end
@@ -780,20 +728,10 @@ function dmrg_eigsolv(A :: TToperator{T},
 				V0_view = update_right(tt_opt,V0,V_view,V_move,V_temp,i,N,tol,rmax_schedule[i_schedule],A.cores[i],Gi_view,G[i+1],scratch;verbose,dmrg_info)
 				push!(r_hist,maximum(tt_opt.rks))
 			else #i==d-N+1
-				ttv_after_dmrg_microstep!(tt_opt,rmax_schedule[i_schedule],V_view,schedule;verbose,dmrg_info)
-				if verbose
-					push!(dmrg_info.TTvs,copy(tt_opt))
-				end
-				#update H[d-N],H_b[d-N]
-				Him_view = @view(H[d-N][:,1:tt_opt.rks[d],1:tt_opt.rks[d]])
-				update_H!(tt_opt.cores[d],A.cores[d],Hi_view,Him_view,scratch)
+				V0_view = _dmrg_turnaround_fwd!(tt_opt, A, H, V_view, Hi_view, schedule, rmax_schedule[i_schedule], scratch; verbose, dmrg_info)
 			end
 			println("--------------------------------------------")
 		end
-
-		#update V0_view 
-		V0_view = @view(V0[1:tt_opt.rks[d-N],1:prod(tt_opt.dims[d-N:d-1]),1:tt_opt.rks[d]])
-		V0_view = b_mid(tt_opt,d-N,d-1)
 
 		# Second half sweep
 		for i = (d-N):(-1):2
@@ -811,24 +749,12 @@ function dmrg_eigsolv(A :: TToperator{T},
 		#last step to complete the sweep
 		println("Backward sweep: core optimization $(1) out of $(d-N)")
 		Gi_view,Hi_view,V_view = update_G_H_V(G[1],H[1],V,tt_opt.dims,tt_opt.rks,1,N)
-		λ = K_eigmin(G[1],H[1],V0_view ,Amid_list[1], V_view,scratch ;it_solver,maxiter=linsolv_maxiter,tol=linsolv_tol,itslv_thresh)
+		λ = K_eigmin(Gi_view,Hi_view,V0_view,Amid_list[1],V_view,scratch;it_solver,maxiter=linsolv_maxiter,tol=linsolv_tol,itslv_thresh)
 		println("Eigenvalue: $λ")
 		push!(E,λ)
-		ttv_after_dmrg_microstep!(tt_opt,rmax_schedule[i_schedule],V_view,schedule;verbose,dmrg_info,left_to_right=false,j=N)
-		if verbose
-			push!(dmrg_info.TTvs,copy(tt_opt))
-		end
 		push!(r_hist,maximum(tt_opt.rks))
+		V0_view = _dmrg_turnaround_bwd!(tt_opt, A, G, V_view, schedule, rmax_schedule[i_schedule], scratch; verbose, dmrg_info)
 		println("--------------------------------------------")
-
-		#update G[2]
-		Gi_view = @view(G[1][1:1,1:1,1:1])
-		Gip_view = @view(G[2][:,1:tt_opt.rks[2],1:tt_opt.rks[2]])
-		update_G!(tt_opt.cores[1],A.cores[1],Gi_view,Gip_view,scratch)
-
-		#update V0_view 
-		V0_view = @view(V0[1:tt_opt.rks[2],1:prod(tt_opt.dims[2:N+1]),1:tt_opt.rks[N+2]])
-		V0_view = b_mid(tt_opt,2,N+1)
 	end
 	return E::Array{Float64,1}, tt_opt::TTvector{T},dmrg_info 
 end

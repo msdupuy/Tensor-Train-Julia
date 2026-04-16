@@ -19,8 +19,8 @@ end
 #computes the Frobenius norm of all the TT cores
 function norm_tt(xtt::Union{TRvector{T},TTvector{T}}) where {T<:Number}
     out = 0.0
-    for i in eachindex(xtt.ttv_vec)
-        out += norm(xtt.ttv_vec[i])^2
+    for i in eachindex(xtt.cores)
+        out += norm(xtt.cores[i])^2
     end
     return sqrt(out)
 end
@@ -51,48 +51,56 @@ function init_X(rks;random=false)
     return X
 end
 
+"""
+Minimise the norm of ∑_i || X_i ||_F^2 where X_i are TT core representations of X
+"""
+function _ttcore_norm_step!(y_tt, x_tt, X, j)
+    Atemp = vcat([y_tt.cores[j-1][k,:,:] for k in 1:x_tt.dims[j-1]]...)
+    A = Symmetric(Atemp'*Atemp)
+    Btemp = vcat([y_tt.cores[j][k,:,:]' for k in 1:x_tt.dims[j]]...)
+    B = Symmetric(Btemp'*Btemp)
+    X[j] = Matrix(cholesky(Symmetric(real.(ads(A,B)))).L)
+    Xj_inv = inv(X[j])
+    for k in 1:y_tt.dims[j-1]
+        y_tt.cores[j-1][k,:,:] = y_tt.cores[j-1][k,:,:]*X[j]
+    end
+    for k in 1:y_tt.dims[j]
+        y_tt.cores[j][k,:,:] = Xj_inv*y_tt.cores[j][k,:,:]
+    end
+end
+
 #N = number of sweeps to optimize the matrices
-function ttcore_norm_minimization(x_tt::TTvector{T};N=6,X=init_X(x_tt.ttv_rks)) where {T<:Number}
+function ttcore_norm_minimization(x_tt::TTvector{T};N=6,X=init_X(x_tt.rks),diagonalise=false) where {T<:Number}
     d = x_tt.N
     cost = zeros(N+1)
     cost[1] = norm_tt(x_tt)
     y_tt = copy(x_tt)
     for i in 1:N
         for j in 2:d
-            Atemp = vcat([y_tt.ttv_vec[j-1][k,:,:] for k in 1:x_tt.ttv_dims[j-1]]...)
-            A = Symmetric(Atemp'*Atemp)
-            Btemp = vcat([y_tt.ttv_vec[j][k,:,:]' for k in 1:x_tt.ttv_dims[j]]...)
-            B = Symmetric(Btemp'*Btemp)
-            M = ads(A,B)
-            X[j] = Matrix(cholesky(Symmetric(real.(M))).L)
-            for k in 1:y_tt.ttv_dims[j-1]
-                y_tt.ttv_vec[j-1][k,:,:] = y_tt.ttv_vec[j-1][k,:,:]*X[j]
-            end
-            for k in 1:y_tt.ttv_dims[j]
-                y_tt.ttv_vec[j][k,:,:] = inv(X[j])*y_tt.ttv_vec[j][k,:,:]
-            end
+            _ttcore_norm_step!(y_tt, x_tt, X, j)
         end
         for j in d-1:-1:3
-            Atemp = vcat([y_tt.ttv_vec[j-1][k,:,:] for k in 1:x_tt.ttv_dims[j-1]]...)
-            A = Symmetric(Atemp'*Atemp)
-            Btemp = vcat([y_tt.ttv_vec[j][k,:,:]' for k in 1:x_tt.ttv_dims[j]]...)
-            B = Symmetric(Btemp'*Btemp)
-            M = ads(A,B)
-            X[j] = Matrix(cholesky(Symmetric(real.(M))).L)
-            for k in 1:y_tt.ttv_dims[j-1]
-                y_tt.ttv_vec[j-1][k,:,:] = y_tt.ttv_vec[j-1][k,:,:]*X[j]
-            end
-            for k in 1:y_tt.ttv_dims[j]
-                y_tt.ttv_vec[j][k,:,:] = inv(X[j])*y_tt.ttv_vec[j][k,:,:]
-            end
+            _ttcore_norm_step!(y_tt, x_tt, X, j)
         end
         cost[i+1] = norm_tt(y_tt)
         println("New cost $(cost[i+1])")
     end
+    if diagonalise
+        for i in 1:d-1
+            Atemp = vcat([y_tt.cores[i][k,:,:] for k in 1:x_tt.dims[i]]...)
+            F = eigen(Atemp'*Atemp,sortby=-)
+            for n in 1:x_tt.dims[i]
+                y_tt.cores[i][n,:,:] = y_tt.cores[i][n,:,:]*F.vectors
+            end
+            for n in 1:x_tt.dims[i+1]
+                y_tt.cores[i+1][n,:,:] = F.vectors'*y_tt.cores[i+1][n,:,:]
+            end
+        end
+    end
     return y_tt, cost
 end
 
-function trcore_norm_minimization(x_tt::TRvector{T};N=6,X=init_X(x_tt.ttv_rks)) where {T<:Number}
+function trcore_norm_minimization(x_tt::TRvector{T};N=6,X=init_X(x_tt.rks),diagonalise=false) where {T<:Number}
     d = x_tt.N
     cost = zeros(N+1)
     cost[1] = norm_tt(x_tt)
@@ -100,24 +108,24 @@ function trcore_norm_minimization(x_tt::TRvector{T};N=6,X=init_X(x_tt.ttv_rks)) 
     for i in 1:N
         #optimization of X₁,..,X_{d-1}   
         for j in 2:d
-            Atemp = vcat([inv(X[j-1])*y_tt.ttv_vec[j-1][k,:,:] for k in 1:x_tt.ttv_dims[j-1]]...)
+            Atemp = vcat([inv(X[j-1])*y_tt.cores[j-1][k,:,:] for k in 1:x_tt.dims[j-1]]...)
             A = Symmetric(Atemp'*Atemp)
-            Btemp = vcat([X[j+1]'*y_tt.ttv_vec[j][k,:,:]' for k in 1:x_tt.ttv_dims[j]]...)
+            Btemp = vcat([X[j+1]'*y_tt.cores[j][k,:,:]' for k in 1:x_tt.dims[j]]...)
             B = Symmetric(Btemp'*Btemp)
             M = ads(A,B)
             X[j] = Matrix(cholesky(Symmetric(real.(M))).L)
         end
         #optimization of X_d=X_0
-        Atemp = vcat([inv(X[d])*y_tt.ttv_vec[d][k,:,:] for k in 1:x_tt.ttv_dims[d]]...)
+        Atemp = vcat([inv(X[d])*y_tt.cores[d][k,:,:] for k in 1:x_tt.dims[d]]...)
         A = Symmetric(Atemp'*Atemp)
-        Btemp = vcat([X[2]'*y_tt.ttv_vec[1][k,:,:]' for k in 1:x_tt.ttv_dims[1]]...)
+        Btemp = vcat([X[2]'*y_tt.cores[1][k,:,:]' for k in 1:x_tt.dims[1]]...)
         B = Symmetric(Btemp'*Btemp)
         M = ads(A,B)
         X[d+1] = Matrix(cholesky(Symmetric(real.(M))).L)
         X[1] = X[d+1]
         for i in 1:d
-            for j in 1:y_tt.ttv_dims[i]
-                y_tt.ttv_vec[i][j,:,:] = inv(X[i])*y_tt.ttv_vec[i][j,:,:]*X[i+1]
+            for j in 1:y_tt.dims[i]
+                y_tt.cores[i][j,:,:] = inv(X[i])*y_tt.cores[i][j,:,:]*X[i+1]
             end
         end
         cost[i+1] = norm_tt(y_tt)
@@ -129,8 +137,8 @@ end
 function conv_criterion(x_tt::Union{TRvector{T},TTvector{T}},i::Integer) where {T<:Number}
     d = x_tt.N
     @assert 1≤i<d
-    A = vcat([x_tt.ttv_vec[i][j,:,:] for j in 1:x_tt.ttv_dims[i]]...)
-    B = vcat([x_tt.ttv_vec[i+1][j,:,:]' for j in 1:x_tt.ttv_dims[i+1]]...)
+    A = vcat([x_tt.cores[i][j,:,:] for j in 1:x_tt.dims[i]]...)
+    B = vcat([x_tt.cores[i+1][j,:,:]' for j in 1:x_tt.dims[i+1]]...)
     return norm(A'*A-B'*B)
 end
 
@@ -141,36 +149,80 @@ function invariant(x_tt::Union{TRvector{T},TTvector{T}};ε=1e-6) where {T<:Numbe
     end
     D = Array{Array{Float64,1},1}(undef,d-1)
     for i in 1:d-1
-        A = vcat([x_tt.ttv_vec[i][j,:,:] for j in 1:x_tt.ttv_dims[i]]...)
+        A = vcat([x_tt.cores[i][j,:,:] for j in 1:x_tt.dims[i]]...)
         D[i] = svdvals(A'*A)
     end
     return D
 end
 
-L = 10
-n = 3
-dims = ntuple(x->n,L)
-rks = ones(Int64,L+1)
-for i in 2:L
-    rks[i] = min(n^(i-1),n^(L+1-i),1024)
+"""
+Assume that x_tt is given in variational form
+"""
+function left_variational(x_tt::TTvector{T}) where {T<:Number}
+    y_tt = copy(x_tt)
+    Λ = Array{Array{Float64,1},1}(undef,x_tt.N)
+    Λ[1] = ones(y_tt.rks[1])
+    for i in 1:x_tt.N-1
+        Atemp = vcat([Diagonal(Λ[i])*y_tt.cores[i][k,:,:] for k in 1:x_tt.dims[i]]...)
+        F = eigen(Atemp'*Atemp,sortby=-)
+        Λ[i+1] = sqrt.(F.values) #sorted decreasingly
+        for n in 1:x_tt.dims[i]
+            y_tt.cores[i][n,:,:] = y_tt.cores[i][n,:,:]*F.vectors
+        end
+        for n in 1:x_tt.dims[i+1]
+            y_tt.cores[i+1][n,:,:] = F.vectors'*y_tt.cores[i+1][n,:,:]
+        end
+    end
+    return y_tt,Λ[2:end]
 end
 
-#TT tests
-Random.seed!(1234)
-x_tt = rand_tt(dims,rks,normalise=true)
-x = ttv_to_tensor(x_tt)
-hsv = tt_svdvals(x_tt)
-x_v = tt_to_vidal(x_tt)
+"""
+Assumes that xtt is given in a left variational form
+"""
+function tt_leftnormal_rounding(ytt::TTvector{T},Λ;tol=1e-4, rmax=0) where {T<:Number}
+    err = 0.0
+    xtt = copy(ytt)
+    for i in 1:xtt.N-1
+        ri = TensorTrains.cut_off_index(Λ[i],tol)
+        if rmax>0
+            ri = min(ri, rmax)
+        end
+        xtt.rks[i+1] = ri
+        xtt.cores[i] = xtt.cores[i][:,:,1:ri]
+        xtt.cores[i+1] = xtt.cores[i+1][:,1:ri,:]
+        err += norm(@view Λ[i][ri+1:end])
+    end
+    return xtt,err
+end
 
-Random.seed!(rand(1:100000))
-ytt, cost_list = ttcore_norm_minimization(x_tt,N=60,X=init_X(x_tt.ttv_rks;random=true))
-y = ttv_to_tensor(ytt)
+"""
+Assumes that xtt is given in a diagonalised form
+"""
+function tt_normal_rounding(ytt::TTvector{T};tol=1e-4) where {T<:Number}
+    xtt = copy(ytt)
+    for i in 1:xtt.N-1
+        A_temp = vcat([xtt.cores[i][j,:,:] for j in 1:xtt.dims[i]]...)
+        D = eigvals(A_temp'*A_temp,sortby=-)
+        ri = TensorTrains.cut_off_index(sqrt.(D),tol)
+        xtt.rks[i+1] = ri
+        xtt.cores[i] = xtt.cores[i][:,:,1:ri]
+        xtt.cores[i+1] = xtt.cores[i+1][:,1:ri,:]
+    end
+    return xtt
+end
 
-#TR tests
-Random.seed!(1234)
-x_tr = rand_tr(dims,6)
-xr = tr_to_tensor(x_tr)
-
-Random.seed!(2604)
-#yr, ycost = trcore_norm_minimization(x_tr,N=200,X=init_X(x_tr.ttv_rks;random=true))
-#yr_tensor = tr_to_tensor(yr)
+function tt_rounding_print(x_tt::TTvector{T,N};tol=1e-12,rmax=max(prod(x_tt.dims[1:floor(Int,x_tt.N/2)]),prod(x_tt.dims[ceil(Int,x_tt.N/2):end]))) where {T<:Number,N}
+	y_tt = orthogonalize(x_tt;i=x_tt.N)
+    err2 = zero(T)
+	for j in x_tt.N:-1:2
+		u,s,v = svd(reshape(permutedims(y_tt.cores[j],[2 1 3]),y_tt.rks[j],:),full=false)
+		k = min(TensorTrains.cut_off_index(s,tol),rmax)
+        err2 += norm(s[k+1:end])^2
+		y_tt.cores[j] = permutedims(reshape(v'[1:k,:],:,x_tt.dims[j],y_tt.rks[j+1]),[2 1 3])
+		y_tt.cores[j-1] = reshape(reshape(y_tt.cores[j-1],y_tt.dims[j-1]*y_tt.rks[j-1],:)*u[:,1:k]*Diagonal(s[1:k]),y_tt.dims[j-1],y_tt.rks[j-1],:)
+		y_tt.rks[j] = k
+		y_tt.ot[j] = 1
+	end
+	y_tt.ot[1] = 0
+	return y_tt, sqrt(err2)
+end
